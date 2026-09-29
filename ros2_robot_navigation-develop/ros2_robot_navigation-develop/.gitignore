@@ -1,9 +1,0 @@
-.vscode/
-.idea/
-
-test_ws/build/
-test_ws/install/
-test_ws/log/
-
-*.pyc
-__pycache__/
