@@ -85,6 +85,7 @@
 ..\obj\balance.o: ..\HARDWARE\check.h
 ..\obj\balance.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 ..\obj\balance.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\balance.o: ..\BALANCE\heading_control.h
 ..\obj\balance.o: ..\HARDWARE\USB\USB_HOST\App\xbox360_gamepad.h
 ..\obj\balance.o: ..\HARDWARE\USB\STM32_USB_Host_Library\Class\HID\Inc\usbh_hid.h
 ..\obj\balance.o: ..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc\usbh_core.h
