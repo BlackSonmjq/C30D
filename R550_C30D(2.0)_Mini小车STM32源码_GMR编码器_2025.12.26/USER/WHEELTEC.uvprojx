@@ -663,6 +663,11 @@
               <FilePath>..\BALANCE\imu_task.c</FilePath>
             </File>
             <File>
+              <FileName>heading_control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BALANCE\heading_control.c</FilePath>
+            </File>
+            <File>
               <FileName>check.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\HARDWARE\check.c</FilePath>

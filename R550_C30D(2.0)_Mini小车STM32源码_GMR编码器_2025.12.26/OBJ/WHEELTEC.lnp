@@ -46,6 +46,7 @@
 "..\obj\robot_select_init.o"
 "..\obj\show.o"
 "..\obj\imu_task.o"
+"..\obj\heading_control.o"
 "..\obj\check.o"
 "..\obj\usbh_core.o"
 "..\obj\usbh_ctlreq.o"

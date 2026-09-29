@@ -1,4 +1,5 @@
 #include "balance.h"
+#include "heading_control.h"
 
 //int Time_count=0; //Time variable //计时变量
 
@@ -287,6 +288,9 @@ Output  : none
 void Balance_task(void *pvParameters)
 { 
 	u32 lastWakeTime = getSysTickCnt();
+	float chassis_vz;
+	u8 heading_control_active;
+	static u8 imu_ready_beeped = 0;
 
     while(1)
     {	
@@ -305,9 +309,31 @@ void Balance_task(void *pvParameters)
 		//Click the user button to update the gyroscope zero
 		//单击用户按键更新陀螺仪零点
 		Key(); 
+
+		/* One short beep when startup IMU calibration has completed. */
+		if((SysVal.Time_count >= CONTROL_DELAY) && (imu_ready_beeped == 0))
+		{
+			Buzzer_count = 0;
+			imu_ready_beeped = 1;
+		}
 			
 		if( Allow_Recharge==1 )
 			if( Get_Charging_HardWare==0 ) Allow_Recharge=0,Find_Charging_HardWare();
+
+		heading_control_active =
+			(HEADING_CONTROL_ENABLE != 0) &&
+			(SysVal.Time_count >= CONTROL_DELAY) &&
+			(Allow_Recharge == 0) &&
+			(Car_Mode != Akm_Car) &&
+			(APP_ON_Flag == 0) &&
+			(Remote_ON_Flag == 0) &&
+			(PS2_ON_Flag == 0) &&
+			(CAN_ON_Flag == 0) &&
+			(Usart1_ON_Flag == 0) &&
+			(Usart5_ON_Flag == 0);
+
+		if(heading_control_active == 0)
+			HeadingControl_Reset();
 		
 //			command_lost_count++;
 //			if(command_lost_count>RATE_100_HZ && APP_ON_Flag==0 && Remote_ON_Flag==0 && PS2_ON_Flag==0)
@@ -335,7 +361,14 @@ void Balance_task(void *pvParameters)
 			//CAN, Usart 1, Usart 3, Uart5 control can directly get the three axis target speed, 
 			//without additional processing
 			//CAN、串口1、串口3(ROS)、串口5控制直接得到三轴目标速度，无须额外处理
-			else                      Drive_Motor(Move_X, Move_Y, Move_Z);
+			else
+			{
+				chassis_vz = Move_Z;
+				if(heading_control_active)
+					chassis_vz = HeadingControl_Update(imu.gyro.z);
+
+				Drive_Motor(Move_X, Move_Y, chassis_vz);
+			}
 		}
 
 		//If there is no abnormity in the battery voltage, and the enable switch is in the ON position,

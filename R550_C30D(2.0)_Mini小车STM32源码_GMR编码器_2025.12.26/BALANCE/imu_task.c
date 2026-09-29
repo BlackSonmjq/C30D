@@ -3,6 +3,33 @@
 //imu数据结构体
 IMU_DATA_t imu;
 
+static long gyro_sum_x;
+static long gyro_sum_y;
+static long gyro_sum_z;
+static long accel_sum_x;
+static long accel_sum_y;
+static long accel_sum_z;
+static u16 imu_calibration_samples;
+
+/* Average all stationary startup samples instead of using one noisy sample. */
+static void ImuStartupCalibration_Update(void)
+{
+    gyro_sum_x += imu.gyro.x;
+    gyro_sum_y += imu.gyro.y;
+    gyro_sum_z += imu.gyro.z;
+    accel_sum_x += imu.accel.x;
+    accel_sum_y += imu.accel.y;
+    accel_sum_z += imu.accel.z;
+    imu_calibration_samples++;
+
+    imu.Deviation_gyro.x = (short)(gyro_sum_x / imu_calibration_samples);
+    imu.Deviation_gyro.y = (short)(gyro_sum_y / imu_calibration_samples);
+    imu.Deviation_gyro.z = (short)(gyro_sum_z / imu_calibration_samples);
+    imu.Deviation_accel.x = (short)(accel_sum_x / imu_calibration_samples);
+    imu.Deviation_accel.y = (short)(accel_sum_y / imu_calibration_samples);
+    imu.Deviation_accel.z = (short)(accel_sum_z / imu_calibration_samples);
+}
+
 void MPU6050_task(void *pvParameters)
 {
     u32 lastWakeTime = getSysTickCnt();
@@ -11,18 +38,16 @@ void MPU6050_task(void *pvParameters)
         //This task runs at 100Hz
         //此任务以100Hz的频率运行
         vTaskDelayUntil(&lastWakeTime, F2T(IMU_TASK_RATE));
-        //Read the gyroscope zero before starting
-        //开机前，读取陀螺仪零点
-        if(SysVal.Time_count<CONTROL_DELAY)
-        {	
-            ImuData_copy(&imu.Deviation_gyro,&imu.gyro);
-            ImuData_copy(&imu.Deviation_accel,&imu.accel);
-        }
         //Get acceleration sensor data
         MPU6050_Get_Accelscope();
 
         //Get gyroscope data
         MPU6050_Get_Gyroscope(); //得到陀螺仪数据
+
+        //Average the stationary IMU samples collected during startup.
+        //开机静止期间，对IMU零偏进行多次平均
+        if(SysVal.Time_count<CONTROL_DELAY)
+            ImuStartupCalibration_Update();
 
     }
 }
@@ -37,19 +62,16 @@ void ICM20948_task(void *pvParameters)
         //此任务以100Hz的频率运行
         vTaskDelayUntil(&lastWakeTime, F2T(IMU_TASK_RATE));
 
-        //Read the gyroscope zero before starting
-        //开机前，读取陀螺仪零点
-        if(SysVal.Time_count<CONTROL_DELAY)
-        {
-            ImuData_copy(&imu.Deviation_gyro,&imu.gyro);
-            ImuData_copy(&imu.Deviation_accel,&imu.accel);
-        }
-
         //Get acceleration sensor data
         ICM20948_Get_Accel(); //得到加速度传感器数据
 
         //Get gyroscope data
         ICM20948_Get_Gyroscope(); //得到陀螺仪数据
+
+        //Average the stationary IMU samples collected during startup.
+        //开机静止期间，对IMU零偏进行多次平均
+        if(SysVal.Time_count<CONTROL_DELAY)
+            ImuStartupCalibration_Update();
 
 #if 0 // 未使用磁力计数据,不开启采集
         static u8 mag_count=0;
