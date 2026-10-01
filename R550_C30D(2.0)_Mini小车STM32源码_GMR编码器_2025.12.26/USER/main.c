@@ -17,7 +17,7 @@ Update：2022-05-05
 All rights reserved
 ***********************************************/
 #include "system.h"
-
+#include "pushrod.h"
 //Task priority    //任务优先级
 #define START_TASK_PRIO	1
 
@@ -34,7 +34,7 @@ void start_task(void *pvParameters);
 int main(void)
 { 
   systemInit(); //Hardware initialization //硬件初始化
-	
+	Pushrod_Init();
 	//Create the start task //创建开始任务
 	xTaskCreate((TaskFunction_t )start_task,            //Task function   //任务函数
 							(const char*    )"start_task",          //Task name       //任务名称
