@@ -2571,7 +2571,7 @@ I (..\HARDWARE\stmflash.h)(0x6AC34610)
 I (..\HARDWARE\check.h)(0x6AC34610)
 I (D:\Keil_v5\ARM\ARMCC\include\stdlib.h)(0x588B8344)
 I (D:\Keil_v5\ARM\ARMCC\include\stdarg.h)(0x588B8344)
-F (..\BALANCE\balance.c)(0x6AC34D4B)(--c99 -c --cpu Cortex-M4.fp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ..\CORE -I ..\SYSTEM\delay -I ..\SYSTEM\sys -I ..\SYSTEM\usart -I ..\USER -I ..\HARDWARE\LED -I ..\FWLIB\inc -I ..\FreeRTOS\include -I ..\FreeRTOS\portable\RVDS\ARM_CM4F -I ..\BALANCE -I ..\HARDWARE -I ..\HARDWARE\MPU6050 -I ..\AutoRecharge -I ..\HARDWARE\ICM20948 -I ..\HARDWARE\USB\STM32_USB_Host_Library\Class\HID\Inc -I ..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc -I ..\HARDWARE\USB\USB_HOST\App -I ..\HARDWARE\USB\USB_HOST\Target-I.\RTE\_FreeRTOS-ID:\Keil_v5\ARM\PACK\Keil\STM32F4xx_DFP\1.0.8\Device\Include-ID:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F40_41xxx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -D__FPU_PRESENT="1" -D__TARGET_FPU_VFP -DARM_MATH_CM4 -D__CC_ARM -DUSE_USB_OTG_FS-o ..\obj\balance.o --omf_browse ..\obj\balance.crf --depend ..\obj\balance.d)
+F (..\BALANCE\balance.c)(0x6AC38609)(--c99 -c --cpu Cortex-M4.fp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ..\CORE -I ..\SYSTEM\delay -I ..\SYSTEM\sys -I ..\SYSTEM\usart -I ..\USER -I ..\HARDWARE\LED -I ..\FWLIB\inc -I ..\FreeRTOS\include -I ..\FreeRTOS\portable\RVDS\ARM_CM4F -I ..\BALANCE -I ..\HARDWARE -I ..\HARDWARE\MPU6050 -I ..\AutoRecharge -I ..\HARDWARE\ICM20948 -I ..\HARDWARE\USB\STM32_USB_Host_Library\Class\HID\Inc -I ..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc -I ..\HARDWARE\USB\USB_HOST\App -I ..\HARDWARE\USB\USB_HOST\Target-I.\RTE\_FreeRTOS-ID:\Keil_v5\ARM\PACK\Keil\STM32F4xx_DFP\1.0.8\Device\Include-ID:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F40_41xxx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -D__FPU_PRESENT="1" -D__TARGET_FPU_VFP -DARM_MATH_CM4 -D__CC_ARM -DUSE_USB_OTG_FS-o ..\obj\balance.o --omf_browse ..\obj\balance.crf --depend ..\obj\balance.d)
 I (..\BALANCE\balance.h)(0x6AC34610)
 I (..\SYSTEM\sys\sys.h)(0x6AC34610)
 I (..\USER\stm32f4xx.h)(0x6AC34610)
@@ -2654,21 +2654,6 @@ I (..\HARDWARE\stmflash.h)(0x6AC34610)
 I (..\HARDWARE\check.h)(0x6AC34610)
 I (D:\Keil_v5\ARM\ARMCC\include\stdlib.h)(0x588B8344)
 I (D:\Keil_v5\ARM\ARMCC\include\stdarg.h)(0x588B8344)
-I (..\HARDWARE\USB\USB_HOST\App\xbox360_gamepad.h)(0x6AC34610)
-I (..\HARDWARE\USB\STM32_USB_Host_Library\Class\HID\Inc\usbh_hid.h)(0x6AC34610)
-I (..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc\usbh_core.h)(0x6AC34610)
-I (..\HARDWARE\USB\USB_HOST\Target\usbh_conf.h)(0x6AC34610)
-I (..\HARDWARE\USB\USB_HOST\App\usbh_os_middleware.h)(0x6AC34610)
-I (..\FWLIB\inc\stm32f4xx_hal_hcd.h)(0x6AC34610)
-I (..\FWLIB\inc\stm32f4xx_ll_usb.h)(0x6AC34610)
-I (..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc\usbh_def.h)(0x6AC34610)
-I (..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc\usbh_ioreq.h)(0x6AC34610)
-I (..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc\usbh_pipes.h)(0x6AC34610)
-I (..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc\usbh_ctlreq.h)(0x6AC34610)
-I (..\HARDWARE\USB\STM32_USB_Host_Library\Class\HID\Inc\usbh_hid_mouse.h)(0x6AC34610)
-I (..\HARDWARE\USB\STM32_USB_Host_Library\Class\HID\Inc\usbh_hid_keybd.h)(0x6AC34610)
-I (..\HARDWARE\USB\USB_HOST\App\usbh_hid_GamePad.h)(0x6AC34610)
-I (..\HARDWARE\USB\USB_HOST\App\WiredPS2_gamepad.h)(0x6AC34610)
 F (..\BALANCE\pushrod_task.c)(0x6AC367DD)(--c99 -c --cpu Cortex-M4.fp -D__MICROLIB -g -O2 --apcs=interwork --split_sections -I ..\CORE -I ..\SYSTEM\delay -I ..\SYSTEM\sys -I ..\SYSTEM\usart -I ..\USER -I ..\HARDWARE\LED -I ..\FWLIB\inc -I ..\FreeRTOS\include -I ..\FreeRTOS\portable\RVDS\ARM_CM4F -I ..\BALANCE -I ..\HARDWARE -I ..\HARDWARE\MPU6050 -I ..\AutoRecharge -I ..\HARDWARE\ICM20948 -I ..\HARDWARE\USB\STM32_USB_Host_Library\Class\HID\Inc -I ..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc -I ..\HARDWARE\USB\USB_HOST\App -I ..\HARDWARE\USB\USB_HOST\Target-I.\RTE\_FreeRTOS-ID:\Keil_v5\ARM\PACK\Keil\STM32F4xx_DFP\1.0.8\Device\Include-ID:\Keil_v5\ARM\CMSIS\Include-D__UVISION_VERSION="524" -DSTM32F40_41xxx -DSTM32F40_41xxx -DUSE_STDPERIPH_DRIVER -D__FPU_PRESENT="1" -D__TARGET_FPU_VFP -DARM_MATH_CM4 -D__CC_ARM -DUSE_USB_OTG_FS-o ..\obj\pushrod_task.o --omf_browse ..\obj\pushrod_task.crf --depend ..\obj\pushrod_task.d)
 I (..\BALANCE\pushrod_task.h)(0x6AC350C6)
 I (..\BALANCE\system.h)(0x6AC34610)
