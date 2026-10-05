@@ -5,15 +5,15 @@
 ..\obj\motor.o: ..\SYSTEM\sys\sys.h
 ..\obj\motor.o: ..\USER\stm32f4xx.h
 ..\obj\motor.o: ..\CORE\core_cm4.h
-..\obj\motor.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\motor.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\motor.o: ..\CORE\core_cmInstr.h
 ..\obj\motor.o: ..\CORE\core_cmFunc.h
 ..\obj\motor.o: ..\CORE\core_cm4_simd.h
 ..\obj\motor.o: ..\USER\system_stm32f4xx.h
 ..\obj\motor.o: ..\CORE\arm_math.h
 ..\obj\motor.o: ..\CORE\core_cm4.h
-..\obj\motor.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\motor.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\motor.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\motor.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\motor.o: ..\USER\stm32f4xx_conf.h
 ..\obj\motor.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\motor.o: ..\USER\stm32f4xx.h
@@ -43,9 +43,9 @@
 ..\obj\motor.o: ..\FWLIB\inc\stm32f4xx_dcmi.h
 ..\obj\motor.o: ..\FWLIB\inc\stm32f4xx_fsmc.h
 ..\obj\motor.o: ..\SYSTEM\usart\usart.h
-..\obj\motor.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\motor.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\motor.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\motor.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\motor.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\motor.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\motor.o: ..\FreeRTOS\include\portable.h
 ..\obj\motor.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -73,7 +73,7 @@
 ..\obj\motor.o: ..\HARDWARE\key.h
 ..\obj\motor.o: ..\BALANCE\robot_select_init.h
 ..\obj\motor.o: ..\HARDWARE\I2C.h
-..\obj\motor.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\motor.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\motor.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\motor.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\motor.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -83,5 +83,5 @@
 ..\obj\motor.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\motor.o: ..\HARDWARE\stmflash.h
 ..\obj\motor.o: ..\HARDWARE\check.h
-..\obj\motor.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\motor.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\motor.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\motor.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

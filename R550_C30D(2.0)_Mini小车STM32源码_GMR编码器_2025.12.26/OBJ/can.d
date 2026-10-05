@@ -3,15 +3,15 @@
 ..\obj\can.o: ..\SYSTEM\sys\sys.h
 ..\obj\can.o: ..\USER\stm32f4xx.h
 ..\obj\can.o: ..\CORE\core_cm4.h
-..\obj\can.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\can.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\can.o: ..\CORE\core_cmInstr.h
 ..\obj\can.o: ..\CORE\core_cmFunc.h
 ..\obj\can.o: ..\CORE\core_cm4_simd.h
 ..\obj\can.o: ..\USER\system_stm32f4xx.h
 ..\obj\can.o: ..\CORE\arm_math.h
 ..\obj\can.o: ..\CORE\core_cm4.h
-..\obj\can.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\can.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\can.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\can.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\can.o: ..\USER\stm32f4xx_conf.h
 ..\obj\can.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\can.o: ..\USER\stm32f4xx.h
@@ -43,9 +43,9 @@
 ..\obj\can.o: ..\BALANCE\system.h
 ..\obj\can.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\can.o: ..\SYSTEM\usart\usart.h
-..\obj\can.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\can.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\can.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\can.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\can.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\can.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\can.o: ..\FreeRTOS\include\portable.h
 ..\obj\can.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -73,7 +73,7 @@
 ..\obj\can.o: ..\HARDWARE\key.h
 ..\obj\can.o: ..\BALANCE\robot_select_init.h
 ..\obj\can.o: ..\HARDWARE\I2C.h
-..\obj\can.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\can.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\can.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\can.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\can.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -83,5 +83,5 @@
 ..\obj\can.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\can.o: ..\HARDWARE\stmflash.h
 ..\obj\can.o: ..\HARDWARE\check.h
-..\obj\can.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\can.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\can.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\can.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

@@ -1,8 +1,8 @@
 ..\obj\event_groups.o: ..\FreeRTOS\event_groups.c
-..\obj\event_groups.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\event_groups.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
 ..\obj\event_groups.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\event_groups.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
-..\obj\event_groups.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\event_groups.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\event_groups.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\event_groups.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\event_groups.o: ..\SYSTEM\sys\sys.h
 ..\obj\event_groups.o: ..\USER\stm32f4xx.h
@@ -13,8 +13,8 @@
 ..\obj\event_groups.o: ..\USER\system_stm32f4xx.h
 ..\obj\event_groups.o: ..\CORE\arm_math.h
 ..\obj\event_groups.o: ..\CORE\core_cm4.h
-..\obj\event_groups.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\event_groups.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\event_groups.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\event_groups.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\event_groups.o: ..\USER\stm32f4xx_conf.h
 ..\obj\event_groups.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\event_groups.o: ..\USER\stm32f4xx.h
@@ -44,7 +44,7 @@
 ..\obj\event_groups.o: ..\FWLIB\inc\stm32f4xx_dcmi.h
 ..\obj\event_groups.o: ..\FWLIB\inc\stm32f4xx_fsmc.h
 ..\obj\event_groups.o: ..\SYSTEM\usart\usart.h
-..\obj\event_groups.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\event_groups.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\event_groups.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\event_groups.o: ..\FreeRTOS\include\portable.h
 ..\obj\event_groups.o: ..\FreeRTOS\include\deprecated_definitions.h

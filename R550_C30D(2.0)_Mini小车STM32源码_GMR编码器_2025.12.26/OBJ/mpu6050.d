@@ -3,15 +3,15 @@
 ..\obj\mpu6050.o: ..\SYSTEM\sys\sys.h
 ..\obj\mpu6050.o: ..\USER\stm32f4xx.h
 ..\obj\mpu6050.o: ..\CORE\core_cm4.h
-..\obj\mpu6050.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\mpu6050.o: ..\CORE\core_cmInstr.h
 ..\obj\mpu6050.o: ..\CORE\core_cmFunc.h
 ..\obj\mpu6050.o: ..\CORE\core_cm4_simd.h
 ..\obj\mpu6050.o: ..\USER\system_stm32f4xx.h
 ..\obj\mpu6050.o: ..\CORE\arm_math.h
 ..\obj\mpu6050.o: ..\CORE\core_cm4.h
-..\obj\mpu6050.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\mpu6050.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\mpu6050.o: ..\USER\stm32f4xx_conf.h
 ..\obj\mpu6050.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\mpu6050.o: ..\USER\stm32f4xx.h
@@ -44,9 +44,9 @@
 ..\obj\mpu6050.o: ..\BALANCE\system.h
 ..\obj\mpu6050.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\mpu6050.o: ..\SYSTEM\usart\usart.h
-..\obj\mpu6050.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\mpu6050.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\mpu6050.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\mpu6050.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\mpu6050.o: ..\FreeRTOS\include\portable.h
 ..\obj\mpu6050.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -74,7 +74,7 @@
 ..\obj\mpu6050.o: ..\HARDWARE\key.h
 ..\obj\mpu6050.o: ..\BALANCE\robot_select_init.h
 ..\obj\mpu6050.o: ..\HARDWARE\I2C.h
-..\obj\mpu6050.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\mpu6050.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\mpu6050.o: ..\HARDWARE\ICM20948\ICM20948.h
 ..\obj\mpu6050.o: ..\HARDWARE\ICM20948\Public_StdTypes.h
@@ -83,5 +83,5 @@
 ..\obj\mpu6050.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\mpu6050.o: ..\HARDWARE\stmflash.h
 ..\obj\mpu6050.o: ..\HARDWARE\check.h
-..\obj\mpu6050.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\mpu6050.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\mpu6050.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

@@ -3,15 +3,15 @@
 ..\obj\led.o: ..\SYSTEM\sys\sys.h
 ..\obj\led.o: ..\USER\stm32f4xx.h
 ..\obj\led.o: ..\CORE\core_cm4.h
-..\obj\led.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\led.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\led.o: ..\CORE\core_cmInstr.h
 ..\obj\led.o: ..\CORE\core_cmFunc.h
 ..\obj\led.o: ..\CORE\core_cm4_simd.h
 ..\obj\led.o: ..\USER\system_stm32f4xx.h
 ..\obj\led.o: ..\CORE\arm_math.h
 ..\obj\led.o: ..\CORE\core_cm4.h
-..\obj\led.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\led.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\led.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\led.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\led.o: ..\USER\stm32f4xx_conf.h
 ..\obj\led.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\led.o: ..\USER\stm32f4xx.h
@@ -43,9 +43,9 @@
 ..\obj\led.o: ..\BALANCE\system.h
 ..\obj\led.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\led.o: ..\SYSTEM\usart\usart.h
-..\obj\led.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\led.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\led.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\led.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\led.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\led.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\led.o: ..\FreeRTOS\include\portable.h
 ..\obj\led.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -73,7 +73,7 @@
 ..\obj\led.o: ..\HARDWARE\key.h
 ..\obj\led.o: ..\BALANCE\robot_select_init.h
 ..\obj\led.o: ..\HARDWARE\I2C.h
-..\obj\led.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\led.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\led.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\led.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\led.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -83,5 +83,5 @@
 ..\obj\led.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\led.o: ..\HARDWARE\stmflash.h
 ..\obj\led.o: ..\HARDWARE\check.h
-..\obj\led.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\led.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\led.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\led.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

@@ -1,7 +1,7 @@
 ..\obj\port.o: ..\FreeRTOS\portable\RVDS\ARM_CM4F\port.c
 ..\obj\port.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\port.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
-..\obj\port.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\port.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\port.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\port.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\port.o: ..\SYSTEM\sys\sys.h
 ..\obj\port.o: ..\USER\stm32f4xx.h
@@ -12,8 +12,8 @@
 ..\obj\port.o: ..\USER\system_stm32f4xx.h
 ..\obj\port.o: ..\CORE\arm_math.h
 ..\obj\port.o: ..\CORE\core_cm4.h
-..\obj\port.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\port.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\port.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\port.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\port.o: ..\USER\stm32f4xx_conf.h
 ..\obj\port.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\port.o: ..\USER\stm32f4xx.h
@@ -43,7 +43,7 @@
 ..\obj\port.o: ..\FWLIB\inc\stm32f4xx_dcmi.h
 ..\obj\port.o: ..\FWLIB\inc\stm32f4xx_fsmc.h
 ..\obj\port.o: ..\SYSTEM\usart\usart.h
-..\obj\port.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\port.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\port.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\port.o: ..\FreeRTOS\include\portable.h
 ..\obj\port.o: ..\FreeRTOS\include\deprecated_definitions.h

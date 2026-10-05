@@ -3,15 +3,15 @@
 ..\obj\adc.o: ..\SYSTEM\sys\sys.h
 ..\obj\adc.o: ..\USER\stm32f4xx.h
 ..\obj\adc.o: ..\CORE\core_cm4.h
-..\obj\adc.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\adc.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\adc.o: ..\CORE\core_cmInstr.h
 ..\obj\adc.o: ..\CORE\core_cmFunc.h
 ..\obj\adc.o: ..\CORE\core_cm4_simd.h
 ..\obj\adc.o: ..\USER\system_stm32f4xx.h
 ..\obj\adc.o: ..\CORE\arm_math.h
 ..\obj\adc.o: ..\CORE\core_cm4.h
-..\obj\adc.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\adc.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\adc.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\adc.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\adc.o: ..\USER\stm32f4xx_conf.h
 ..\obj\adc.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\adc.o: ..\USER\stm32f4xx.h
@@ -43,9 +43,9 @@
 ..\obj\adc.o: ..\BALANCE\system.h
 ..\obj\adc.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\adc.o: ..\SYSTEM\usart\usart.h
-..\obj\adc.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\adc.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\adc.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\adc.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\adc.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\adc.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\adc.o: ..\FreeRTOS\include\portable.h
 ..\obj\adc.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -73,7 +73,7 @@
 ..\obj\adc.o: ..\HARDWARE\key.h
 ..\obj\adc.o: ..\BALANCE\robot_select_init.h
 ..\obj\adc.o: ..\HARDWARE\I2C.h
-..\obj\adc.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\adc.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\adc.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\adc.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\adc.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -83,5 +83,5 @@
 ..\obj\adc.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\adc.o: ..\HARDWARE\stmflash.h
 ..\obj\adc.o: ..\HARDWARE\check.h
-..\obj\adc.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\adc.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\adc.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\adc.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

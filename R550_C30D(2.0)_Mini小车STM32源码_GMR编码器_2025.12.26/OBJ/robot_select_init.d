@@ -3,15 +3,15 @@
 ..\obj\robot_select_init.o: ..\SYSTEM\sys\sys.h
 ..\obj\robot_select_init.o: ..\USER\stm32f4xx.h
 ..\obj\robot_select_init.o: ..\CORE\core_cm4.h
-..\obj\robot_select_init.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\robot_select_init.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\robot_select_init.o: ..\CORE\core_cmInstr.h
 ..\obj\robot_select_init.o: ..\CORE\core_cmFunc.h
 ..\obj\robot_select_init.o: ..\CORE\core_cm4_simd.h
 ..\obj\robot_select_init.o: ..\USER\system_stm32f4xx.h
 ..\obj\robot_select_init.o: ..\CORE\arm_math.h
 ..\obj\robot_select_init.o: ..\CORE\core_cm4.h
-..\obj\robot_select_init.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\robot_select_init.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\robot_select_init.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\robot_select_init.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\robot_select_init.o: ..\USER\stm32f4xx_conf.h
 ..\obj\robot_select_init.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\robot_select_init.o: ..\USER\stm32f4xx.h
@@ -43,9 +43,9 @@
 ..\obj\robot_select_init.o: ..\BALANCE\system.h
 ..\obj\robot_select_init.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\robot_select_init.o: ..\SYSTEM\usart\usart.h
-..\obj\robot_select_init.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\robot_select_init.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\robot_select_init.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\robot_select_init.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\robot_select_init.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\robot_select_init.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\robot_select_init.o: ..\FreeRTOS\include\portable.h
 ..\obj\robot_select_init.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -73,7 +73,7 @@
 ..\obj\robot_select_init.o: ..\HARDWARE\key.h
 ..\obj\robot_select_init.o: ..\BALANCE\robot_select_init.h
 ..\obj\robot_select_init.o: ..\HARDWARE\I2C.h
-..\obj\robot_select_init.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\robot_select_init.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\robot_select_init.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\robot_select_init.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\robot_select_init.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -83,5 +83,5 @@
 ..\obj\robot_select_init.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\robot_select_init.o: ..\HARDWARE\stmflash.h
 ..\obj\robot_select_init.o: ..\HARDWARE\check.h
-..\obj\robot_select_init.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\robot_select_init.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\robot_select_init.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\robot_select_init.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

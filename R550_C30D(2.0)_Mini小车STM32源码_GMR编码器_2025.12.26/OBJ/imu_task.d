@@ -5,15 +5,15 @@
 ..\obj\imu_task.o: ..\SYSTEM\sys\sys.h
 ..\obj\imu_task.o: ..\USER\stm32f4xx.h
 ..\obj\imu_task.o: ..\CORE\core_cm4.h
-..\obj\imu_task.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\imu_task.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\imu_task.o: ..\CORE\core_cmInstr.h
 ..\obj\imu_task.o: ..\CORE\core_cmFunc.h
 ..\obj\imu_task.o: ..\CORE\core_cm4_simd.h
 ..\obj\imu_task.o: ..\USER\system_stm32f4xx.h
 ..\obj\imu_task.o: ..\CORE\arm_math.h
 ..\obj\imu_task.o: ..\CORE\core_cm4.h
-..\obj\imu_task.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\imu_task.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\imu_task.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\imu_task.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\imu_task.o: ..\USER\stm32f4xx_conf.h
 ..\obj\imu_task.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\imu_task.o: ..\USER\stm32f4xx.h
@@ -43,9 +43,9 @@
 ..\obj\imu_task.o: ..\FWLIB\inc\stm32f4xx_dcmi.h
 ..\obj\imu_task.o: ..\FWLIB\inc\stm32f4xx_fsmc.h
 ..\obj\imu_task.o: ..\SYSTEM\usart\usart.h
-..\obj\imu_task.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\imu_task.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\imu_task.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\imu_task.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\imu_task.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\imu_task.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\imu_task.o: ..\FreeRTOS\include\portable.h
 ..\obj\imu_task.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -73,7 +73,7 @@
 ..\obj\imu_task.o: ..\HARDWARE\key.h
 ..\obj\imu_task.o: ..\BALANCE\robot_select_init.h
 ..\obj\imu_task.o: ..\HARDWARE\I2C.h
-..\obj\imu_task.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\imu_task.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\imu_task.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\imu_task.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\imu_task.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -83,5 +83,5 @@
 ..\obj\imu_task.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\imu_task.o: ..\HARDWARE\stmflash.h
 ..\obj\imu_task.o: ..\HARDWARE\check.h
-..\obj\imu_task.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\imu_task.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\imu_task.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\imu_task.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

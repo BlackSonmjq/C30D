@@ -3,15 +3,15 @@
 ..\obj\check.o: ..\SYSTEM\sys\sys.h
 ..\obj\check.o: ..\USER\stm32f4xx.h
 ..\obj\check.o: ..\CORE\core_cm4.h
-..\obj\check.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\check.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\check.o: ..\CORE\core_cmInstr.h
 ..\obj\check.o: ..\CORE\core_cmFunc.h
 ..\obj\check.o: ..\CORE\core_cm4_simd.h
 ..\obj\check.o: ..\USER\system_stm32f4xx.h
 ..\obj\check.o: ..\CORE\arm_math.h
 ..\obj\check.o: ..\CORE\core_cm4.h
-..\obj\check.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\check.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\check.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\check.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\check.o: ..\USER\stm32f4xx_conf.h
 ..\obj\check.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\check.o: ..\USER\stm32f4xx.h
@@ -43,9 +43,9 @@
 ..\obj\check.o: ..\BALANCE\system.h
 ..\obj\check.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\check.o: ..\SYSTEM\usart\usart.h
-..\obj\check.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\check.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\check.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\check.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\check.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\check.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\check.o: ..\FreeRTOS\include\portable.h
 ..\obj\check.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -73,7 +73,7 @@
 ..\obj\check.o: ..\HARDWARE\key.h
 ..\obj\check.o: ..\BALANCE\robot_select_init.h
 ..\obj\check.o: ..\HARDWARE\I2C.h
-..\obj\check.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\check.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\check.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\check.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\check.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -83,5 +83,5 @@
 ..\obj\check.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\check.o: ..\HARDWARE\stmflash.h
 ..\obj\check.o: ..\HARDWARE\check.h
-..\obj\check.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\check.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\check.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\check.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

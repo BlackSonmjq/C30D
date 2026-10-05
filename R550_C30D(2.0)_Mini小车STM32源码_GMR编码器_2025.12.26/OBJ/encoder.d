@@ -3,15 +3,15 @@
 ..\obj\encoder.o: ..\SYSTEM\sys\sys.h
 ..\obj\encoder.o: ..\USER\stm32f4xx.h
 ..\obj\encoder.o: ..\CORE\core_cm4.h
-..\obj\encoder.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\encoder.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\encoder.o: ..\CORE\core_cmInstr.h
 ..\obj\encoder.o: ..\CORE\core_cmFunc.h
 ..\obj\encoder.o: ..\CORE\core_cm4_simd.h
 ..\obj\encoder.o: ..\USER\system_stm32f4xx.h
 ..\obj\encoder.o: ..\CORE\arm_math.h
 ..\obj\encoder.o: ..\CORE\core_cm4.h
-..\obj\encoder.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\encoder.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\encoder.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\encoder.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\encoder.o: ..\USER\stm32f4xx_conf.h
 ..\obj\encoder.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\encoder.o: ..\USER\stm32f4xx.h
@@ -43,9 +43,9 @@
 ..\obj\encoder.o: ..\BALANCE\system.h
 ..\obj\encoder.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\encoder.o: ..\SYSTEM\usart\usart.h
-..\obj\encoder.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\encoder.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\encoder.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\encoder.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\encoder.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\encoder.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\encoder.o: ..\FreeRTOS\include\portable.h
 ..\obj\encoder.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -73,7 +73,7 @@
 ..\obj\encoder.o: ..\HARDWARE\key.h
 ..\obj\encoder.o: ..\BALANCE\robot_select_init.h
 ..\obj\encoder.o: ..\HARDWARE\I2C.h
-..\obj\encoder.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\encoder.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\encoder.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\encoder.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\encoder.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -83,5 +83,5 @@
 ..\obj\encoder.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\encoder.o: ..\HARDWARE\stmflash.h
 ..\obj\encoder.o: ..\HARDWARE\check.h
-..\obj\encoder.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\encoder.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\encoder.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\encoder.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

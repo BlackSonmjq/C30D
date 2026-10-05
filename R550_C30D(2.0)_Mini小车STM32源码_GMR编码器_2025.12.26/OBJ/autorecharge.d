@@ -3,15 +3,15 @@
 ..\obj\autorecharge.o: ..\SYSTEM\sys\sys.h
 ..\obj\autorecharge.o: ..\USER\stm32f4xx.h
 ..\obj\autorecharge.o: ..\CORE\core_cm4.h
-..\obj\autorecharge.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\autorecharge.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\autorecharge.o: ..\CORE\core_cmInstr.h
 ..\obj\autorecharge.o: ..\CORE\core_cmFunc.h
 ..\obj\autorecharge.o: ..\CORE\core_cm4_simd.h
 ..\obj\autorecharge.o: ..\USER\system_stm32f4xx.h
 ..\obj\autorecharge.o: ..\CORE\arm_math.h
 ..\obj\autorecharge.o: ..\CORE\core_cm4.h
-..\obj\autorecharge.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
-..\obj\autorecharge.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\autorecharge.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\autorecharge.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\autorecharge.o: ..\USER\stm32f4xx_conf.h
 ..\obj\autorecharge.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\autorecharge.o: ..\USER\stm32f4xx.h
@@ -43,9 +43,9 @@
 ..\obj\autorecharge.o: ..\BALANCE\system.h
 ..\obj\autorecharge.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\autorecharge.o: ..\SYSTEM\usart\usart.h
-..\obj\autorecharge.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\autorecharge.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\autorecharge.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\autorecharge.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\autorecharge.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\autorecharge.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\autorecharge.o: ..\FreeRTOS\include\portable.h
 ..\obj\autorecharge.o: ..\FreeRTOS\include\deprecated_definitions.h
@@ -73,7 +73,7 @@
 ..\obj\autorecharge.o: ..\HARDWARE\key.h
 ..\obj\autorecharge.o: ..\BALANCE\robot_select_init.h
 ..\obj\autorecharge.o: ..\HARDWARE\I2C.h
-..\obj\autorecharge.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\autorecharge.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\autorecharge.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\autorecharge.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\autorecharge.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -83,5 +83,5 @@
 ..\obj\autorecharge.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\autorecharge.o: ..\HARDWARE\stmflash.h
 ..\obj\autorecharge.o: ..\HARDWARE\check.h
-..\obj\autorecharge.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\autorecharge.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\autorecharge.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\autorecharge.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h

@@ -1,9 +1,9 @@
 ..\obj\queue.o: ..\FreeRTOS\queue.c
-..\obj\queue.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\queue.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\queue.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\queue.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 ..\obj\queue.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\queue.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
-..\obj\queue.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\queue.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\queue.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\queue.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\queue.o: ..\SYSTEM\sys\sys.h
 ..\obj\queue.o: ..\USER\stm32f4xx.h
@@ -14,7 +14,7 @@
 ..\obj\queue.o: ..\USER\system_stm32f4xx.h
 ..\obj\queue.o: ..\CORE\arm_math.h
 ..\obj\queue.o: ..\CORE\core_cm4.h
-..\obj\queue.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\queue.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\queue.o: ..\USER\stm32f4xx_conf.h
 ..\obj\queue.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\queue.o: ..\USER\stm32f4xx.h
@@ -44,7 +44,7 @@
 ..\obj\queue.o: ..\FWLIB\inc\stm32f4xx_dcmi.h
 ..\obj\queue.o: ..\FWLIB\inc\stm32f4xx_fsmc.h
 ..\obj\queue.o: ..\SYSTEM\usart\usart.h
-..\obj\queue.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\queue.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
 ..\obj\queue.o: ..\FreeRTOS\include\projdefs.h
 ..\obj\queue.o: ..\FreeRTOS\include\portable.h
 ..\obj\queue.o: ..\FreeRTOS\include\deprecated_definitions.h

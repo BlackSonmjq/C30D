@@ -656,6 +656,11 @@
               <FilePath>..\BALANCE\balance.c</FilePath>
             </File>
             <File>
+              <FileName>pushrod_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BALANCE\pushrod_task.c</FilePath>
+            </File>
+            <File>
               <FileName>robot_select_init.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BALANCE\robot_select_init.c</FilePath>

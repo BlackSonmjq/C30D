@@ -1,12 +1,12 @@
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\USB\USB_HOST\App\WiredPS2_gamepad.c
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\USB\USB_HOST\App\WiredPS2_gamepad.h
-..\obj\wiredps2_gamepad.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
+..\obj\wiredps2_gamepad.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdint.h
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\USB\STM32_USB_Host_Library\Class\HID\Inc\usbh_hid.h
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\USB\STM32_USB_Host_Library\Core\Inc\usbh_core.h
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\USB\USB_HOST\Target\usbh_conf.h
-..\obj\wiredps2_gamepad.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
-..\obj\wiredps2_gamepad.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
-..\obj\wiredps2_gamepad.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+..\obj\wiredps2_gamepad.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdio.h
+..\obj\wiredps2_gamepad.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+..\obj\wiredps2_gamepad.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 ..\obj\wiredps2_gamepad.o: ..\USER\stm32f4xx.h
 ..\obj\wiredps2_gamepad.o: ..\CORE\core_cm4.h
 ..\obj\wiredps2_gamepad.o: ..\CORE\core_cmInstr.h
@@ -15,7 +15,7 @@
 ..\obj\wiredps2_gamepad.o: ..\USER\system_stm32f4xx.h
 ..\obj\wiredps2_gamepad.o: ..\CORE\arm_math.h
 ..\obj\wiredps2_gamepad.o: ..\CORE\core_cm4.h
-..\obj\wiredps2_gamepad.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
+..\obj\wiredps2_gamepad.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\math.h
 ..\obj\wiredps2_gamepad.o: ..\USER\stm32f4xx_conf.h
 ..\obj\wiredps2_gamepad.o: ..\FWLIB\inc\stm32f4xx_adc.h
 ..\obj\wiredps2_gamepad.o: ..\USER\stm32f4xx.h
@@ -46,7 +46,7 @@
 ..\obj\wiredps2_gamepad.o: ..\FWLIB\inc\stm32f4xx_fsmc.h
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\USB\USB_HOST\App\usbh_os_middleware.h
 ..\obj\wiredps2_gamepad.o: ..\FreeRTOS\include\FreeRTOS.h
-..\obj\wiredps2_gamepad.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
+..\obj\wiredps2_gamepad.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 ..\obj\wiredps2_gamepad.o: ..\FreeRTOS\include\FreeRTOSConfig.h
 ..\obj\wiredps2_gamepad.o: ..\SYSTEM\sys\sys.h
 ..\obj\wiredps2_gamepad.o: ..\SYSTEM\usart\usart.h
@@ -90,7 +90,7 @@
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\key.h
 ..\obj\wiredps2_gamepad.o: ..\BALANCE\robot_select_init.h
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\I2C.h
-..\obj\wiredps2_gamepad.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
+..\obj\wiredps2_gamepad.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdbool.h
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\MPU6050\MPU6050.h
 ..\obj\wiredps2_gamepad.o: ..\AutoRecharge\AutoRecharge.h
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\ICM20948\ICM20948.h
@@ -100,4 +100,4 @@
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\USB\USB_HOST\App\usb_host.h
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\stmflash.h
 ..\obj\wiredps2_gamepad.o: ..\HARDWARE\check.h
-..\obj\wiredps2_gamepad.o: E:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
+..\obj\wiredps2_gamepad.o: D:\Keil_v5\ARM\ARMCC\Bin\..\include\stdarg.h
