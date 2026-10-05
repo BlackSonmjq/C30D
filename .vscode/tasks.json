@@ -1,0 +1,44 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Keil: Build WHEELTEC",
+      "type": "process",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-Command",
+        "& 'D:\\Keil_v5\\UV4\\UV4.exe' -b '${workspaceFolder}\\R550_C30D(2.0)_Mini小车STM32源码_GMR编码器_2025.12.26\\USER\\WHEELTEC.uvprojx' -t 'FreeRTOS' -j0; $logPath = '${workspaceFolder}\\R550_C30D(2.0)_Mini小车STM32源码_GMR编码器_2025.12.26\\OBJ\\WHEELTEC.build_log.htm'; $hexPath = '${workspaceFolder}\\R550_C30D(2.0)_Mini小车STM32源码_GMR编码器_2025.12.26\\OBJ\\WHEELTEC.hex'; $html = Get-Content -Raw -LiteralPath $logPath; $text = [System.Net.WebUtility]::HtmlDecode(($html -replace '(?i)<br\\s*/?>', \"`n\" -replace '(?i)</(pre|h1|h2|p|tr|div)>', \"`n\" -replace '<[^>]+>', '')); $text -split \"`r?`n\" | Where-Object { $_ -match '\\): (error|warning):|Error\\(s\\)|Target not created' } | ForEach-Object { Write-Output $_.Trim() }; if ($text -match '(\\d+)\\s+Error\\(s\\)' -and [int]$Matches[1] -eq 0 -and $text -notmatch 'Target not created' -and (Test-Path -LiteralPath $hexPath)) { Write-Output 'Keil build succeeded.'; exit 0 } else { Write-Output 'Keil build failed.'; exit 1 }"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}\\R550_C30D(2.0)_Mini小车STM32源码_GMR编码器_2025.12.26\\USER"
+      },
+      "problemMatcher": [
+        {
+          "owner": "keil",
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}/R550_C30D(2.0)_Mini小车STM32源码_GMR编码器_2025.12.26/USER"
+          ],
+          "pattern": {
+            "regexp": "^(.*)\\((\\d+)\\): (error|warning):\\s*(?:#\\d+:\\s*)?(.*)$",
+            "file": 1,
+            "line": 2,
+            "severity": 3,
+            "message": 4
+          }
+        }
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "echo": false,
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      }
+    }
+  ]
+}

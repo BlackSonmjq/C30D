@@ -17,7 +17,8 @@ Update：2022-05-05
 All rights reserved
 ***********************************************/
 #include "system.h"
-
+#include "pushrod.h"
+#include "pushrod_task.h"
 //Task priority    //任务优先级
 #define START_TASK_PRIO	1
 
@@ -34,7 +35,6 @@ void start_task(void *pvParameters);
 int main(void)
 { 
   systemInit(); //Hardware initialization //硬件初始化
-	
 	//Create the start task //创建开始任务
 	xTaskCreate((TaskFunction_t )start_task,            //Task function   //任务函数
 							(const char*    )"start_task",          //Task name       //任务名称
@@ -63,7 +63,7 @@ void start_task(void *pvParameters)
 	xTaskCreate(led_task,      "led_task",      LED_STK_SIZE,      NULL, LED_TASK_PRIO,      NULL);	//LED light flashing task //LED灯闪烁任务
 	xTaskCreate(pstwo_task,    "PSTWO_task",    PS2_STK_SIZE,      NULL, PS2_TASK_PRIO,      NULL);	//Read the PS2 controller task //读取PS2手柄任务
 	xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //串口3、串口1、CAN发送数据任务
-	
+    xTaskCreate(pushrod_task,      "pushrod_task",      PUSHROD_STK_SIZE,      NULL, PUSHROD_TASK_PRIO,      NULL);	//Pushrod control task //推杆控制任务
     vTaskDelete(StartTask_Handler); //Delete the start task //删除开始任务
 
     taskEXIT_CRITICAL();            //Exit the critical section//退出临界区
