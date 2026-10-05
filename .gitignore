@@ -6,3 +6,4 @@
 
 # Local VS Code workspace configuration.
 /.vscode/
+obj/
