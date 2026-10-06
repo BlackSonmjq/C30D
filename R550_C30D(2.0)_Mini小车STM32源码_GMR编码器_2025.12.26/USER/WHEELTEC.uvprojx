@@ -458,6 +458,11 @@
               <FilePath>..\HARDWARE\timer.c</FilePath>
             </File>
             <File>
+              <FileName>a4988.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\HARDWARE\a4988.c</FilePath>
+            </File>
+            <File>
               <FileName>usartx.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\HARDWARE\usartx.c</FilePath>

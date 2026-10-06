@@ -237,14 +237,9 @@ void systemInit(void)
     //编码器D初始化，用于读取电机A的实时速度
     Encoder_Init_TIM5();
 
-    //定时器12用作舵机的PWM接口
-    TIM12_SERVO_Init(9999,84-1);  //APB1的时钟频率为84M , 频率=84M/((9999+1)*(83+1))=100Hz
-
-    //普通小车默认定时器8用作航模接口
-    // TIM8_SERVO_Init(9999,168-1);//APB2的时钟频率为168M , 频率=168M/((9999+1)*(167+1))=100Hz
-    //Initialize the model remote control interface
-    //初始化航模遥控接口
-    TIM8_Cap_Init(9999,168-1);  //高级定时器TIM8的时钟频率为168M
+    // PB14/PB15/PC6-PC9 are reserved for two A4988 drivers.
+    // Both EN outputs start high (disabled); no STEP pulses start automatically.
+    A4988_Init();
 
     //Initialize motor speed control and, for controlling motor speed, PWM frequency 10kHz
     //初始化电机速度控制以及，用于控制电机速度，PWM频率10KHZ

@@ -53,8 +53,7 @@ void Check_task(void *pvParameters)
 			case 4:				//退出电机自检，控制电机停下
 				Set_Pwm(0,0,0,0,0);
 				break;
-			case 6:				//初始化舵机
-				TIM8_SERVO_Init(9999, 168-1);
+			case 6:				// A4988 pins are reserved; legacy servo self-test is skipped.
 				break;
 			case 7:
 				//舵机正转
@@ -209,6 +208,8 @@ void Check_Key(void)
 	if(tmp==single_click)				//单击
 	{
 		check_parameter.Process++;
+		// Servo self-test stages 6-13 would reconfigure the A4988 pins.
+		if(check_parameter.Process==6) check_parameter.Process=14;
 		if(check_parameter.Process==21)			//自检结束并退出
 		{
 			delay_ms(50);

@@ -445,9 +445,8 @@ void Set_Pwm(int motor_a,int motor_b,int motor_c,int motor_d,int servo)
 	if(motor_d<0)			PWMD1=16799,PWMD2=16799+motor_d;
 	else 	            PWMD2=16799,PWMD1=16799-motor_d;
 	
-	//Servo control
-	//¶æ»ú¿ØÖÆ
-	Servo_PWM =servo;
+	// TIM12 servo pins are now assigned to the A4988 interface.
+	(void)servo;
 }
 
 /**************************************************************************

@@ -25,6 +25,7 @@
 #include "adc.h"
 #include "can.h"
 #include "motor.h"
+#include "a4988.h"
 #include "timer.h"
 #include "encoder.h"
 #include "show.h"								   

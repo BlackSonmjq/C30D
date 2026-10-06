@@ -48,7 +48,6 @@
 /*------------------------------------*/
 #define EN     PDin(3)  
 
-#define Servo_PWM  TIM12->CCR2
 #define SERVO_INIT 1500  //Servo zero point //¶æ»úÁãµã
 
 void Enable_Pin(void);
