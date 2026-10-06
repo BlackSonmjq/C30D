@@ -1,72 +1,86 @@
 /***********************************************
-¹«Ë¾£ºÂÖÈ¤¿Æ¼¼£¨¶«İ¸£©ÓĞÏŞ¹«Ë¾
-Æ·ÅÆ£ºWHEELTEC
-¹ÙÍø£ºwheeltec.net
-ÌÔ±¦µêÆÌ£ºshop114407458.taobao.com 
-ËÙÂôÍ¨: https://minibalance.aliexpress.com/store/4455017
-°æ±¾£ºV5.0
-ĞŞ¸ÄÊ±¼ä£º2022-05-05
+ï¿½ï¿½Ë¾ï¿½ï¿½ï¿½ï¿½È¤ï¿½Æ¼ï¿½ï¿½ï¿½ï¿½ï¿½İ¸ï¿½ï¿½ï¿½ï¿½ï¿½Ş¹ï¿½Ë¾
+Æ·ï¿½Æ£ï¿½WHEELTEC
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½wheeltec.net
+ï¿½Ô±ï¿½ï¿½ï¿½ï¿½Ì£ï¿½shop114407458.taobao.com 
+ï¿½ï¿½ï¿½ï¿½Í¨: https://minibalance.aliexpress.com/store/4455017
+ï¿½æ±¾ï¿½ï¿½V5.0
+ï¿½Ş¸ï¿½Ê±ï¿½ä£º2022-05-05
 
 Brand: WHEELTEC
 Website: wheeltec.net
 Taobao shop: shop114407458.taobao.com 
 Aliexpress: https://minibalance.aliexpress.com/store/4455017
 Version: V5.0
-Update£º2022-05-05
+Updateï¿½ï¿½2022-05-05
 
 All rights reserved
 ***********************************************/
 #include "system.h"
 
-//Task priority    //ÈÎÎñÓÅÏÈ¼¶
+// è®¾ä¸º 1ï¼šä¸Šç”µåå¾ªç¯æµ‹è¯• A4988ï¼›è®¾ä¸º 0ï¼šè¿è¡Œæ­£å¸¸åº•ç›˜ç¨‹åºã€‚
+#ifndef A4988_TEST_MODE
+#define A4988_TEST_MODE 1
+#endif
+
+#if A4988_TEST_MODE
+#include "stepper_test.h"
+#endif
+
+//Task priority    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½
 #define START_TASK_PRIO	1
 
-//Task stack size //ÈÎÎñ¶ÑÕ»´óĞ¡	
+//Task stack size //ï¿½ï¿½ï¿½ï¿½ï¿½Õ»ï¿½ï¿½Ğ¡	
 #define START_STK_SIZE 	256  
 
-//Task handle     //ÈÎÎñ¾ä±ú
+//Task handle     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 TaskHandle_t StartTask_Handler;
 
-//Task function   //ÈÎÎñº¯Êı
+//Task function   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 void start_task(void *pvParameters);
 
-//Main function //Ö÷º¯Êı
+//Main function //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 int main(void)
 { 
-  systemInit(); //Hardware initialization //Ó²¼ş³õÊ¼»¯
+#if A4988_TEST_MODE
+    // ä»…æµ‹è¯• A4988 å¼•è„šå’Œ STEP å®šæ—¶å™¨ï¼Œä¸å¯åŠ¨åº•ç›˜ä»»åŠ¡ã€‚
+    Stepper_TestLoop();
+#else
+  systemInit(); //Hardware initialization //Ó²ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½
 	
-	//Create the start task //´´½¨¿ªÊ¼ÈÎÎñ
-	xTaskCreate((TaskFunction_t )start_task,            //Task function   //ÈÎÎñº¯Êı
-							(const char*    )"start_task",          //Task name       //ÈÎÎñÃû³Æ
-							(uint16_t       )START_STK_SIZE,        //Task stack size //ÈÎÎñ¶ÑÕ»´óĞ¡
-							(void*          )NULL,                  //Arguments passed to the task function //´«µİ¸øÈÎÎñº¯ÊıµÄ²ÎÊı
-							(UBaseType_t    )START_TASK_PRIO,       //Task priority   //ÈÎÎñÓÅÏÈ¼¶
-							(TaskHandle_t*  )&StartTask_Handler);   //Task handle     //ÈÎÎñ¾ä±ú    					
-	vTaskStartScheduler();  //Enables task scheduling //¿ªÆôÈÎÎñµ÷¶È	
+	//Create the start task //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½
+	xTaskCreate((TaskFunction_t )start_task,            //Task function   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+							(const char*    )"start_task",          //Task name       //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+							(uint16_t       )START_STK_SIZE,        //Task stack size //ï¿½ï¿½ï¿½ï¿½ï¿½Õ»ï¿½ï¿½Ğ¡
+							(void*          )NULL,                  //Arguments passed to the task function //ï¿½ï¿½ï¿½İ¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä²ï¿½ï¿½ï¿½
+							(UBaseType_t    )START_TASK_PRIO,       //Task priority   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½
+							(TaskHandle_t*  )&StartTask_Handler);   //Task handle     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½    					
+	vTaskStartScheduler();  //Enables task scheduling //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½	
+#endif
 }
  
-//Start task task function //¿ªÊ¼ÈÎÎñÈÎÎñº¯Êı
+//Start task task function //ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 void start_task(void *pvParameters)
 {
-    taskENTER_CRITICAL(); //Enter the critical area //½øÈëÁÙ½çÇø
+    taskENTER_CRITICAL(); //Enter the critical area //ï¿½ï¿½ï¿½ï¿½ï¿½Ù½ï¿½ï¿½ï¿½
 	
-    //Create the task //´´½¨ÈÎÎñ
+    //Create the task //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if(Check == 1)
 		xTaskCreate(Check_task,  "Check_task",  CHECK_STK_SIZE,  NULL, CHECK_TASK_PRIO,  NULL);
 	else if(Check == 0)
-		xTaskCreate(Balance_task,  "Balance_task",  BALANCE_STK_SIZE,  NULL, BALANCE_TASK_PRIO,  NULL);	//Vehicle motion control task //Ğ¡³µÔË¶¯¿ØÖÆÈÎÎñ
-	if(SysVal.HardWare_Ver==V1_0) 	//IMU data read task //IMUÊı¾İ¶ÁÈ¡ÈÎÎñ,¸ù¾İ²»Í¬µÄÓ²¼ş°æ±¾Æô¶¯²»Í¬µÄÈÎÎñ.
+		xTaskCreate(Balance_task,  "Balance_task",  BALANCE_STK_SIZE,  NULL, BALANCE_TASK_PRIO,  NULL);	//Vehicle motion control task //Ğ¡ï¿½ï¿½ï¿½Ë¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	if(SysVal.HardWare_Ver==V1_0) 	//IMU data read task //IMUï¿½ï¿½ï¿½İ¶ï¿½È¡ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½İ²ï¿½Í¬ï¿½ï¿½Ó²ï¿½ï¿½ï¿½æ±¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½.
 		xTaskCreate(MPU6050_task,  "IMU_task",  IMU_STK_SIZE,  NULL, IMU_TASK_PRIO,  NULL);
 	else if( SysVal.HardWare_Ver==V1_1 )
 		xTaskCreate(ICM20948_task,  "IMU_task",  IMU_STK_SIZE,  NULL, IMU_TASK_PRIO,  NULL);
-	xTaskCreate(show_task,     "show_task",     SHOW_STK_SIZE,     NULL, SHOW_TASK_PRIO,     NULL); //The OLED display displays tasks //OLEDÏÔÊ¾ÆÁÏÔÊ¾ÈÎÎñ
-	xTaskCreate(led_task,      "led_task",      LED_STK_SIZE,      NULL, LED_TASK_PRIO,      NULL);	//LED light flashing task //LEDµÆÉÁË¸ÈÎÎñ
-	xTaskCreate(pstwo_task,    "PSTWO_task",    PS2_STK_SIZE,      NULL, PS2_TASK_PRIO,      NULL);	//Read the PS2 controller task //¶ÁÈ¡PS2ÊÖ±úÈÎÎñ
-	xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //´®¿Ú3¡¢´®¿Ú1¡¢CAN·¢ËÍÊı¾İÈÎÎñ
+	xTaskCreate(show_task,     "show_task",     SHOW_STK_SIZE,     NULL, SHOW_TASK_PRIO,     NULL); //The OLED display displays tasks //OLEDï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½
+	xTaskCreate(led_task,      "led_task",      LED_STK_SIZE,      NULL, LED_TASK_PRIO,      NULL);	//LED light flashing task //LEDï¿½ï¿½ï¿½ï¿½Ë¸ï¿½ï¿½ï¿½ï¿½
+	xTaskCreate(pstwo_task,    "PSTWO_task",    PS2_STK_SIZE,      NULL, PS2_TASK_PRIO,      NULL);	//Read the PS2 controller task //ï¿½ï¿½È¡PS2ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½
+	xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //ï¿½ï¿½ï¿½ï¿½3ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½1ï¿½ï¿½CANï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	
-    vTaskDelete(StartTask_Handler); //Delete the start task //É¾³ı¿ªÊ¼ÈÎÎñ
+    vTaskDelete(StartTask_Handler); //Delete the start task //É¾ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½
 
-    taskEXIT_CRITICAL();            //Exit the critical section//ÍË³öÁÙ½çÇø
+    taskEXIT_CRITICAL();            //Exit the critical section//ï¿½Ë³ï¿½ï¿½Ù½ï¿½ï¿½ï¿½
 }
 
 

@@ -26,6 +26,7 @@
 #include "can.h"
 #include "motor.h"
 #include "a4988.h"
+#include "stepper_motor.h"
 #include "timer.h"
 #include "encoder.h"
 #include "show.h"								   

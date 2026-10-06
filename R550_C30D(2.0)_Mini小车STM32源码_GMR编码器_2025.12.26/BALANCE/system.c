@@ -237,9 +237,9 @@ void systemInit(void)
     //编码器D初始化，用于读取电机A的实时速度
     Encoder_Init_TIM5();
 
-    // PB14/PB15/PC6-PC9 are reserved for two A4988 drivers.
-    // Both EN outputs start high (disabled); no STEP pulses start automatically.
-    A4988_Init();
+    // PB14/PB15/PC7/PC8 are reserved for two A4988 drivers.
+    // EN pins are external; neither STEP pin pulses automatically.
+    StepperMotor_Init();
 
     //Initialize motor speed control and, for controlling motor speed, PWM frequency 10kHz
     //初始化电机速度控制以及，用于控制电机速度，PWM频率10KHZ

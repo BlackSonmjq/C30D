@@ -398,6 +398,11 @@
               <FilePath>.\main.c</FilePath>
             </File>
             <File>
+              <FileName>stepper_test.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\stepper_test.c</FilePath>
+            </File>
+            <File>
               <FileName>stm32f4xx_it.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\stm32f4xx_it.c</FilePath>
@@ -461,6 +466,11 @@
               <FileName>a4988.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\HARDWARE\a4988.c</FilePath>
+            </File>
+            <File>
+              <FileName>stepper_motor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\HARDWARE\stepper_motor.c</FilePath>
             </File>
             <File>
               <FileName>usartx.c</FileName>
