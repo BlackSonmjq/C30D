@@ -24,8 +24,8 @@ void Stepper_TestLoop(void)
 {
     delay_init(168);
     StepperMotor_Init();
-    StepperMotor_SetARR(A4988_MOTOR_Left, STEPPER_TEST_ARR);
-    StepperMotor_SetARR(A4988_MOTOR_Right, STEPPER_TEST_ARR);
+    StepperMotor_SetSpeed(A4988_MOTOR_Left, STEPPER_TEST_ARR);
+    StepperMotor_SetSpeed(A4988_MOTOR_Right, STEPPER_TEST_ARR);
 
     while (1) {
         Stepper_TestMotor(A4988_MOTOR_Left);

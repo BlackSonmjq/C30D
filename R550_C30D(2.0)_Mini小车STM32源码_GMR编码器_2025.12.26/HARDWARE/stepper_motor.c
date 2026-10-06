@@ -94,7 +94,7 @@ void StepperMotor_Disable(u8 motor)
     StepperMotor_StepPinMode(motor, GPIO_Mode_OUT);
 }
 
-u8 StepperMotor_SetARR(u8 motor, u16 arr)
+u8 StepperMotor_SetSpeed(u8 motor, u16 arr)
 {
     TIM_TypeDef *timer = StepperMotor_Timer(motor);
     u32 period;

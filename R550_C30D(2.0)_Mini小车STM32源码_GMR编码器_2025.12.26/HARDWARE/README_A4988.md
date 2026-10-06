@@ -14,7 +14,7 @@ DIR 使用 3.3 V GPIO 推挽输出；STEP 空闲时为低电平，需要运动�
 ```c
 A4988_SetDir(A4988_MOTOR_Left, 1); // DIR 输出高电平；实际正反向取决于接线
 A4988_Step(A4988_MOTOR_Left);      // STEP 产生一个上升沿，即一步/一个微步
-StepperMotor_SetARR(A4988_MOTOR_Left, 4999);      // 匀速目标约 200 脉冲/秒
+StepperMotor_SetSpeed(A4988_MOTOR_Left, 4999);    // 匀速目标约 200 脉冲/秒（参数仍为 ARR）
 StepperMotor_MovePulses(A4988_MOTOR_Left, 800);  // 阻塞式运动：DIR 高，800 个脉冲
 StepperMotor_MovePulses(A4988_MOTOR_Left, -800); // DIR 低，800 个脉冲
 StepperMotor_Disable(A4988_MOTOR_Left);          // 停止 STEP PWM，不切断电机保持电流
@@ -22,7 +22,7 @@ StepperMotor_Disable(A4988_MOTOR_Left);          // 停止 STEP PWM，不切断�
 
 `A4988_Step()` 保留为 GPIO 阻塞式单脉冲接口，只能在该路 PWM 停止时使用。`StepperMotor_MovePulses()` 使用定时器单脉冲 PWM，脉冲高电平 5 µs，正数 DIR 高、负数 DIR 低，0 不运动；返回完成的脉冲周期数。每段前后最多 200 脉冲加减速，周期从 20 ms 变化到设定的匀速周期。达到目标后自动调用 `StepperMotor_Disable()`，将 STEP 保持低电平；也可从另一任务调用它来停止当前运动。该函数只停止脉冲，A4988 的 EN 仍由外部接线控制，电机可能继续保持力矩。每个电机同一时刻只能由一个任务调用运动接口；需要两路同步运动时还需额外协调。
 
-`StepperMotor_SetARR(motor, arr)` 用于分别设置两路目标转速，须先调用 `StepperMotor_Init()`。定时器计数频率为 1 MHz，因此目标脉冲频率约为 `1000000 / (arr + 1)` Hz；默认 `arr=4999`，即 200 脉冲/秒。允许范围 `1999～19999`（约 500～50 脉冲/秒），合法返回 `1`，无效电机或超出范围返回 `0` 且不改配置。运动中调用会从后续脉冲开始平滑调整，不会取消既定的脉冲数；实际机械转速还取决于电机整步数及细分档位。测试程序中的 `STEPPER_TEST_ARR` 可用于修改两路测试速度。
+`StepperMotor_SetSpeed(motor, arr)` 用于分别设置两路目标转速，须先调用 `StepperMotor_Init()`；参数仍为 ARR 值。定时器计数频率为 1 MHz，因此目标脉冲频率约为 `1000000 / (arr + 1)` Hz；默认 `arr=4999`，即 200 脉冲/秒。允许范围 `1999～19999`（约 500～50 脉冲/秒），合法返回 `1`，无效电机或超出范围返回 `0` 且不改配置。运动中调用会从后续脉冲开始平滑调整，不会取消既定的脉冲数；实际机械转速还取决于电机整步数及细分档位。测试程序中的 `STEPPER_TEST_ARR` 可用于修改两路测试速度。
 
 ## 独立测试模式
 
