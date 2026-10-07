@@ -13,6 +13,7 @@
 
 static void Stepper_TestMotor(u8 motor)
 {
+    
     StepperMotor_SetSpeed(motor, STEPPER_TEST_ARR);
     StepperMotor_MovePulses(motor, STEPPER_TEST_PULSES);
     StepperMotor_Disable(motor);
@@ -25,5 +26,6 @@ void Stepper_TestLoop(void)
     while (1) {
         Stepper_TestMotor(A4988_MOTOR_Left);
         delay_ms(STEPPER_TEST_CYCLE_PAUSE_MS);
+
     }
 }

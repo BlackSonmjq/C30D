@@ -2,6 +2,9 @@
 #include "stm32f4xx_gpio.h"
 #include "stm32f4xx_rcc.h"
 #include "stm32f4xx_tim.h"
+#include "misc.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 #define STEPPER_START_PERIOD_US 20000u
 #define STEPPER_RUN_PERIOD_US   5000u
@@ -10,6 +13,22 @@
 
 static volatile u8 stepper_running[2];
 static volatile u32 stepper_target_period_us[2];
+static volatile u32 stepper_completed[2];
+static u32 stepper_count[2], stepper_ramp[2], stepper_period[2];
+static void StepperMotor_StartNext(u8 motor);
+
+/* Priority 4 is above the FreeRTOS syscall threshold (5).
+   These interrupts MUST NOT call any FreeRTOS API. */
+static void StepperMotor_InitIRQ(IRQn_Type irq)
+{
+    NVIC_InitTypeDef nvic;
+    nvic.NVIC_IRQChannel = (u8)irq;
+    nvic.NVIC_IRQChannelPreemptionPriority = 4;
+    nvic.NVIC_IRQChannelSubPriority = 0;
+    nvic.NVIC_IRQChannelCmd = ENABLE;
+    NVIC_ClearPendingIRQ(irq);
+    NVIC_Init(&nvic);
+}
 
 static TIM_TypeDef *StepperMotor_Timer(u8 motor)
 {
@@ -52,6 +71,8 @@ static void StepperMotor_InitTimer(TIM_TypeDef *timer, u16 prescaler)
     else                TIM_OC3Init(timer, &output);
 
     TIM_SelectOnePulseMode(timer, TIM_OPMode_Single);
+    /* Software UG loads the prescaler but must not count as a pulse. */
+    TIM_UpdateRequestConfig(timer, TIM_UpdateSource_Regular);
     TIM_Cmd(timer, DISABLE);
     if (timer == TIM8) TIM_CtrlPWMOutputs(timer, DISABLE);
 }
@@ -72,6 +93,8 @@ void StepperMotor_Init(void)
     stepper_running[1] = 0;
     stepper_target_period_us[0] = STEPPER_RUN_PERIOD_US;
     stepper_target_period_us[1] = STEPPER_RUN_PERIOD_US;
+    StepperMotor_InitIRQ(TIM8_BRK_TIM12_IRQn);
+    StepperMotor_InitIRQ(TIM8_UP_TIM13_IRQn);
 }
 
 void StepperMotor_Disable(u8 motor)
@@ -79,9 +102,12 @@ void StepperMotor_Disable(u8 motor)
     TIM_TypeDef *timer = StepperMotor_Timer(motor);
     GPIO_TypeDef *port;
     u16 pin;
+    u32 primask;
 
     if (timer == 0) return;
-    stepper_running[motor - 1u] = 0;
+    primask = __get_PRIMASK();
+    __disable_irq();
+    TIM_ITConfig(timer, TIM_IT_Update, DISABLE);
     TIM_Cmd(timer, DISABLE);
     if (timer == TIM8) TIM_CtrlPWMOutputs(timer, DISABLE);
     TIM_CCxCmd(timer, (timer == TIM12) ? TIM_Channel_2 : TIM_Channel_3,
@@ -91,6 +117,9 @@ void StepperMotor_Disable(u8 motor)
     pin = (motor == A4988_MOTOR_Left) ? GPIO_Pin_15 : GPIO_Pin_8;
     GPIO_ResetBits(port, pin);
     StepperMotor_StepPinMode(motor, GPIO_Mode_OUT);
+    TIM_ClearFlag(timer, TIM_FLAG_Update);
+    stepper_running[motor - 1u] = 0;
+    __set_PRIMASK(primask);
 }
 
 u8 StepperMotor_SetSpeed(u8 motor, u16 arr)
@@ -98,7 +127,7 @@ u8 StepperMotor_SetSpeed(u8 motor, u16 arr)
     TIM_TypeDef *timer = StepperMotor_Timer(motor);
     u32 period;
 
-    if (timer == 0) return 0;
+    if (timer == 0 || arr == 0) return 0;
 
     period = (u32)arr + 1u;
     stepper_target_period_us[motor - 1u] = period;
@@ -112,77 +141,98 @@ u8 StepperMotor_SetSpeed(u8 motor, u16 arr)
     return 1;
 }
 
-u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)//
+/* Each next pulse is restarted in the timer ISR, not by a schedulable task.
+   OPM also prevents extra pulses if an interrupt is delayed. */
+static void StepperMotor_StartNext(u8 motor)
 {
     TIM_TypeDef *timer = StepperMotor_Timer(motor);
-    u32 count, completed, ramp, period, target, desired, start_period;
+    u32 index = motor - 1u;
+    u32 completed = stepper_completed[index];
+    u32 count = stepper_count[index], ramp = stepper_ramp[index];
+    u32 period = stepper_period[index];
+    u32 target = stepper_target_period_us[index];
+    u32 start_period = (target > STEPPER_START_PERIOD_US) ?
+        target : STEPPER_START_PERIOD_US;
+    u32 desired;
+
+    if (ramp && completed < ramp) {
+        desired = start_period - (start_period - target) * completed / ramp;
+    } else if (ramp && completed >= count - ramp) {
+        desired = target + (start_period - target) *
+            (completed - (count - ramp)) / ramp;
+    } else {
+        desired = target;
+    }
+    if (desired > period + STEPPER_MAX_PERIOD_CHANGE_US)
+        period += STEPPER_MAX_PERIOD_CHANGE_US;
+    else if (desired + STEPPER_MAX_PERIOD_CHANGE_US < period)
+        period -= STEPPER_MAX_PERIOD_CHANGE_US;
+    else
+        period = desired;
+
+    stepper_period[index] = period;
+    TIM_SetAutoreload(timer, period - 1u);
+    if (timer == TIM12) TIM_SetCompare2(timer, period / 2u);
+    else               TIM_SetCompare3(timer, period / 2u);
+    TIM_SetCounter(timer, 0);
+    TIM_Cmd(timer, ENABLE);
+}
+
+/* Called only from the existing shared timer interrupt vectors. */
+void StepperMotor_UpdateIRQ(u8 motor)
+{
+    TIM_TypeDef *timer = StepperMotor_Timer(motor);
+    u32 index = motor - 1u;
+
+    if (timer == 0 || TIM_GetITStatus(timer, TIM_IT_Update) == RESET) return;
+    TIM_ClearITPendingBit(timer, TIM_IT_Update);
+    if (!stepper_running[index]) return;
+    ++stepper_completed[index];
+    if (stepper_completed[index] >= stepper_count[index])
+        StepperMotor_Disable(motor);
+    else
+        StepperMotor_StartNext(motor);
+}
+
+u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)
+{
+    TIM_TypeDef *timer = StepperMotor_Timer(motor);
+    u32 index, count, target, primask;
 
     if (timer == 0) return 0;
     StepperMotor_Disable(motor);
     if (signed_pulses == 0) return 0;
-
-    /* 单独处理有符号最小值，避免直接取负造成溢出。 */
+    index = motor - 1u;
     count = (signed_pulses < 0) ?
         (u32)(-(signed_pulses + 1)) + 1u : (u32)signed_pulses;
-    ramp = (count / 2u < STEPPER_RAMP_PULSES) ?
+
+    primask = __get_PRIMASK();
+    __disable_irq();
+    stepper_completed[index] = 0;
+    stepper_count[index] = count;
+    stepper_ramp[index] = (count / 2u < STEPPER_RAMP_PULSES) ?
         count / 2u : STEPPER_RAMP_PULSES;
+    target = stepper_target_period_us[index];
+    stepper_period[index] = (target > STEPPER_START_PERIOD_US) ?
+        target : STEPPER_START_PERIOD_US;
     A4988_SetDir(motor, signed_pulses > 0);
+    /* Reset CNT while the STEP pin is still a low GPIO, avoiding a
+       spurious rising edge when restarting an externally stopped move. */
+    TIM_SetCounter(timer, 0);
+    TIM_ClearFlag(timer, TIM_FLAG_Update);
     StepperMotor_StepPinMode(motor, GPIO_Mode_AF);
     TIM_CCxCmd(timer, (timer == TIM12) ? TIM_Channel_2 : TIM_Channel_3,
                TIM_CCx_Enable);
     if (timer == TIM8) TIM_CtrlPWMOutputs(timer, ENABLE);
-    stepper_running[motor - 1u] = 1;
-    target = stepper_target_period_us[motor - 1u];
-    period = (target > STEPPER_START_PERIOD_US) ?
-        target : STEPPER_START_PERIOD_US;
+    stepper_running[index] = 1;
+    TIM_ITConfig(timer, TIM_IT_Update, ENABLE);
+    StepperMotor_StartNext(motor);
+    __set_PRIMASK(primask);
 
-    for (completed = 0; completed < count && stepper_running[motor - 1u];
-         completed++) {
-        target = stepper_target_period_us[motor - 1u];
-        /* Keep the ramp valid even when the target is slower than 50 Hz. */
-        start_period = (target > STEPPER_START_PERIOD_US) ?
-            target : STEPPER_START_PERIOD_US;
-        if (ramp && completed < ramp) {
-            desired = start_period -
-                (start_period - target) *
-                completed / ramp;
-        } else if (ramp && completed >= count - ramp) {
-            desired = target +
-                (start_period - target) *
-                (completed - (count - ramp)) / ramp;
-        } else {
-            desired = target;
-        }
-
-        /* 运行中修改 ARR 时，限制每个脉冲的周期变化，避免速度突变。 */
-        if (desired > period + STEPPER_MAX_PERIOD_CHANGE_US)
-            period += STEPPER_MAX_PERIOD_CHANGE_US;
-        else if (desired + STEPPER_MAX_PERIOD_CHANGE_US < period)
-            period -= STEPPER_MAX_PERIOD_CHANGE_US;
-        else
-            period = desired;
-
-        TIM_SetAutoreload(timer, period - 1u);
-        if (timer == TIM12)
-            TIM_SetCompare2(timer, period / 2u);
-        else
-            TIM_SetCompare3(timer, period / 2u);
-        TIM_GenerateEvent(timer, TIM_EventSource_Update);
-        TIM_ClearFlag(timer, TIM_FLAG_Update);
-        TIM_SetCounter(timer, 0);
-        TIM_Cmd(timer, ENABLE);
-
-        /* PWM2 在周期后半段输出高电平，形成约 50% 占空比；
-           更新事件使输出回到低电平，
-           单脉冲模式随后自动停止定时器。 */
-        while (TIM_GetFlagStatus(timer, TIM_FLAG_Update) == RESET) {
-            if (!stepper_running[motor - 1u]) {
-                StepperMotor_Disable(motor);
-                return completed;
-            }
-        }
+    while (stepper_running[index]) {
+        if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+            vTaskDelay(1);
+        /* Before the scheduler starts, timer interrupts still drive STEP. */
     }
-
-    StepperMotor_Disable(motor);
-    return completed;
+    return stepper_completed[index];
 }

@@ -1,4 +1,5 @@
 #include "timer.h"
+#include "stepper_motor.h"
 
 //Input the capture flag for channel 1, 
 //the capture flag for the higher bits, and the overflow flag for the lower 6 bits
@@ -354,11 +355,9 @@ Output  : none
 入口参数：无
 返回  值：无 
 **************************************************************************/
-void TIM8_UP_TIM13_IRQHandler(void) 
-{ 
-	//Clear the interrupt flag bit
-	//清除中断标志位 
-  TIM8->SR&=~(1<<0);	    
+void TIM8_UP_TIM13_IRQHandler(void)
+{
+    StepperMotor_UpdateIRQ(A4988_MOTOR_Right);
 }
 
 void TIM8_SERVO_Init(u16 arr,u16 psc)

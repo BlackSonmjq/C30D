@@ -14,13 +14,18 @@ void StepperMotor_Disable(u8 motor);
    so nominal pulse rate is 1000000/(ARR+1) Hz. No software speed limits;
    ARR is still a 16-bit value. Use a nonzero ARR for valid STEP pulses.
    Takes effect on subsequent pulses, including during an active move;
-   returns 1 on success or 0 for an invalid motor. */
+   returns 1 on success or 0 for an invalid motor or zero ARR. */
 u8 StepperMotor_SetSpeed(u8 motor, u16 arr);
 
 /* Blocking move by signed pulse count. Positive sets DIR high; negative
    sets DIR low. Automatically stops PWM after the requested pulse count.
    Returns the number of completed pulse periods (0 for invalid/zero input).
+   Timer interrupts drive pulses; the calling RTOS task sleeps while waiting.
+   Call only with interrupts enabled, outside critical sections/ISRs.
    Do not call concurrently for the same motor. */
 u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses);
+
+/* Internal timer ISR dispatch. Must not call FreeRTOS APIs. */
+void StepperMotor_UpdateIRQ(u8 motor);
 
 #endif

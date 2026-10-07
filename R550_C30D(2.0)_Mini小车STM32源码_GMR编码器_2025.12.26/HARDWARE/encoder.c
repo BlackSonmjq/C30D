@@ -1,4 +1,5 @@
 #include "encoder.h"
+#include "stepper_motor.h"
 
 /**************************************************************************
 Function: Initialize TIM2 as the encoder interface mode
@@ -271,9 +272,5 @@ void TIM5_IRQHandler(void)
 
 void TIM8_BRK_TIM12_IRQHandler(void)
 {
-	if(TIM12->SR&0X0001) //Overflow interrupt //溢出中断
-	{    				   				     	    	
-	}				   
-	TIM12->SR&=~(1<<0); //Clear the interrupt flag bit //清除中断标志位  	 
-
+    StepperMotor_UpdateIRQ(A4988_MOTOR_Left);
 }
