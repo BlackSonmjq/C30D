@@ -1,0 +1,8 @@
+# Local balance source requested to be kept out of future untracked files.
+
+
+# Keil generated build outputs.
+/R550_C30D(2.0)_Mini小车STM32源码_GMR编码器_2025.12.26/OBJ/
+
+# Local VS Code workspace configuration.
+/.vscode/

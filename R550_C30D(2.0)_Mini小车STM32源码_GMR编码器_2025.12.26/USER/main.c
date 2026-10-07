@@ -17,16 +17,8 @@ Update��2022-05-05
 All rights reserved
 ***********************************************/
 #include "system.h"
-
-// 设为 1：上电后循环测试 A4988；设为 0：运行正常底盘程序。
-#ifndef A4988_TEST_MODE
-#define A4988_TEST_MODE 1
-#endif
-
-#if A4988_TEST_MODE
-#include "stepper_test.h"
-#endif
-
+#include "pushrod.h"
+#include "pushrod_task.h"
 //Task priority    //�������ȼ�
 #define START_TASK_PRIO	1
 
@@ -42,12 +34,7 @@ void start_task(void *pvParameters);
 //Main function //������
 int main(void)
 { 
-#if A4988_TEST_MODE
-    // 仅测试 A4988 引脚和 STEP 定时器，不启动底盘任务。
-    Stepper_TestLoop();
-#else
   systemInit(); //Hardware initialization //Ӳ����ʼ��
-	
 	//Create the start task //������ʼ����
 	xTaskCreate((TaskFunction_t )start_task,            //Task function   //������
 							(const char*    )"start_task",          //Task name       //��������
@@ -56,7 +43,6 @@ int main(void)
 							(UBaseType_t    )START_TASK_PRIO,       //Task priority   //�������ȼ�
 							(TaskHandle_t*  )&StartTask_Handler);   //Task handle     //������    					
 	vTaskStartScheduler();  //Enables task scheduling //�����������	
-#endif
 }
  
 //Start task task function //��ʼ����������
@@ -77,7 +63,7 @@ void start_task(void *pvParameters)
 	xTaskCreate(led_task,      "led_task",      LED_STK_SIZE,      NULL, LED_TASK_PRIO,      NULL);	//LED light flashing task //LED����˸����
 	xTaskCreate(pstwo_task,    "PSTWO_task",    PS2_STK_SIZE,      NULL, PS2_TASK_PRIO,      NULL);	//Read the PS2 controller task //��ȡPS2�ֱ�����
 	xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //����3������1��CAN������������
-	
+    xTaskCreate(pushrod_task,      "pushrod_task",      PUSHROD_STK_SIZE,      NULL, PUSHROD_TASK_PRIO,      NULL);	//Pushrod control task //�Ƹ˿�������
     vTaskDelete(StartTask_Handler); //Delete the start task //ɾ����ʼ����
 
     taskEXIT_CRITICAL();            //Exit the critical section//�˳��ٽ���
