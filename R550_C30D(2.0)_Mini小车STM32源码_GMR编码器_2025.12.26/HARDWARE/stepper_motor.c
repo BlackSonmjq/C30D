@@ -3,7 +3,6 @@
 #include "stm32f4xx_rcc.h"
 #include "stm32f4xx_tim.h"
 
-#define STEPPER_PULSE_HIGH_US   5u
 #define STEPPER_START_PERIOD_US 20000u
 #define STEPPER_RUN_PERIOD_US   5000u
 #define STEPPER_RAMP_PULSES     200u
@@ -46,7 +45,7 @@ static void StepperMotor_InitTimer(TIM_TypeDef *timer, u16 prescaler)
     TIM_OCStructInit(&output);
     output.TIM_OCMode = TIM_OCMode_PWM2;
     output.TIM_OutputState = TIM_OutputState_Enable;
-    output.TIM_Pulse = STEPPER_START_PERIOD_US - STEPPER_PULSE_HIGH_US;
+    output.TIM_Pulse = STEPPER_START_PERIOD_US / 2u;
     output.TIM_OCPolarity = TIM_OCPolarity_High;
     output.TIM_OCIdleState = TIM_OCIdleState_Reset;
     if (timer == TIM12) TIM_OC2Init(timer, &output);
@@ -99,17 +98,16 @@ u8 StepperMotor_SetSpeed(u8 motor, u16 arr)
     TIM_TypeDef *timer = StepperMotor_Timer(motor);
     u32 period;
 
-    if (timer == 0 || arr < STEPPER_MOTOR_ARR_MIN ||
-        arr > STEPPER_MOTOR_ARR_MAX) return 0;
+    if (timer == 0) return 0;
 
     period = (u32)arr + 1u;
     stepper_target_period_us[motor - 1u] = period;
     if (!stepper_running[motor - 1u]) {
         TIM_SetAutoreload(timer, arr);
         if (timer == TIM12)
-            TIM_SetCompare2(timer, period - STEPPER_PULSE_HIGH_US);
+            TIM_SetCompare2(timer, period / 2u);
         else
-            TIM_SetCompare3(timer, period - STEPPER_PULSE_HIGH_US);
+            TIM_SetCompare3(timer, period / 2u);
     }
     return 1;
 }
@@ -117,7 +115,7 @@ u8 StepperMotor_SetSpeed(u8 motor, u16 arr)
 u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)//
 {
     TIM_TypeDef *timer = StepperMotor_Timer(motor);
-    u32 count, completed, ramp, period, target, desired;
+    u32 count, completed, ramp, period, target, desired, start_period;
 
     if (timer == 0) return 0;
     StepperMotor_Disable(motor);
@@ -134,18 +132,23 @@ u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)//
                TIM_CCx_Enable);
     if (timer == TIM8) TIM_CtrlPWMOutputs(timer, ENABLE);
     stepper_running[motor - 1u] = 1;
-    period = STEPPER_START_PERIOD_US;
+    target = stepper_target_period_us[motor - 1u];
+    period = (target > STEPPER_START_PERIOD_US) ?
+        target : STEPPER_START_PERIOD_US;
 
     for (completed = 0; completed < count && stepper_running[motor - 1u];
          completed++) {
         target = stepper_target_period_us[motor - 1u];
+        /* Keep the ramp valid even when the target is slower than 50 Hz. */
+        start_period = (target > STEPPER_START_PERIOD_US) ?
+            target : STEPPER_START_PERIOD_US;
         if (ramp && completed < ramp) {
-            desired = STEPPER_START_PERIOD_US -
-                (STEPPER_START_PERIOD_US - target) *
+            desired = start_period -
+                (start_period - target) *
                 completed / ramp;
         } else if (ramp && completed >= count - ramp) {
             desired = target +
-                (STEPPER_START_PERIOD_US - target) *
+                (start_period - target) *
                 (completed - (count - ramp)) / ramp;
         } else {
             desired = target;
@@ -161,15 +164,16 @@ u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)//
 
         TIM_SetAutoreload(timer, period - 1u);
         if (timer == TIM12)
-            TIM_SetCompare2(timer, period - STEPPER_PULSE_HIGH_US);
+            TIM_SetCompare2(timer, period / 2u);
         else
-            TIM_SetCompare3(timer, period - STEPPER_PULSE_HIGH_US);
+            TIM_SetCompare3(timer, period / 2u);
         TIM_GenerateEvent(timer, TIM_EventSource_Update);
         TIM_ClearFlag(timer, TIM_FLAG_Update);
         TIM_SetCounter(timer, 0);
         TIM_Cmd(timer, ENABLE);
 
-        /* PWM2 在周期末尾 5 us 输出高电平；更新事件使输出回到低电平，
+        /* PWM2 在周期后半段输出高电平，形成约 50% 占空比；
+           更新事件使输出回到低电平，
            单脉冲模式随后自动停止定时器。 */
         while (TIM_GetFlagStatus(timer, TIM_FLAG_Update) == RESET) {
             if (!stepper_running[motor - 1u]) {
