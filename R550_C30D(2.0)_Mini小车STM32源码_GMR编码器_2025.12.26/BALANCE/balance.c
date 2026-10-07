@@ -1,29 +1,29 @@
 #include "balance.h"
 #include "heading_control.h"
 
-//int Time_count=0; //Time variable //¼ÆÊ±±äÁ¿
+//int Time_count=0; //Time variable //ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½
 
 // Robot mode is wrong to detect flag bits
-//»úÆ÷ÈËÄ£Ê½ÊÇ·ñ³ö´í¼ì²â±êÖ¾Î»
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾Î»
 int robot_mode_check_flag=0; 
 
 short test_num;
 u8 command_lost_count=0;//
 
-Encoder OriginalEncoder; //Encoder raw data //±àÂëÆ÷Ô­Ê¼Êý¾Ý     
+Encoder OriginalEncoder; //Encoder raw data //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô­Ê¼ï¿½ï¿½ï¿½ï¿½     
 
-//========== PWMÇå³ýÊ¹ÓÃ±äÁ¿ ==========//
-u8 start_check_flag = 0;//±ê¼ÇÊÇ·ñÐèÒªÇå¿ÕPWM
+//========== PWMï¿½ï¿½ï¿½Ê¹ï¿½Ã±ï¿½ï¿½ï¿½ ==========//
+u8 start_check_flag = 0;//ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½PWM
 u8 wait_clear_times = 0;
-u8 start_clear = 0;     //±ê¼Ç¿ªÊ¼Çå³ýPWM
-u8 clear_done_once = 0; //Çå³ýÍê³É±êÖ¾Î»
+u8 start_clear = 0;     //ï¿½ï¿½Ç¿ï¿½Ê¼ï¿½ï¿½ï¿½PWM
+u8 clear_done_once = 0; //ï¿½ï¿½ï¿½ï¿½ï¿½É±ï¿½Ö¾Î»
 u16 clear_again_times = 0;
 float debug_show_diff = 0;
 void auto_pwm_clear(void);
 volatile u8 clear_state = 0x00;
 /*------------------------------------*/
 
-uint32_t LineDiffParam = 50;//¾ÀÆ«ÏµÊý
+uint32_t LineDiffParam = 50;//ï¿½ï¿½Æ«Ïµï¿½ï¿½
 
 static uint8_t FlashParam_Save(uint8_t *flag)
 {
@@ -33,10 +33,10 @@ static uint8_t FlashParam_Save(uint8_t *flag)
 	{
 		*flag = 0;
 		
-		Set_Pwm(0,0,0,0,0); 
+		Set_Pwm(0,0,0,0);
 		
 		check = 1;
-		taskENTER_CRITICAL();//²Ù×÷FLash½øÈëÁÙ½ç£¬±£Ö¤Êý¾Ý°²È«
+		taskENTER_CRITICAL();//ï¿½ï¿½ï¿½ï¿½FLashï¿½ï¿½ï¿½ï¿½ï¿½Ù½ç£¬ï¿½ï¿½Ö¤ï¿½ï¿½ï¿½Ý°ï¿½È«
 		
 		int32_t buf[4]={0};
 		buf[0] = *((int32_t*)&RC_Velocity);
@@ -45,9 +45,9 @@ static uint8_t FlashParam_Save(uint8_t *flag)
 		buf[3] = LineDiffParam;
 		check += Write_Flash( (u32*)buf , 4);
 		
-		taskEXIT_CRITICAL();//ÍË³öÁÙ½ç
+		taskEXIT_CRITICAL();//ï¿½Ë³ï¿½ï¿½Ù½ï¿½
 		
-		//ÈôÈ«²¿Ð´Èë³É¹¦,check==1
+		//ï¿½ï¿½È«ï¿½ï¿½Ð´ï¿½ï¿½É¹ï¿½,check==1
 	}
 
 	return check;
@@ -56,23 +56,23 @@ static uint8_t FlashParam_Save(uint8_t *flag)
 void FlashParam_Read(void)
 {
 	int read;
-	read = Read_Flash(0);//¶ÁÈ¡ÏÂ±êÎª0µÄÊý¾Ý
+	read = Read_Flash(0);//ï¿½ï¿½È¡ï¿½Â±ï¿½Îª0ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if( read!=0xffffffff ) RC_Velocity = *((float*)&read);
 	
-	read = Read_Flash(1);//¶ÁÈ¡ÏÂ±êÎª1µÄÊý¾Ý
+	read = Read_Flash(1);//ï¿½ï¿½È¡ï¿½Â±ï¿½Îª1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if( read!=0xffffffff ) Velocity_KP = *((float*)&read);
 	
-	read = Read_Flash(2);//¶ÁÈ¡ÏÂ±êÎª2µÄÊý¾Ý
+	read = Read_Flash(2);//ï¿½ï¿½È¡ï¿½Â±ï¿½Îª2ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if( read!=0xffffffff ) Velocity_KI = *((float*)&read);
 	
 	read = Read_Flash(3);
 	if( read!=0xffffffff ) LineDiffParam = read;
 	
-	//Òì³£ËÙ¶ÈÊý¾Ý,¹ýÂË
+	//ï¿½ì³£ï¿½Ù¶ï¿½ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½
 	if( RC_Velocity < 0 || RC_Velocity > 10000 )
 		RC_Velocity = 500;
 	
-	//¾ÀÆ«ÏµÊýÒì³£,¹ýÂË
+	//ï¿½ï¿½Æ«Ïµï¿½ï¿½ï¿½ì³£,ï¿½ï¿½ï¿½ï¿½
 	if( LineDiffParam  > 100 )
 		LineDiffParam = 50;
 	
@@ -82,69 +82,69 @@ void FlashParam_Read(void)
 Function: The inverse kinematics solution is used to calculate the target speed of each wheel according to the target speed of three axes
 Input   : X and Y, Z axis direction of the target movement speed
 Output  : none
-º¯Êý¹¦ÄÜ£ºÔË¶¯Ñ§Äæ½â£¬¸ù¾ÝÈýÖáÄ¿±êËÙ¶È¼ÆËã¸÷³µÂÖÄ¿±ê×ªËÙ
-Èë¿Ú²ÎÊý£ºXºÍY¡¢ZÖá·½ÏòµÄÄ¿±êÔË¶¯ËÙ¶È
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½â£¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½Ù¶È¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½×ªï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½Xï¿½ï¿½Yï¿½ï¿½Zï¿½á·½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½Ë¶ï¿½ï¿½Ù¶ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
-//¼ÆËã¾ÀÆ«ÏµÊý
+//ï¿½ï¿½ï¿½ï¿½ï¿½Æ«Ïµï¿½ï¿½
 static float wheelCoefficient(uint32_t diffparam,uint8_t isLeftWheel)
 {
-	if( 1 == isLeftWheel ) //×óÂÖ¾ÀÆ«,¶ÔÓ¦50~100¶ÔÓ¦1.0~1.2±¶µÄ¾ÀÆ«ÏµÊý
+	if( 1 == isLeftWheel ) //ï¿½ï¿½ï¿½Ö¾ï¿½Æ«,ï¿½ï¿½Ó¦50~100ï¿½ï¿½Ó¦1.0~1.2ï¿½ï¿½ï¿½Ä¾ï¿½Æ«Ïµï¿½ï¿½
 	{
 		if( diffparam>=50 )
 			return 1.0f + 0.004f*(diffparam-50);
 	}
-	else //ÓÒÂÖ¾ÀÆ«,50~0¶ÔÓ¦1.0~1.2±¶µÄ¾ÀÆ«ÏµÊý
+	else //ï¿½ï¿½ï¿½Ö¾ï¿½Æ«,50~0ï¿½ï¿½Ó¦1.0~1.2ï¿½ï¿½ï¿½Ä¾ï¿½Æ«Ïµï¿½ï¿½
 	{
 		if( diffparam<=50 )
 			return 1.0f + 0.004f*(50-diffparam);
 	}
 	
-	return 1.0f;//²»Âú×ãÌõ¼þÊ±,Ä¬ÈÏÊÇ1.
+	return 1.0f;//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±,Ä¬ï¿½ï¿½ï¿½ï¿½1.
 }
 
 
 void Drive_Motor(float Vx,float Vy,float Vz)
 {
-	float amplitude=3.5; //Wheel target speed limit //³µÂÖÄ¿±êËÙ¶ÈÏÞ·ù
+	float amplitude=3.5; //Wheel target speed limit //ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½Þ·ï¿½
 
 	Vx=target_limit_float(Vx,-amplitude,amplitude);
 	Vy=target_limit_float(Vy,-amplitude,amplitude);
 	Vz=target_limit_float(Vz,-amplitude,amplitude);
 	
 	//Speed smoothing is enabled when moving the omnidirectional trolley
-	//È«ÏòÒÆ¶¯Ð¡³µ²Å¿ªÆôËÙ¶ÈÆ½»¬´¦Àí
+	//È«ï¿½ï¿½ï¿½Æ¶ï¿½Ð¡ï¿½ï¿½ï¿½Å¿ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½Æ½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if(Car_Mode==Mec_Car||Car_Mode==Omni_Car||Car_Mode==Mec_Car_V550)
 	{
 		if(Allow_Recharge==0)
-			Smooth_control(Vx,Vy,Vz); //Smoothing the input speed //¶ÔÊäÈëËÙ¶È½øÐÐÆ½»¬´¦Àí
+			Smooth_control(Vx,Vy,Vz); //Smoothing the input speed //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶È½ï¿½ï¿½ï¿½Æ½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 		else
 			smooth_control.VX=Vx,     
 			smooth_control.VY=Vy,
 			smooth_control.VZ=Vz;
 
 		//Get the smoothed data 
-		//»ñÈ¡Æ½»¬´¦ÀíºóµÄÊý¾Ý			
+		//ï¿½ï¿½È¡Æ½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½			
 		Vx=smooth_control.VX;     
 		Vy=smooth_control.VY;
 		Vz=smooth_control.VZ;
 	}
 		
-	//¾ÀÆ«ÏµÊý¼ÆËã
+	//ï¿½ï¿½Æ«Ïµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	float LeftWheelDiff = wheelCoefficient(LineDiffParam,1);
 	float RightWheelDiff = wheelCoefficient(LineDiffParam,0);
 	
 	//Mecanum wheel car
-	//Âó¿ËÄÉÄ·ÂÖÐ¡³µ
+	//ï¿½ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½Ð¡ï¿½ï¿½
 	if (Car_Mode==Mec_Car||Car_Mode==Mec_Car_V550) 
 	{
-		//Inverse kinematics //ÔË¶¯Ñ§Äæ½â
+		//Inverse kinematics //ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½ï¿½
 		MOTOR_A.Target   = +Vy+Vx-Vz*(Axle_spacing+Wheel_spacing);
 		MOTOR_B.Target   = -Vy+Vx-Vz*(Axle_spacing+Wheel_spacing);
 		MOTOR_C.Target   = +Vy+Vx+Vz*(Axle_spacing+Wheel_spacing);
 		MOTOR_D.Target   = -Vy+Vx+Vz*(Axle_spacing+Wheel_spacing);
 
-		//Wheel (motor) target speed limit //³µÂÖ(µç»ú)Ä¿±êËÙ¶ÈÏÞ·ù
+		//Wheel (motor) target speed limit //ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½)Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½Þ·ï¿½
 		MOTOR_A.Target=target_limit_float(MOTOR_A.Target,-amplitude,amplitude); 
 		MOTOR_B.Target=target_limit_float(MOTOR_B.Target,-amplitude,amplitude); 
 		MOTOR_C.Target=target_limit_float(MOTOR_C.Target,-amplitude,amplitude); 
@@ -157,19 +157,19 @@ void Drive_Motor(float Vx,float Vy,float Vz)
 	} 
 		
 	//Omni car
-	//È«ÏòÂÖÐ¡³µ
+	//È«ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½
 	else if (Car_Mode==Omni_Car) 
 	{
-		//Inverse kinematics //ÔË¶¯Ñ§Äæ½â
+		//Inverse kinematics //ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½ï¿½
 		MOTOR_A.Target   =   Vy + Omni_turn_radiaus*Vz;
 		MOTOR_B.Target   =  -X_PARAMETER*Vx - Y_PARAMETER*Vy + Omni_turn_radiaus*Vz;
 		MOTOR_C.Target   =  +X_PARAMETER*Vx - Y_PARAMETER*Vy + Omni_turn_radiaus*Vz;
 
-		//Wheel (motor) target speed limit //³µÂÖ(µç»ú)Ä¿±êËÙ¶ÈÏÞ·ù
+		//Wheel (motor) target speed limit //ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½)Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½Þ·ï¿½
 		MOTOR_A.Target=target_limit_float(MOTOR_A.Target,-amplitude,amplitude); 
 		MOTOR_B.Target=target_limit_float(MOTOR_B.Target,-amplitude,amplitude); 
 		MOTOR_C.Target=target_limit_float(MOTOR_C.Target,-amplitude,amplitude); 
-		MOTOR_D.Target=0;	//Out of use //Ã»ÓÐÊ¹ÓÃµ½
+		MOTOR_D.Target=0;	//Out of use //Ã»ï¿½ï¿½Ê¹ï¿½Ãµï¿½
 		
 
 		MOTOR_B.Target*=LeftWheelDiff;
@@ -177,22 +177,22 @@ void Drive_Motor(float Vx,float Vy,float Vz)
 	}
 		
 	//Ackermann structure car
-	//°¢¿ËÂüÐ¡³µ
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½
 	else if (Car_Mode==Akm_Car) 
 	{
-		//Ackerman car specific related variables //°¢¿ËÂüÐ¡³µ×¨ÓÃÏà¹Ø±äÁ¿
-		float R, Ratio=636.56, AngleR, Angle_Servo;
+		//Ackerman car specific related variables //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½×¨ï¿½ï¿½ï¿½ï¿½Ø±ï¿½ï¿½ï¿½
+		float R, AngleR;
 		
 		// For Ackerman small car, Vz represents the front wheel steering Angle
-		//¶ÔÓÚ°¢¿ËÂüÐ¡³µVz´ú±íÓÒÇ°ÂÖ×ªÏò½Ç¶È
+		//ï¿½ï¿½ï¿½Ú°ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½Vzï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç°ï¿½ï¿½×ªï¿½ï¿½Ç¶ï¿½
 		AngleR=Vz;
 		R=Axle_spacing/tan(AngleR)-0.5f*Wheel_spacing;
 		
 		// Front wheel steering Angle limit (front wheel steering Angle controlled by steering engine), unit: rad
-		//Ç°ÂÖ×ªÏò½Ç¶ÈÏÞ·ù(¶æ»ú¿ØÖÆÇ°ÂÖ×ªÏò½Ç¶È)£¬µ¥Î»£ºrad
+		//Ç°ï¿½ï¿½×ªï¿½ï¿½Ç¶ï¿½ï¿½Þ·ï¿½(ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç°ï¿½ï¿½×ªï¿½ï¿½Ç¶ï¿½)ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½rad
 		AngleR=target_limit_float(AngleR,-0.49f,0.32f);
 		
-		//Inverse kinematics //ÔË¶¯Ñ§Äæ½â
+		//Inverse kinematics //ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½ï¿½
 		if(AngleR!=0)
 		{
 			MOTOR_A.Target = Vx*(R-0.5f*Wheel_spacing)/R;
@@ -204,50 +204,45 @@ void Drive_Motor(float Vx,float Vy,float Vz)
 			MOTOR_B.Target = Vx;
 		}
 		// The PWM value of the servo controls the steering Angle of the front wheel
-		//¶æ»úPWMÖµ£¬¶æ»ú¿ØÖÆÇ°ÂÖ×ªÏò½Ç¶È
-		Angle_Servo    =  -0.628f*pow(AngleR, 3) + 1.269f*pow(AngleR, 2) - 1.772f*AngleR + 1.573f;
-		Servo=SERVO_INIT + (Angle_Servo - 1.572f)*Ratio;
-
-		//Wheel (motor) target speed limit //³µÂÖ(µç»ú)Ä¿±êËÙ¶ÈÏÞ·ù
+		//ï¿½ï¿½ï¿½PWMÖµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç°ï¿½ï¿½×ªï¿½ï¿½Ç¶ï¿½
+		//Wheel (motor) target speed limit //ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½)Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½Þ·ï¿½
 		MOTOR_A.Target=target_limit_float(MOTOR_A.Target,-amplitude,amplitude); 
 		MOTOR_B.Target=target_limit_float(MOTOR_B.Target,-amplitude,amplitude); 
-		MOTOR_C.Target=0; //Out of use //Ã»ÓÐÊ¹ÓÃµ½
-		MOTOR_D.Target=0; //Out of use //Ã»ÓÐÊ¹ÓÃµ½
-		Servo=target_limit_int(Servo,800,2200);	//Servo PWM value limit //¶æ»úPWMÖµÏÞ·ù
-		
+		MOTOR_C.Target=0; //Out of use //Ã»ï¿½ï¿½Ê¹ï¿½Ãµï¿½
+		MOTOR_D.Target=0; //Out of use //Ã»ï¿½ï¿½Ê¹ï¿½Ãµï¿½
 		MOTOR_A.Target*=LeftWheelDiff;
 		MOTOR_B.Target*=RightWheelDiff;
 	}
 		
 	//Differential car
-	//²îËÙÐ¡³µ
+	//ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½
 	else if (Car_Mode==Diff_Car) 
 	{
-		//Inverse kinematics //ÔË¶¯Ñ§Äæ½â
-		MOTOR_A.Target  = Vx - Vz * Wheel_spacing / 2.0f; //¼ÆËã³ö×óÂÖµÄÄ¿±êËÙ¶È
-		MOTOR_B.Target =  Vx + Vz * Wheel_spacing / 2.0f; //¼ÆËã³öÓÒÂÖµÄÄ¿±êËÙ¶È
+		//Inverse kinematics //ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½ï¿½
+		MOTOR_A.Target  = Vx - Vz * Wheel_spacing / 2.0f; //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
+		MOTOR_B.Target =  Vx + Vz * Wheel_spacing / 2.0f; //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
 
-		//Wheel (motor) target speed limit //³µÂÖ(µç»ú)Ä¿±êËÙ¶ÈÏÞ·ù
+		//Wheel (motor) target speed limit //ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½)Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½Þ·ï¿½
 		MOTOR_A.Target=target_limit_float( MOTOR_A.Target,-amplitude,amplitude); 
 		MOTOR_B.Target=target_limit_float( MOTOR_B.Target,-amplitude,amplitude); 
-		MOTOR_C.Target=0; //Out of use //Ã»ÓÐÊ¹ÓÃµ½
-		MOTOR_D.Target=0; //Out of use //Ã»ÓÐÊ¹ÓÃµ½
+		MOTOR_C.Target=0; //Out of use //Ã»ï¿½ï¿½Ê¹ï¿½Ãµï¿½
+		MOTOR_D.Target=0; //Out of use //Ã»ï¿½ï¿½Ê¹ï¿½Ãµï¿½
 		
 		MOTOR_A.Target*=LeftWheelDiff;
 		MOTOR_B.Target*=RightWheelDiff;
 	}
 		
 	//FourWheel car
-	//ËÄÇý³µ
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	else if(Car_Mode==FourWheel_Car||Car_Mode==FourWheel_Car_V550) 
 	{	
-		//Inverse kinematics //ÔË¶¯Ñ§Äæ½â
-		MOTOR_A.Target  = Vx - Vz * (Wheel_spacing +  Axle_spacing) / 2.0f; //¼ÆËã³ö×óÂÖµÄÄ¿±êËÙ¶È
-		MOTOR_B.Target  = Vx - Vz * (Wheel_spacing +  Axle_spacing) / 2.0f; //¼ÆËã³ö×óÂÖµÄÄ¿±êËÙ¶È
-		MOTOR_C.Target  = Vx + Vz * (Wheel_spacing +  Axle_spacing) / 2.0f; //¼ÆËã³öÓÒÂÖµÄÄ¿±êËÙ¶È
-		MOTOR_D.Target  = Vx + Vz * (Wheel_spacing +  Axle_spacing) / 2.0f; //¼ÆËã³öÓÒÂÖµÄÄ¿±êËÙ¶È
+		//Inverse kinematics //ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½ï¿½
+		MOTOR_A.Target  = Vx - Vz * (Wheel_spacing +  Axle_spacing) / 2.0f; //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
+		MOTOR_B.Target  = Vx - Vz * (Wheel_spacing +  Axle_spacing) / 2.0f; //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
+		MOTOR_C.Target  = Vx + Vz * (Wheel_spacing +  Axle_spacing) / 2.0f; //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
+		MOTOR_D.Target  = Vx + Vz * (Wheel_spacing +  Axle_spacing) / 2.0f; //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
 				
-		//Wheel (motor) target speed limit //³µÂÖ(µç»ú)Ä¿±êËÙ¶ÈÏÞ·ù
+		//Wheel (motor) target speed limit //ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½)Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½Þ·ï¿½
 		MOTOR_A.Target=target_limit_float( MOTOR_A.Target,-amplitude,amplitude); 
 		MOTOR_B.Target=target_limit_float( MOTOR_B.Target,-amplitude,amplitude); 
 		MOTOR_C.Target=target_limit_float( MOTOR_C.Target,-amplitude,amplitude); 
@@ -260,18 +255,18 @@ void Drive_Motor(float Vx,float Vy,float Vz)
 	}
 
 	//Tank Car
-	//ÂÄ´ø³µ
+	//ï¿½Ä´ï¿½ï¿½ï¿½
 	else if (Car_Mode==Tank_Car) 
 	{
-		//Inverse kinematics //ÔË¶¯Ñ§Äæ½â
-		MOTOR_A.Target  = Vx - Vz * (Wheel_spacing) / 2.0f;    //¼ÆËã³ö×óÂÖµÄÄ¿±êËÙ¶È
-		MOTOR_B.Target =  Vx + Vz * (Wheel_spacing) / 2.0f;    //¼ÆËã³öÓÒÂÖµÄÄ¿±êËÙ¶È
+		//Inverse kinematics //ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½ï¿½
+		MOTOR_A.Target  = Vx - Vz * (Wheel_spacing) / 2.0f;    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
+		MOTOR_B.Target =  Vx + Vz * (Wheel_spacing) / 2.0f;    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
 
-		//Wheel (motor) target speed limit //³µÂÖ(µç»ú)Ä¿±êËÙ¶ÈÏÞ·ù
+		//Wheel (motor) target speed limit //ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½)Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½Þ·ï¿½
 		MOTOR_A.Target=target_limit_float( MOTOR_A.Target,-amplitude,amplitude); 
 		MOTOR_B.Target=target_limit_float( MOTOR_B.Target,-amplitude,amplitude); 
-		MOTOR_C.Target=0; //Out of use //Ã»ÓÐÊ¹ÓÃµ½
-		MOTOR_D.Target=0; //Out of use //Ã»ÓÐÊ¹ÓÃµ½
+		MOTOR_C.Target=0; //Out of use //Ã»ï¿½ï¿½Ê¹ï¿½Ãµï¿½
+		MOTOR_D.Target=0; //Out of use //Ã»ï¿½ï¿½Ê¹ï¿½Ãµï¿½
 		
 		MOTOR_A.Target*=LeftWheelDiff;
 		MOTOR_B.Target*=RightWheelDiff;
@@ -281,9 +276,9 @@ void Drive_Motor(float Vx,float Vy,float Vz)
 Function: FreerTOS task, core motion control task
 Input   : none
 Output  : none
-º¯Êý¹¦ÄÜ£ºFreeRTOSÈÎÎñ£¬ºËÐÄÔË¶¯¿ØÖÆÈÎÎñ
-Èë¿Ú²ÎÊý£ºÎÞ
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½FreeRTOSï¿½ï¿½ï¿½ñ£¬ºï¿½ï¿½ï¿½ï¿½Ë¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 void Balance_task(void *pvParameters)
 { 
@@ -295,19 +290,19 @@ void Balance_task(void *pvParameters)
     while(1)
     {	
 		// This task runs at a frequency of 100Hz (10ms control once)
-		//´ËÈÎÎñÒÔ100HzµÄÆµÂÊÔËÐÐ£¨10ms¿ØÖÆÒ»´Î£©
+		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½100Hzï¿½ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½Ð£ï¿½10msï¿½ï¿½ï¿½ï¿½Ò»ï¿½Î£ï¿½
 		vTaskDelayUntil(&lastWakeTime, F2T(RATE_100_HZ)); 
 
 		//Time count is no longer needed after 30 seconds
-		//Ê±¼ä¼ÆÊý£¬30Ãëºó²»ÔÙÐèÒª
+		//Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½30ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òª
 		if(SysVal.Time_count<3000) SysVal.Time_count++;
 		//Get the encoder data, that is, the real time wheel speed, 
 		//and convert to transposition international units
-		//»ñÈ¡±àÂëÆ÷Êý¾Ý£¬¼´³µÂÖÊµÊ±ËÙ¶È£¬²¢×ª»»Î»¹ú¼Êµ¥Î»
+		//ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÊµÊ±ï¿½Ù¶È£ï¿½ï¿½ï¿½×ªï¿½ï¿½Î»ï¿½ï¿½ï¿½Êµï¿½Î»
 		Get_Velocity_Form_Encoder();   
 		
 		//Click the user button to update the gyroscope zero
-		//µ¥»÷ÓÃ»§°´¼ü¸üÐÂÍÓÂÝÒÇÁãµã
+		//ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 		Key(); 
 
 		/* One short beep when startup IMU calibration has completed. */
@@ -341,26 +336,26 @@ void Balance_task(void *pvParameters)
 		if(Allow_Recharge==1)
 		{
 			if(Get_Charging_HardWare==1)
-			{   //´æÔÚ»Ø³ä×°±¸Ê±£¬¶Ô»Ø³ä×°±¸µÄ×´Ì¬½øÐÐ¼ì²â
+			{   //ï¿½ï¿½ï¿½Ú»Ø³ï¿½×°ï¿½ï¿½Ê±ï¿½ï¿½ï¿½Ô»Ø³ï¿½×°ï¿½ï¿½ï¿½ï¿½×´Ì¬ï¿½ï¿½ï¿½Ð¼ï¿½ï¿½
 				charger_check++;
 				if( charger_check>RATE_100_HZ) charger_check=RATE_100_HZ+1,Allow_Recharge=0,RED_STATE=0,Recharge_Red_Move_X = 0,Recharge_Red_Move_Y = 0,Recharge_Red_Move_Z = 0;
 			}
-			//Èç¹û¿ªÆôÁËµ¼º½»Ø³ä£¬Í¬Ê±Ã»ÓÐ½ÓÊÕµ½ºìÍâÐÅºÅ£¬½ÓÊÕÀ´×ÔÉÏÎ»»úµÄµÄ»Ø³ä¿ØÖÆÃüÁî
+			//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ëµï¿½ï¿½ï¿½ï¿½Ø³ä£¬Í¬Ê±Ã»ï¿½Ð½ï¿½ï¿½Õµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÅºÅ£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ÄµÄ»Ø³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 			if      (nav_walk==1 && RED_STATE==0) Drive_Motor(Recharge_UP_Move_X,0,Recharge_UP_Move_Z);
-			//½ÓÊÕµ½ÁËºìÍâÐÅºÅ£¬½ÓÊÕÀ´×Ô»Ø³ä×°±¸µÄ»Ø³ä¿ØÖÆÃüÁî
+			//ï¿½ï¿½ï¿½Õµï¿½ï¿½Ëºï¿½ï¿½ï¿½ï¿½ÅºÅ£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô»Ø³ï¿½×°ï¿½ï¿½ï¿½Ä»Ø³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 			else if (RED_STATE!=0) nav_walk = 0,Drive_Motor(Recharge_Red_Move_X,0,Recharge_Red_Move_Z);
-			//·ÀÖ¹Ã»ÓÐºìÍâÐÅºÅÊ±Ð¡³µÔË¶¯
+			//ï¿½ï¿½Ö¹Ã»ï¿½Ðºï¿½ï¿½ï¿½ï¿½Åºï¿½Ê±Ð¡ï¿½ï¿½ï¿½Ë¶ï¿½
 			if (nav_walk==0&&RED_STATE==0) Drive_Motor(0,0,0);
 		}
 		else
 		{			
-			if      (APP_ON_Flag)      Get_RC();         //Handle the APP remote commands //´¦ÀíAPPÒ£¿ØÃüÁî
-			else if (Remote_ON_Flag)   Remote_Control(); //Handle model aircraft remote commands //´¦Àíº½Ä£Ò£¿ØÃüÁî
-			else if (PS2_ON_Flag)      PS2_control();    //Handle PS2 controller commands //´¦ÀíPS2ÊÖ±ú¿ØÖÆÃüÁî
+			if      (APP_ON_Flag)      Get_RC();         //Handle the APP remote commands //ï¿½ï¿½ï¿½ï¿½APPÒ£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+			else if (Remote_ON_Flag)   Remote_Control(); //Handle model aircraft remote commands //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ò£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+			else if (PS2_ON_Flag)      PS2_control();    //Handle PS2 controller commands //ï¿½ï¿½ï¿½ï¿½PS2ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 
 			//CAN, Usart 1, Usart 3, Uart5 control can directly get the three axis target speed, 
 			//without additional processing
-			//CAN¡¢´®¿Ú1¡¢´®¿Ú3(ROS)¡¢´®¿Ú5¿ØÖÆÖ±½ÓµÃµ½ÈýÖáÄ¿±êËÙ¶È£¬ÎÞÐë¶îÍâ´¦Àí
+			//CANï¿½ï¿½ï¿½ï¿½ï¿½ï¿½1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½3(ROS)ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½5ï¿½ï¿½ï¿½ï¿½Ö±ï¿½ÓµÃµï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½Ù¶È£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½â´¦ï¿½ï¿½
 			else
 			{
 				chassis_vz = Move_Z;
@@ -373,12 +368,12 @@ void Balance_task(void *pvParameters)
 
 		//If there is no abnormity in the battery voltage, and the enable switch is in the ON position,
 		//and the software failure flag is 0
-		//Èç¹ûµç³ØµçÑ¹²»´æÔÚÒì³££¬¶øÇÒÊ¹ÄÜ¿ª¹ØÔÚONµµÎ»£¬¶øÇÒÈí¼þÊ§ÄÜ±êÖ¾Î»Îª0
+		//ï¿½ï¿½ï¿½ï¿½ï¿½Øµï¿½Ñ¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ì³£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ü¿ï¿½ï¿½ï¿½ï¿½ï¿½ONï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü±ï¿½Ö¾Î»Îª0
 		if(Turn_Off(Voltage)==0||(Allow_Recharge&&EN&&!Flag_Stop)) 
 		{ 			
 			//Speed closed-loop control to calculate the PWM value of each motor, 
 			//PWM represents the actual wheel speed					 
-			//ËÙ¶È±Õ»·¿ØÖÆ¼ÆËã¸÷µç»úPWMÖµ£¬PWM´ú±í³µÂÖÊµ¼Ê×ªËÙ
+			//ï¿½Ù¶È±Õ»ï¿½ï¿½ï¿½ï¿½Æ¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½PWMÖµï¿½ï¿½PWMï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½ï¿½×ªï¿½ï¿½
 			MOTOR_A.Motor_Pwm=Incremental_PI_A(MOTOR_A.Encoder, MOTOR_A.Target);
 			MOTOR_B.Motor_Pwm=Incremental_PI_B(MOTOR_B.Encoder, MOTOR_B.Target);
 			MOTOR_C.Motor_Pwm=Incremental_PI_C(MOTOR_C.Encoder, MOTOR_C.Target);
@@ -386,28 +381,28 @@ void Balance_task(void *pvParameters)
 
 			Limit_Pwm(16700);
 
-			//¼ì²âÊÇ·ñÐèÒªÇå³ýPWM²¢×Ô¶¯Ö´ÐÐÇåÀí
+			//ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½PWMï¿½ï¿½ï¿½Ô¶ï¿½Ö´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 			auto_pwm_clear();
 			
 			//Set different PWM control polarity according to different car models
-			//¸ù¾Ý²»Í¬Ð¡³µÐÍºÅÉèÖÃ²»Í¬µÄPWM¿ØÖÆ¼«ÐÔ
+			//ï¿½ï¿½ï¿½Ý²ï¿½Í¬Ð¡ï¿½ï¿½ï¿½Íºï¿½ï¿½ï¿½ï¿½Ã²ï¿½Í¬ï¿½ï¿½PWMï¿½ï¿½ï¿½Æ¼ï¿½ï¿½ï¿½
 			switch(Car_Mode)
 			{
 				case Mec_Car:case Mec_Car_V550:
-					Set_Pwm( MOTOR_A.Motor_Pwm, -MOTOR_B.Motor_Pwm, -MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm, 0    ); break; //Mecanum wheel car       //Âó¿ËÄÉÄ·ÂÖÐ¡³µ
-				case Omni_Car:      Set_Pwm(-MOTOR_A.Motor_Pwm,  MOTOR_B.Motor_Pwm, -MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm, 0    ); break; //Omni car                //È«ÏòÂÖÐ¡³µ
-				case Akm_Car:       Set_Pwm( MOTOR_A.Motor_Pwm,  MOTOR_B.Motor_Pwm,  MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm, Servo); break; //Ackermann structure car //°¢¿ËÂüÐ¡³µ
-				case Diff_Car:      Set_Pwm( MOTOR_A.Motor_Pwm,  MOTOR_B.Motor_Pwm,  MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm, 0    ); break; //Differential car        //Á½ÂÖ²îËÙÐ¡³µ
+					Set_Pwm( MOTOR_A.Motor_Pwm, -MOTOR_B.Motor_Pwm, -MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm); break; //Mecanum wheel car       //ï¿½ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½Ð¡ï¿½ï¿½
+				case Omni_Car:      Set_Pwm(-MOTOR_A.Motor_Pwm,  MOTOR_B.Motor_Pwm, -MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm); break; //Omni car                //È«ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½
+				case Akm_Car:       Set_Pwm( MOTOR_A.Motor_Pwm,  MOTOR_B.Motor_Pwm,  MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm); break; //Ackermann structure car //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½
+				case Diff_Car:      Set_Pwm( MOTOR_A.Motor_Pwm,  MOTOR_B.Motor_Pwm,  MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm); break; //Differential car        //ï¿½ï¿½ï¿½Ö²ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½
 				case FourWheel_Car:case FourWheel_Car_V550:
-					Set_Pwm( MOTOR_A.Motor_Pwm, -MOTOR_B.Motor_Pwm, -MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm, 0    ); break; //FourWheel car           //ËÄÇý³µ 
-				case Tank_Car:      Set_Pwm( MOTOR_A.Motor_Pwm,  MOTOR_B.Motor_Pwm,  MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm, 0    ); break; //Tank Car                //ÂÄ´ø³µ
+					Set_Pwm( MOTOR_A.Motor_Pwm, -MOTOR_B.Motor_Pwm, -MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm); break; //FourWheel car           //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+				case Tank_Car:      Set_Pwm( MOTOR_A.Motor_Pwm,  MOTOR_B.Motor_Pwm,  MOTOR_C.Motor_Pwm, MOTOR_D.Motor_Pwm); break; //Tank Car                //ï¿½Ä´ï¿½ï¿½ï¿½
 			}
 		}
 		//If Turn_Off(Voltage) returns to 1, the car is not allowed to move, and the PWM value is set to 0
-		//Èç¹ûTurn_Off(Voltage)·µ»ØÖµÎª1£¬²»ÔÊÐí¿ØÖÆÐ¡³µ½øÐÐÔË¶¯£¬PWMÖµÉèÖÃÎª0
-		else	Set_Pwm(0,0,0,0,0); 
+		//ï¿½ï¿½ï¿½Turn_Off(Voltage)ï¿½ï¿½ï¿½ï¿½ÖµÎª1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¶ï¿½ï¿½ï¿½PWMÖµï¿½ï¿½ï¿½ï¿½Îª0
+		else	Set_Pwm(0,0,0,0);
 		
-		//FlashÐ´Èë
+		//FlashÐ´ï¿½ï¿½
 		if( 1 == FlashParam_Save(&FlashWriteFlag) )
 		{
 			Buzzer_count=0;
@@ -418,45 +413,42 @@ void Balance_task(void *pvParameters)
 Function: Assign a value to the PWM register to control wheel speed and direction
 Input   : PWM
 Output  : none
-º¯Êý¹¦ÄÜ£º¸³Öµ¸øPWM¼Ä´æÆ÷£¬¿ØÖÆ³µÂÖ×ªËÙÓë·½Ïò
-Èë¿Ú²ÎÊý£ºPWM
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½Öµï¿½ï¿½PWMï¿½Ä´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ³ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ë·½ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½PWM
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
-void Set_Pwm(int motor_a,int motor_b,int motor_c,int motor_d,int servo)
+void Set_Pwm(int motor_a,int motor_b,int motor_c,int motor_d)
 {
 	//Forward and reverse control of motor
-	//µç»úÕý·´×ª¿ØÖÆ
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½
 	if(motor_a<0)			PWMA1=16799,PWMA2=16799+motor_a;
 	else 	            PWMA2=16799,PWMA1=16799-motor_a;
-	
+
 	//Forward and reverse control of motor
-	//µç»úÕý·´×ª¿ØÖÆ	
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½
 	if(motor_b<0)			PWMB1=16799,PWMB2=16799+motor_b;
 	else 	            PWMB2=16799,PWMB1=16799-motor_b;
 //  PWMB1=10000,PWMB2=5000;
 
 	//Forward and reverse control of motor
-	//µç»úÕý·´×ª¿ØÖÆ	
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½
 	if(motor_c<0)			PWMC1=16799,PWMC2=16799+motor_c;
 	else 	            PWMC2=16799,PWMC1=16799-motor_c;
-	
+
 	//Forward and reverse control of motor
-	//µç»úÕý·´×ª¿ØÖÆ
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½
 	if(motor_d<0)			PWMD1=16799,PWMD2=16799+motor_d;
 	else 	            PWMD2=16799,PWMD1=16799-motor_d;
-	
-	//Servo control
-	//¶æ»ú¿ØÖÆ
-	Servo_PWM =servo;
+
 }
 
 /**************************************************************************
 Function: Limit PWM value
 Input   : Value
 Output  : none
-º¯Êý¹¦ÄÜ£ºÏÞÖÆPWMÖµ 
-Èë¿Ú²ÎÊý£º·ùÖµ
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½PWMÖµ
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 void Limit_Pwm(int amplitude)
 {	
@@ -469,9 +461,9 @@ void Limit_Pwm(int amplitude)
 Function: Limiting function
 Input   : Value
 Output  : none
-º¯Êý¹¦ÄÜ£ºÏÞ·ùº¯Êý
-Èë¿Ú²ÎÊý£º·ùÖµ
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½Þ·ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 float target_limit_float(float insert,float low,float high)
 {
@@ -495,9 +487,9 @@ int target_limit_int(int insert,int low,int high)
 Function: Check the battery voltage, enable switch status, software failure flag status
 Input   : Voltage
 Output  : Whether control is allowed, 1: not allowed, 0 allowed
-º¯Êý¹¦ÄÜ£º¼ì²éµç³ØµçÑ¹¡¢Ê¹ÄÜ¿ª¹Ø×´Ì¬¡¢Èí¼þÊ§ÄÜ±êÖ¾Î»×´Ì¬
-Èë¿Ú²ÎÊý£ºµçÑ¹
-·µ»Ø  Öµ£ºÊÇ·ñÔÊÐí¿ØÖÆ£¬1£º²»ÔÊÐí£¬0ÔÊÐí
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½Øµï¿½Ñ¹ï¿½ï¿½Ê¹ï¿½Ü¿ï¿½ï¿½ï¿½×´Ì¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§ï¿½Ü±ï¿½Ö¾Î»×´Ì¬
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ¹
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ£ï¿½1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½0ï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 u8 Turn_Off( int voltage)
 {
@@ -518,9 +510,9 @@ u8 Turn_Off( int voltage)
 Function: Calculate absolute value
 Input   : long int
 Output  : unsigned int
-º¯Êý¹¦ÄÜ£ºÇó¾ø¶ÔÖµ
-Èë¿Ú²ÎÊý£ºlong int
-·µ»Ø  Öµ£ºunsigned int
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½long int
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½unsigned int
 **************************************************************************/
 u32 myabs(long int a)
 { 		   
@@ -534,41 +526,41 @@ Function: Incremental PI controller
 Input   : Encoder measured value (actual speed), target speed
 Output  : Motor PWM
 According to the incremental discrete PID formula
-pwm+=Kp[e£¨k£©-e(k-1)]+Ki*e(k)+Kd[e(k)-2e(k-1)+e(k-2)]
+pwm+=Kp[eï¿½ï¿½kï¿½ï¿½-e(k-1)]+Ki*e(k)+Kd[e(k)-2e(k-1)+e(k-2)]
 e(k) represents the current deviation
 e(k-1) is the last deviation and so on
 PWM stands for incremental output
 In our speed control closed loop system, only PI control is used
-pwm+=Kp[e£¨k£©-e(k-1)]+Ki*e(k)
+pwm+=Kp[eï¿½ï¿½kï¿½ï¿½-e(k-1)]+Ki*e(k)
 
-º¯Êý¹¦ÄÜ£ºÔöÁ¿Ê½PI¿ØÖÆÆ÷
-Èë¿Ú²ÎÊý£º±àÂëÆ÷²âÁ¿Öµ(Êµ¼ÊËÙ¶È)£¬Ä¿±êËÙ¶È
-·µ»Ø  Öµ£ºµç»úPWM
-¸ù¾ÝÔöÁ¿Ê½ÀëÉ¢PID¹«Ê½ 
-pwm+=Kp[e£¨k£©-e(k-1)]+Ki*e(k)+Kd[e(k)-2e(k-1)+e(k-2)]
-e(k)´ú±í±¾´ÎÆ«²î 
-e(k-1)´ú±íÉÏÒ»´ÎµÄÆ«²î  ÒÔ´ËÀàÍÆ 
-pwm´ú±íÔöÁ¿Êä³ö
-ÔÚÎÒÃÇµÄËÙ¶È¿ØÖÆ±Õ»·ÏµÍ³ÀïÃæ£¬Ö»Ê¹ÓÃPI¿ØÖÆ
-pwm+=Kp[e£¨k£©-e(k-1)]+Ki*e(k)
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½Ê½PIï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ(Êµï¿½ï¿½ï¿½Ù¶ï¿½)ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½ï¿½PWM
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê½ï¿½ï¿½É¢PIDï¿½ï¿½Ê½ 
+pwm+=Kp[eï¿½ï¿½kï¿½ï¿½-e(k-1)]+Ki*e(k)+Kd[e(k)-2e(k-1)+e(k-2)]
+e(k)ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½ 
+e(k-1)ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½Îµï¿½Æ«ï¿½ï¿½  ï¿½Ô´ï¿½ï¿½ï¿½ï¿½ï¿½ 
+pwmï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½ï¿½Çµï¿½ï¿½Ù¶È¿ï¿½ï¿½Æ±Õ»ï¿½ÏµÍ³ï¿½ï¿½ï¿½æ£¬Ö»Ê¹ï¿½ï¿½PIï¿½ï¿½ï¿½ï¿½
+pwm+=Kp[eï¿½ï¿½kï¿½ï¿½-e(k-1)]+Ki*e(k)
 **************************************************************************/
 int Incremental_PI_A (float Encoder,float Target)
 { 	
 	 static float Bias,Pwm,Last_bias;
-	 Bias=Target-Encoder; //Calculate the deviation //¼ÆËãÆ«²î
+	 Bias=Target-Encoder; //Calculate the deviation //ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias; 
 	 if(Pwm>16700)Pwm=16700;
 	 if(Pwm<-16700)Pwm=-16700;
-	 Last_bias=Bias; //Save the last deviation //±£´æÉÏÒ»´ÎÆ«²î 
+	 Last_bias=Bias; //Save the last deviation //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Æ«ï¿½ï¿½ 
 	
-	//Çå³ýPWM±êÖ¾Î»£¬¸ÃÎ»Îª1Ê±´ú±íÐèÒªÇå³ýPWM
+	//ï¿½ï¿½ï¿½PWMï¿½ï¿½Ö¾Î»ï¿½ï¿½ï¿½ï¿½Î»Îª1Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½PWM
 	if( start_clear ) 
 	{
-		//PWMÖð½¥µÝ¼õµÄ·½Ê½Çå³ý£¬¼õ»ºÐ¡³µÓÉÓÚµç»úÊÍ·Å¶øÔì³ÉÇáÎ¢ÒÆ¶¯µÄÓ°Ïì
+		//PWMï¿½ð½¥µÝ¼ï¿½ï¿½Ä·ï¿½Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½Í·Å¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î¢ï¿½Æ¶ï¿½ï¿½ï¿½Ó°ï¿½ï¿½
 		if(Pwm>0) Pwm--;
 		if(Pwm<0) Pwm++;
 		
-		//ÈôÇå³ýÍê±Ï£¬Ôò±ê¼Ç±êÖ¾Î»£¬4¸öµç»ú·Ö±ðÓÃ4¸öbit±íÊ¾
+		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï£ï¿½ï¿½ï¿½ï¿½Ç±ï¿½Ö¾Î»ï¿½ï¿½4ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö±ï¿½ï¿½ï¿½4ï¿½ï¿½bitï¿½ï¿½Ê¾
 		if( Pwm<2.0f&&Pwm>-2.0f ) Pwm=0,clear_state |= 1<<0;
 		else clear_state &= ~(1<<0);
 	}
@@ -578,11 +570,11 @@ int Incremental_PI_A (float Encoder,float Target)
 int Incremental_PI_B (float Encoder,float Target)
 {  
 	 static float Bias,Pwm,Last_bias;
-	 Bias=Target-Encoder; //Calculate the deviation //¼ÆËãÆ«²î
+	 Bias=Target-Encoder; //Calculate the deviation //ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;  
 	 if(Pwm>16700)Pwm=16700;
 	 if(Pwm<-16700)Pwm=-16700;
-	 Last_bias=Bias; //Save the last deviation //±£´æÉÏÒ»´ÎÆ«²î 
+	 Last_bias=Bias; //Save the last deviation //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Æ«ï¿½ï¿½ 
 	if( start_clear ) 
 	{
 		if(Pwm>0) Pwm--;
@@ -596,11 +588,11 @@ int Incremental_PI_B (float Encoder,float Target)
 int Incremental_PI_C (float Encoder,float Target)
 {  
 	 static float Bias,Pwm,Last_bias;
-	 Bias=Target-Encoder; //Calculate the deviation //¼ÆËãÆ«²î
+	 Bias=Target-Encoder; //Calculate the deviation //ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias; 
 	 if(Pwm>16700)Pwm=16700;
 	 if(Pwm<-16700)Pwm=-16700;
-	 Last_bias=Bias; //Save the last deviation //±£´æÉÏÒ»´ÎÆ«²î 
+	 Last_bias=Bias; //Save the last deviation //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Æ«ï¿½ï¿½ 
 	
 	if(Car_Mode==Diff_Car || Car_Mode==Akm_Car || Car_Mode==Tank_Car) Pwm = 0;
 	if( start_clear ) 
@@ -617,11 +609,11 @@ int Incremental_PI_D (float Encoder,float Target)
 {  
 	 static float Bias,Pwm,Last_bias;
 	
-	 Bias=Target-Encoder; //Calculate the deviation //¼ÆËãÆ«²î
+	 Bias=Target-Encoder; //Calculate the deviation //ï¿½ï¿½ï¿½ï¿½Æ«ï¿½ï¿½
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;  
 	 if(Pwm>16700)Pwm=16700;
 	 if(Pwm<-16700)Pwm=-16700;
-	 Last_bias=Bias; //Save the last deviation //±£´æÉÏÒ»´ÎÆ«²î 
+	 Last_bias=Bias; //Save the last deviation //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½Æ«ï¿½ï¿½ 
 	
 	if(Car_Mode==Diff_Car || Car_Mode==Akm_Car || Car_Mode==Tank_Car || Car_Mode==Omni_Car ) Pwm = 0;
 	if( start_clear ) 
@@ -632,7 +624,7 @@ int Incremental_PI_D (float Encoder,float Target)
 		if( Pwm<2.0f&&Pwm>-2.0f ) Pwm=0,clear_state |= 1<<3;
 		else clear_state &= ~(1<<3);
 		
-		//4¸öµç»ú¾ùÇå³ýÍê±Ï£¬Ôò¹Ø±ÕÇå³ýÈÎÎñ
+		//4ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï£ï¿½ï¿½ï¿½Ø±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 		if( (clear_state&0xff)==0x0f ) start_clear = 0,clear_done_once=1,clear_state=0;
 	}
 	 return Pwm; 
@@ -641,16 +633,16 @@ int Incremental_PI_D (float Encoder,float Target)
 Function: Processes the command sent by APP through usart 2
 Input   : none
 Output  : none
-º¯Êý¹¦ÄÜ£º¶ÔAPPÍ¨¹ý´®¿Ú2·¢ËÍ¹ýÀ´µÄÃüÁî½øÐÐ´¦Àí
-Èë¿Ú²ÎÊý£ºÎÞ
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½APPÍ¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½2ï¿½ï¿½ï¿½Í¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 void Get_RC(void)
 {
 	u8 Flag_Move=1;
-	if(Car_Mode==Mec_Car||Car_Mode==Omni_Car||Car_Mode==Mec_Car_V550) //The omnidirectional wheel moving trolley can move laterally //È«ÏòÂÖÔË¶¯Ð¡³µ¿ÉÒÔ½øÐÐºáÏòÒÆ¶¯
+	if(Car_Mode==Mec_Car||Car_Mode==Omni_Car||Car_Mode==Mec_Car_V550) //The omnidirectional wheel moving trolley can move laterally //È«ï¿½ï¿½ï¿½ï¿½ï¿½Ë¶ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½ï¿½Ô½ï¿½ï¿½Ðºï¿½ï¿½ï¿½ï¿½Æ¶ï¿½
 	{
-	 switch(Flag_Direction)  //Handle direction control commands //´¦Àí·½Ïò¿ØÖÆÃüÁî
+	 switch(Flag_Direction)  //Handle direction control commands //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	 { 
 			case 1:      Move_X=RC_Velocity;  	 Move_Y=0;             Flag_Move=1;    break;
 			case 2:      Move_X=RC_Velocity;  	 Move_Y=-RC_Velocity;  Flag_Move=1; 	 break;
@@ -665,15 +657,15 @@ void Get_RC(void)
 	 if(Flag_Move==0)		
 	 {	
 		 //If no direction control instruction is available, check the steering control status
-		 //Èç¹ûÎÞ·½Ïò¿ØÖÆÖ¸Áî£¬¼ì²é×ªÏò¿ØÖÆ×´Ì¬
-		 if     (Flag_Left ==1)  Move_Z= PI/2*(RC_Velocity/500); //left rotation  //×ó×Ô×ª  
-		 else if(Flag_Right==1)  Move_Z=-PI/2*(RC_Velocity/500); //right rotation //ÓÒ×Ô×ª
+		 //ï¿½ï¿½ï¿½ï¿½Þ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¸ï¿½î£¬ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½ï¿½×´Ì¬
+		 if     (Flag_Left ==1)  Move_Z= PI/2*(RC_Velocity/500); //left rotation  //ï¿½ï¿½ï¿½ï¿½×ª  
+		 else if(Flag_Right==1)  Move_Z=-PI/2*(RC_Velocity/500); //right rotation //ï¿½ï¿½ï¿½ï¿½×ª
 		 else 		               Move_Z=0;                       //stop           //Í£Ö¹
 	 }
 	}	
-	else //Non-omnidirectional moving trolley //·ÇÈ«ÏòÒÆ¶¯Ð¡³µ
+	else //Non-omnidirectional moving trolley //ï¿½ï¿½È«ï¿½ï¿½ï¿½Æ¶ï¿½Ð¡ï¿½ï¿½
 	{
-	 switch(Flag_Direction) //Handle direction control commands //´¦Àí·½Ïò¿ØÖÆÃüÁî
+	 switch(Flag_Direction) //Handle direction control commands //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	 { 
 			case 1:      Move_X=+RC_Velocity;  	 Move_Z=0;         break;
 			case 2:      Move_X=+RC_Velocity;  	 Move_Z=-PI/2;   	 break;
@@ -685,29 +677,29 @@ void Get_RC(void)
 			case 8:      Move_X=+RC_Velocity; 	 Move_Z=+PI/2;     break; 
 			default:     Move_X=0;               Move_Z=0;         break;
 	 }
-	 if     (Flag_Left ==1)  Move_Z= PI/2; //left rotation  //×ó×Ô×ª 
-	 else if(Flag_Right==1)  Move_Z=-PI/2; //right rotation //ÓÒ×Ô×ª	
+	 if     (Flag_Left ==1)  Move_Z= PI/2; //left rotation  //ï¿½ï¿½ï¿½ï¿½×ª 
+	 else if(Flag_Right==1)  Move_Z=-PI/2; //right rotation //ï¿½ï¿½ï¿½ï¿½×ª	
 	}
 	
-	//Z-axis data conversion //ZÖáÊý¾Ý×ª»¯
+	//Z-axis data conversion //Zï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½
 	if(Car_Mode==Akm_Car)
 	{
 		//Ackermann structure car is converted to the front wheel steering Angle system target value, and kinematics analysis is pearformed
-		//°¢¿ËÂü½á¹¹Ð¡³µ×ª»»ÎªÇ°ÂÖ×ªÏò½Ç¶È
+		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½á¹¹Ð¡ï¿½ï¿½×ªï¿½ï¿½ÎªÇ°ï¿½ï¿½×ªï¿½ï¿½Ç¶ï¿½
 		Move_Z=Move_Z*2/9; 
 	}
 	else if(Car_Mode==Diff_Car||Car_Mode==Tank_Car||Car_Mode==FourWheel_Car||Car_Mode==FourWheel_Car_V550)
 	{
-	  if(Move_X<0) Move_Z=-Move_Z; //The differential control principle series requires this treatment //²îËÙ¿ØÖÆÔ­ÀíÏµÁÐÐèÒª´Ë´¦Àí
+	  if(Move_X<0) Move_Z=-Move_Z; //The differential control principle series requires this treatment //ï¿½ï¿½ï¿½Ù¿ï¿½ï¿½ï¿½Ô­ï¿½ï¿½Ïµï¿½ï¿½ï¿½ï¿½Òªï¿½Ë´ï¿½ï¿½ï¿½
 		Move_Z=Move_Z*RC_Velocity/500;
 	}		
 	
 	//Unit conversion, mm/s -> m/s
-  //µ¥Î»×ª»»£¬mm/s -> m/s	
+  //ï¿½ï¿½Î»×ªï¿½ï¿½ï¿½ï¿½mm/s -> m/s	
 	Move_X=Move_X/1000;       Move_Y=Move_Y/1000;         Move_Z=Move_Z;
 	
 	//Control target value is obtained and kinematics analysis is performed
-	//µÃµ½¿ØÖÆÄ¿±êÖµ£¬½øÐÐÔË¶¯Ñ§·ÖÎö
+	//ï¿½Ãµï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½ï¿½ï¿½
 	Drive_Motor(Move_X,Move_Y,Move_Z);
 }
 
@@ -715,22 +707,22 @@ void Get_RC(void)
 Function: Handle PS2 controller control commands
 Input   : none
 Output  : none
-º¯Êý¹¦ÄÜ£º¶ÔPS2ÊÖ±ú¿ØÖÆÃüÁî½øÐÐ´¦Àí
-Èë¿Ú²ÎÊý£ºÎÞ
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½PS2ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 #include "xbox360_gamepad.h"
 #include "WiredPS2_gamepad.h"
-//xbox360ÓÎÏ·ÊÖ±ú°´¼ü»Øµ÷º¯Êý
+//xbox360ï¿½ï¿½Ï·ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Øµï¿½ï¿½ï¿½ï¿½ï¿½
 void Xbox360GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 {
-	//°´ÏÂstart°´¼ü
+	//ï¿½ï¿½ï¿½ï¿½startï¿½ï¿½ï¿½ï¿½
 	if( keyid == Xbox360KEY_Menu && event == GamePadKeyEvent_SINGLECLICK )
 		GamePadInterface->StartFlag = 1;
 	
 	if( gamepad_brand == Xbox360 )
 	{
-		//ÊÖ±ú¼Ó¼õËÙ
+		//ï¿½Ö±ï¿½ï¿½Ó¼ï¿½ï¿½ï¿½
 		if( keyid == Xbox360KEY_LB && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK )  )
 			RC_Velocity -= 50;
 		else if( keyid == Xbox360KEY_RB && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK )  )
@@ -748,7 +740,7 @@ void Xbox360GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 	}
 	
 	
-	//Õð¶¯¼¤»îÓëÈ¡Ïû
+	//ï¿½ð¶¯¼ï¿½ï¿½ï¿½ï¿½ï¿½È¡ï¿½ï¿½
 	if( keyid == Xbox360KEY_SELECT && event == GamePadKeyEvent_LONGCLICK )
 	{
 		if( GamePadInterface->Vib_EN )
@@ -766,14 +758,14 @@ void Xbox360GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 	}
 }
 
-//ÓÐÏßUSBÊÖ±ú»Øµ÷º¯Êý
+//ï¿½ï¿½ï¿½ï¿½USBï¿½Ö±ï¿½ï¿½Øµï¿½ï¿½ï¿½ï¿½ï¿½
 void Wired_USB_PS2GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 {
-	//°´ÏÂstart°´¼ü
+	//ï¿½ï¿½ï¿½ï¿½startï¿½ï¿½ï¿½ï¿½
 	if( keyid == PS2KEY_START && event == GamePadKeyEvent_SINGLECLICK )
 		GamePadInterface->StartFlag = 1;
 	
-	//ÊÖ±ú¼Ó¼õËÙ
+	//ï¿½Ö±ï¿½ï¿½Ó¼ï¿½ï¿½ï¿½
 	else if( keyid == PS2KEY_L2 && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK )  )
 		RC_Velocity -= 50;
 	else if( keyid == PS2KEY_L1 && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK )  )
@@ -782,14 +774,14 @@ void Wired_USB_PS2GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t 
 	if( RC_Velocity < 0 ) RC_Velocity = 0;
 }
 
-//¾­µäPS2ÊÖ±ú»Øµ÷º¯Êý,·ÇUSB¿î
+//ï¿½ï¿½ï¿½ï¿½PS2ï¿½Ö±ï¿½ï¿½Øµï¿½ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½USBï¿½ï¿½
 void Classic_PS2GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 {
-	//°´ÏÂstart°´¼ü
+	//ï¿½ï¿½ï¿½ï¿½startï¿½ï¿½ï¿½ï¿½
 	if( keyid == PS2KEY_START && event == GamePadKeyEvent_SINGLECLICK )
 		GamePadInterface->StartFlag = 1;
 	
-	//ÊÖ±ú¼Ó¼õËÙ
+	//ï¿½Ö±ï¿½ï¿½Ó¼ï¿½ï¿½ï¿½
 	else if( keyid == PS2KEY_L2 && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK )  )
 		RC_Velocity -= 50;
 	else if( keyid == PS2KEY_L1 && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK )  )
@@ -799,16 +791,16 @@ void Classic_PS2GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t ev
 }
 
 
-//ÊÖ±úÕð¶¯Ó³Éäº¯Êý
+//ï¿½Ö±ï¿½ï¿½ï¿½Ó³ï¿½äº¯ï¿½ï¿½
 static uint8_t map_to_vib(float x) {
-    // ¼ì²éÊäÈë·¶Î§£¬ÏÞÖÆÔÚ [0.2, 1.2] ÄÚ
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë·¶Î§ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ [0.2, 1.2] ï¿½ï¿½
     if (x < 0.1f) return 0;
     if (x > 1.2f) x = 1.2f;
 
-    // ÏßÐÔÓ³Éä
+    // ï¿½ï¿½ï¿½ï¿½Ó³ï¿½ï¿½
     float result = 255.0f * (x - 0.1f) / 1.1f;
 
-    // ËÄÉáÎåÈë²¢×ª»»Îª uint8_t
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë²¢×ªï¿½ï¿½Îª uint8_t
     return (uint8_t)(result + 0.5f);
 }
 
@@ -818,24 +810,24 @@ void PS2_control(void)
 	float LX=127,LY=127,RX=127;
 	float ThrottleTri = 255;
 	
-	//Ç°½øÒ¡¸Ë
+	//Ç°ï¿½ï¿½Ò¡ï¿½ï¿½
 	LY = GamePadInterface->LY - 127;
 	
-	//×óÓÒºáÒÆ
+	//ï¿½ï¿½ï¿½Òºï¿½ï¿½ï¿½
 	LX = 127 - GamePadInterface->LX;
 	
-	//Ë³ÄæÊ±Õë
+	//Ë³ï¿½ï¿½Ê±ï¿½ï¿½
 	RX = 127 - GamePadInterface->RX;
 	
-	//Ò¡¸ËÎ¢Ð¡·ù¶È¹ýÂË
+	//Ò¡ï¿½ï¿½Î¢Ð¡ï¿½ï¿½ï¿½È¹ï¿½ï¿½ï¿½
 	if( fabs(LY)<20 ) LY = 0;
 	if( fabs(LX)<20 ) LX = 0;
 	if( fabs(RX)<20 ) RX = 0;
 	
-	//Õë¶Ôxbox360ÊÖ±ú£¬°â»úÎªÄ£ÄâÁ¿Ê±£¬ÔÊÐíÊ¹ÓÃ°â»ú¿ØÖÆ
+	//ï¿½ï¿½ï¿½xbox360ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÎªÄ£ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ã°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if( gamepad_brand == Xbox360 )
 	{
-		//Ç°½øÒ¡¸ËÎÞÖµÊ±,²ÉÓÃ°â»úµÄÖµ
+		//Ç°ï¿½ï¿½Ò¡ï¿½ï¿½ï¿½ï¿½ÖµÊ±,ï¿½ï¿½ï¿½Ã°ï¿½ï¿½ï¿½ï¿½Öµ
 		if( (int)LY == 0 )
 		{
 			if( GamePadInterface->LT == 0 && GamePadInterface->RT != 0 )
@@ -847,7 +839,7 @@ void PS2_control(void)
 		}
 	}
 	
-	//Õë¶ÔusbÓÐÏßÊÖ±ú,ÔÚ·ÇÄ£ÄâÁ¿Ä£Ê½ÏÂµÄÒ¡¸ËÖµÓ³Éä
+	//ï¿½ï¿½ï¿½usbï¿½ï¿½ï¿½ï¿½ï¿½Ö±ï¿½,ï¿½Ú·ï¿½Ä£ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½Âµï¿½Ò¡ï¿½ï¿½ÖµÓ³ï¿½ï¿½
 	else if( gamepad_brand == PS2_USB_Wired ||  gamepad_brand == PS2_USB_WiredV2 )
 	{
 		if( fabs(RX)<0.0001f )
@@ -860,7 +852,7 @@ void PS2_control(void)
 	}
 	
 	  //Handle PS2 controller control commands
-	  //¶ÔPS2ÊÖ±ú¿ØÖÆÃüÁî½øÐÐ´¦Àí
+	  //ï¿½ï¿½PS2ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½
 	
 	Move_X = (LY/127.0f) * RC_Velocity * (ThrottleTri/255.0f);
 	Move_Y = (LX/127.0f) * RC_Velocity;
@@ -870,7 +862,7 @@ void PS2_control(void)
 //		Move_Y=LY*RC_Velocity/128; 
 //		Move_Z=RY*(PI/2)/128;      
 	
-	  //Z-axis data conversion //ZÖáÊý¾Ý×ª»¯
+	  //Z-axis data conversion //Zï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½
 	  if(Car_Mode==Mec_Car||Car_Mode==Omni_Car||Car_Mode==Mec_Car_V550)
 		{
 			Move_Z=Move_Z*RC_Velocity/500;
@@ -878,34 +870,34 @@ void PS2_control(void)
 		else if(Car_Mode==Akm_Car)
 		{
 			//Ackermann structure car is converted to the front wheel steering Angle system target value, and kinematics analysis is pearformed
-		  //°¢¿ËÂü½á¹¹Ð¡³µ×ª»»ÎªÇ°ÂÖ×ªÏò½Ç¶È
+		  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½á¹¹Ð¡ï¿½ï¿½×ªï¿½ï¿½ÎªÇ°ï¿½ï¿½×ªï¿½ï¿½Ç¶ï¿½
 			Move_Z=Move_Z*2/9;
 		}
 		else if(Car_Mode==Diff_Car||Car_Mode==Tank_Car||Car_Mode==FourWheel_Car||Car_Mode==FourWheel_Car_V550)
 		{
-			if(Move_X<0) Move_Z=-Move_Z; //The differential control principle series requires this treatment //²îËÙ¿ØÖÆÔ­ÀíÏµÁÐÐèÒª´Ë´¦Àí
+			if(Move_X<0) Move_Z=-Move_Z; //The differential control principle series requires this treatment //ï¿½ï¿½ï¿½Ù¿ï¿½ï¿½ï¿½Ô­ï¿½ï¿½Ïµï¿½ï¿½ï¿½ï¿½Òªï¿½Ë´ï¿½ï¿½ï¿½
 			Move_Z=Move_Z*RC_Velocity/500;
 		}	
 		 
 	  //Unit conversion, mm/s -> m/s
-    //µ¥Î»×ª»»£¬mm/s -> m/s	
+    //ï¿½ï¿½Î»×ªï¿½ï¿½ï¿½ï¿½mm/s -> m/s	
 		Move_X=Move_X/1000;        
 		Move_Y=Move_Y/1000;    
 		Move_Z=Move_Z;
 		
 		//Control target value is obtained and kinematics analysis is performed
-	  //µÃµ½¿ØÖÆÄ¿±êÖµ£¬½øÐÐÔË¶¯Ñ§·ÖÎö
+	  //ï¿½Ãµï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½ï¿½ï¿½
 		Drive_Motor(Move_X,Move_Y,Move_Z);		
 
-	//¸ù¾Ý¼ÓËÙ¶È·´Ó¦Õð¶¯Çé¿ö´«´ïµ½ÊÖ±ú
+	//ï¿½ï¿½ï¿½Ý¼ï¿½ï¿½Ù¶È·ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ïµ½ï¿½Ö±ï¿½
 	#include "bsp_gamepad.h"
 	
-	//ZÖáÊý¾ÝÅÐ¶ÏÕð¶¯Ç¿¶È
+	//Zï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½ï¿½ï¿½Ç¿ï¿½ï¿½
 	float now_z = imu.accel.z/1671.84f;
 	static float last_z = 0;
 	float strength = fabs(last_z - now_z);
 	
-	//Õð¶¯Ó³Éäµ½ÊÖ±ú
+	//ï¿½ï¿½Ó³ï¿½äµ½ï¿½Ö±ï¿½
 	if( strength>0.1f && SysVal.Time_count>CONTROL_DELAY)
 	{
 		if( GamePadInterface->SetVibration!=NULL )
@@ -918,18 +910,18 @@ void PS2_control(void)
 Function: The remote control command of model aircraft is processed
 Input   : none
 Output  : none
-º¯Êý¹¦ÄÜ£º¶Ôº½Ä£Ò£¿Ø¿ØÖÆÃüÁî½øÐÐ´¦Àí
-Èë¿Ú²ÎÊý£ºÎÞ
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½Ôºï¿½Ä£Ò£ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 void Remote_Control(void)
 {
 	  //Data within 1 second after entering the model control mode will not be processed
-	  //¶Ô½øÈëº½Ä£¿ØÖÆÄ£Ê½ºó1ÃëÄÚµÄÊý¾Ý²»´¦Àí
+	  //ï¿½Ô½ï¿½ï¿½ëº½Ä£ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½1ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½Ý²ï¿½ï¿½ï¿½ï¿½ï¿½
     static u8 thrice=100; 
-    int Threshold=100; //Threshold to ignore small movements of the joystick //ãÐÖµ£¬ºöÂÔÒ¡¸ËÐ¡·ù¶È¶¯×÷
+    int Threshold=100; //Threshold to ignore small movements of the joystick //ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò¡ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½È¶ï¿½ï¿½ï¿½
 
-	  //limiter //ÏÞ·ù
+	  //limiter //ï¿½Þ·ï¿½
     int LX,LY,RY,RX,Remote_RCvelocity; 
 		Remoter_Ch1=target_limit_int(Remoter_Ch1,1000,2000);
 		Remoter_Ch2=target_limit_int(Remoter_Ch2,1000,2000);
@@ -937,20 +929,20 @@ void Remote_Control(void)
 		Remoter_Ch4=target_limit_int(Remoter_Ch4,1000,2000);
 
 	  // Front and back direction of left rocker. Control forward and backward.
-	  //×óÒ¡¸ËÇ°ºó·½Ïò¡£¿ØÖÆÇ°½øºóÍË¡£
+	  //ï¿½ï¿½Ò¡ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ò¡£¿ï¿½ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ï¿½Ë¡ï¿½
     LX=Remoter_Ch2-1500; 
 	
 	  //Left joystick left and right.Control left and right movement. Only the wheelie omnidirectional wheelie will use the channel.
 	  //Ackerman trolleys use this channel as a PWM output to control the steering gear
-	  //×óÒ¡¸Ë×óÓÒ·½Ïò¡£¿ØÖÆ×óÓÒÒÆ¶¯¡£ÂóÂÖÈ«ÏòÂÖ²Å»áÊ¹ÓÃµ½¸ÄÍ¨µÀ¡£°¢¿ËÂüÐ¡³µÊ¹ÓÃ¸ÃÍ¨µÀ×÷ÎªPWMÊä³ö¿ØÖÆ¶æ»ú
+	  //ï¿½ï¿½Ò¡ï¿½ï¿½ï¿½ï¿½ï¿½Ò·ï¿½ï¿½ò¡£¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È«ï¿½ï¿½ï¿½Ö²Å»ï¿½Ê¹ï¿½Ãµï¿½ï¿½ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½Ê¹ï¿½Ã¸ï¿½Í¨ï¿½ï¿½ï¿½ï¿½ÎªPWMï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½
     LY=Remoter_Ch4-1500;
 
     //Front and back direction of right rocker. Throttle/acceleration/deceleration.
-		//ÓÒÒ¡¸ËÇ°ºó·½Ïò¡£ÓÍÃÅ/¼Ó¼õËÙ¡£
+		//ï¿½ï¿½Ò¡ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½/ï¿½Ó¼ï¿½ï¿½Ù¡ï¿½
 	  RX=Remoter_Ch3-1500;
 
     //Right stick left and right. To control the rotation. 
-		//ÓÒÒ¡¸Ë×óÓÒ·½Ïò¡£¿ØÖÆ×Ô×ª¡£
+		//ï¿½ï¿½Ò¡ï¿½ï¿½ï¿½ï¿½ï¿½Ò·ï¿½ï¿½ò¡£¿ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½
     RY=Remoter_Ch1-1500; 
 
     if(LX>-Threshold&&LX<Threshold)LX=0;
@@ -958,17 +950,17 @@ void Remote_Control(void)
     if(RX>-Threshold&&RX<Threshold)RX=0;
 	  if(RY>-Threshold&&RY<Threshold)RY=0;
 		
-		//Throttle related //ÓÍÃÅÏà¹Ø
+		//Throttle related //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 		Remote_RCvelocity=RC_Velocity+RX;
 	  if(Remote_RCvelocity<0)Remote_RCvelocity=0;
 		
 		//The remote control command of model aircraft is processed
-		//¶Ôº½Ä£Ò£¿Ø¿ØÖÆÃüÁî½øÐÐ´¦Àí
+		//ï¿½Ôºï¿½Ä£Ò£ï¿½Ø¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð´ï¿½ï¿½ï¿½
     Move_X= LX*Remote_RCvelocity/500; 
 		Move_Y=-LY*Remote_RCvelocity/500;
 		Move_Z=-RY*(PI/2)/500;      
 			 
-		//ZÖáÊý¾Ý×ª»¯
+		//Zï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½
 	  if(Car_Mode==Mec_Car||Car_Mode==Omni_Car||Car_Mode==Mec_Car_V550)
 		{
 			Move_Z=Move_Z*Remote_RCvelocity/500;
@@ -976,46 +968,46 @@ void Remote_Control(void)
 		else if(Car_Mode==Akm_Car)
 		{
 			//Ackermann structure car is converted to the front wheel steering Angle system target value, and kinematics analysis is pearformed
-		  //°¢¿ËÂü½á¹¹Ð¡³µ×ª»»ÎªÇ°ÂÖ×ªÏò½Ç¶È
+		  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½á¹¹Ð¡ï¿½ï¿½×ªï¿½ï¿½ÎªÇ°ï¿½ï¿½×ªï¿½ï¿½Ç¶ï¿½
 			Move_Z=Move_Z*2/9;
 		}
 		else if(Car_Mode==Diff_Car||Car_Mode==Tank_Car||Car_Mode==FourWheel_Car||Car_Mode==FourWheel_Car_V550)
 		{
-			if(Move_X<0) Move_Z=-Move_Z; //The differential control principle series requires this treatment //²îËÙ¿ØÖÆÔ­ÀíÏµÁÐÐèÒª´Ë´¦Àí
+			if(Move_X<0) Move_Z=-Move_Z; //The differential control principle series requires this treatment //ï¿½ï¿½ï¿½Ù¿ï¿½ï¿½ï¿½Ô­ï¿½ï¿½Ïµï¿½ï¿½ï¿½ï¿½Òªï¿½Ë´ï¿½ï¿½ï¿½
 			Move_Z=Move_Z*Remote_RCvelocity/500;
 		}
 		
 	  //Unit conversion, mm/s -> m/s
-    //µ¥Î»×ª»»£¬mm/s -> m/s	
+    //ï¿½ï¿½Î»×ªï¿½ï¿½ï¿½ï¿½mm/s -> m/s	
 		Move_X=Move_X/1000;       
     Move_Y=Move_Y/1000;      
 		Move_Z=Move_Z;
 		
 	  //Data within 1 second after entering the model control mode will not be processed
-	  //¶Ô½øÈëº½Ä£¿ØÖÆÄ£Ê½ºó1ÃëÄÚµÄÊý¾Ý²»´¦Àí
+	  //ï¿½Ô½ï¿½ï¿½ëº½Ä£ï¿½ï¿½ï¿½ï¿½Ä£Ê½ï¿½ï¿½1ï¿½ï¿½ï¿½Úµï¿½ï¿½ï¿½ï¿½Ý²ï¿½ï¿½ï¿½ï¿½ï¿½
     if(thrice>0) Move_X=0,Move_Z=0,thrice--;
 				
 		//Control target value is obtained and kinematics analysis is performed
-	  //µÃµ½¿ØÖÆÄ¿±êÖµ£¬½øÐÐÔË¶¯Ñ§·ÖÎö
+	  //ï¿½Ãµï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¶ï¿½Ñ§ï¿½ï¿½ï¿½ï¿½
 		Drive_Motor(Move_X,Move_Y,Move_Z);
 }
 /**************************************************************************
 Function: Click the user button to update gyroscope zero
 Input   : none
 Output  : none
-º¯Êý¹¦ÄÜ£ºµ¥»÷ÓÃ»§°´¼ü¸üÐÂÍÓÂÝÒÇÁãµã
-Èë¿Ú²ÎÊý£ºÎÞ
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 void Key(void)
 {	
     u8 tmp;
 
-    //´«ÈëÈÎÎñµÄÆµÂÊ
+    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½
     tmp=KEY_Scan(RATE_100_HZ,0);
 		if(Check==0)
 		{
-    //µ¥»÷ »ò ÊÖ±úÍ¬Ê±°´ÏÂÁ½±ßµÄÏÂ°â»ú£¬¿ªÆô×Ô¶¯»Ø³ä
+    //ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½Ö±ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ßµï¿½ï¿½Â°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½Ø³ï¿½
     if(tmp==single_click )
 	{
 		Allow_Recharge=!Allow_Recharge;
@@ -1023,14 +1015,14 @@ void Key(void)
         ImuData_copy(&imu.Deviation_accel,&imu.accel);
 	}		
 
-    //Ë«»÷ »ò ÊÖ±úÍ¬Ê±°´ÏÂÁ½±ßµÄÒ¡¸Ë,¸üÐÂÍÓÂÝÒÇ
+    //Ë«ï¿½ï¿½ ï¿½ï¿½ ï¿½Ö±ï¿½Í¬Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ßµï¿½Ò¡ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     else if(tmp==double_click) 
 	{
 		ImuData_copy(&imu.Deviation_gyro,&imu.gyro);
         ImuData_copy(&imu.Deviation_accel,&imu.accel);
 	}
 
-    //³¤°´ ÇÐ»»Ò³Ãæ
+    //ï¿½ï¿½ï¿½ï¿½ ï¿½Ð»ï¿½Ò³ï¿½ï¿½
     else if(tmp==long_click )
     {
         oled_refresh_flag=1;
@@ -1044,28 +1036,28 @@ void Key(void)
 Function: Read the encoder value and calculate the wheel speed, unit m/s
 Input   : none
 Output  : none
-º¯Êý¹¦ÄÜ£º¶ÁÈ¡±àÂëÆ÷ÊýÖµ²¢¼ÆËã³µÂÖËÙ¶È£¬µ¥Î»m/s
-Èë¿Ú²ÎÊý£ºÎÞ
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½ï¿½ã³µï¿½ï¿½ï¿½Ù¶È£ï¿½ï¿½ï¿½Î»m/s
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 void Get_Velocity_Form_Encoder(void)
 {
 	  //Retrieves the original data of the encoder
-	  //»ñÈ¡±àÂëÆ÷µÄÔ­Ê¼Êý¾Ý
+	  //ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô­Ê¼ï¿½ï¿½ï¿½ï¿½
 		float Encoder_A_pr,Encoder_B_pr,Encoder_C_pr,Encoder_D_pr; 
 		OriginalEncoder.A=Read_Encoder(2);	
 		OriginalEncoder.B=Read_Encoder(3);	
 		OriginalEncoder.C=Read_Encoder(4);	
 		OriginalEncoder.D=Read_Encoder(5);	
 
-	//¼ÆËã¾ÀÆ«ÏµÊý
+	//ï¿½ï¿½ï¿½ï¿½ï¿½Æ«Ïµï¿½ï¿½
 	float LeftWheelDiff = wheelCoefficient(LineDiffParam,1);
 	float RightWheelDiff = wheelCoefficient(LineDiffParam,0);
 	
 	//test_num=OriginalEncoder.B;
 	
 	  //Decide the encoder numerical polarity according to different car models
-		//¸ù¾Ý²»Í¬Ð¡³µÐÍºÅ¾ö¶¨±àÂëÆ÷ÊýÖµ¼«ÐÔ
+		//ï¿½ï¿½ï¿½Ý²ï¿½Í¬Ð¡ï¿½ï¿½ï¿½ÍºÅ¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½
 		switch(Car_Mode)
 		{
 			case Mec_Car:case Mec_Car_V550:
@@ -1078,7 +1070,7 @@ void Get_Velocity_Form_Encoder(void)
 		}
 		
 		//The encoder converts the raw data to wheel speed in m/s
-		//±àÂëÆ÷Ô­Ê¼Êý¾Ý×ª»»Îª³µÂÖËÙ¶È£¬µ¥Î»m/s
+		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô­Ê¼ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½Ù¶È£ï¿½ï¿½ï¿½Î»m/s
 		MOTOR_A.Encoder= Encoder_A_pr*CONTROL_FREQUENCY*Wheel_perimeter/Encoder_precision;  
 		MOTOR_B.Encoder= Encoder_B_pr*CONTROL_FREQUENCY*Wheel_perimeter/Encoder_precision;  
 		MOTOR_C.Encoder= Encoder_C_pr*CONTROL_FREQUENCY*Wheel_perimeter/Encoder_precision; 
@@ -1102,9 +1094,9 @@ void Get_Velocity_Form_Encoder(void)
 Function: Smoothing the three axis target velocity
 Input   : Three-axis target velocity
 Output  : none
-º¯Êý¹¦ÄÜ£º¶ÔÈýÖáÄ¿±êËÙ¶È×öÆ½»¬´¦Àí
-Èë¿Ú²ÎÊý£ºÈýÖáÄ¿±êËÙ¶È
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½ï¿½Æ½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 void Smooth_control(float vx,float vy,float vz)
 {
@@ -1139,9 +1131,9 @@ void Smooth_control(float vx,float vy,float vz)
 Function: Floating-point data calculates the absolute value
 Input   : float
 Output  : The absolute value of the input number
-º¯Êý¹¦ÄÜ£º¸¡µãÐÍÊý¾Ý¼ÆËã¾ø¶ÔÖµ
-Èë¿Ú²ÎÊý£º¸¡µãÊý
-·µ»Ø  Öµ£ºÊäÈëÊýµÄ¾ø¶ÔÖµ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¾ï¿½ï¿½ï¿½Öµ
 **************************************************************************/
 float float_abs(float insert)
 {
@@ -1161,9 +1153,9 @@ u32 int_abs(int a)
 Function: Prevent the potentiometer to choose the wrong mode, resulting in initialization error caused by the motor spinning.Out of service
 Input   : none
 Output  : none
-º¯Êý¹¦ÄÜ£º·ÀÖ¹µçÎ»Æ÷Ñ¡´íÄ£Ê½£¬µ¼ÖÂ³õÊ¼»¯³ö´íÒý·¢µç»úÂÒ×ª¡£ÒÑÍ£Ö¹Ê¹ÓÃ
-Èë¿Ú²ÎÊý£ºÎÞ
-·µ»Ø  Öµ£ºÎÞ
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½Ö¹ï¿½ï¿½Î»ï¿½ï¿½Ñ¡ï¿½ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½Â³ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½Í£Ö¹Ê¹ï¿½ï¿½
+ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
 **************************************************************************/
 void robot_mode_check(void)
 {
@@ -1171,46 +1163,46 @@ void robot_mode_check(void)
 
 	if(abs(MOTOR_A.Motor_Pwm)>2500||abs(MOTOR_B.Motor_Pwm)>2500||abs(MOTOR_C.Motor_Pwm)>2500||abs(MOTOR_D.Motor_Pwm)>2500)   error++;
 	//If the output is close to full amplitude for 6 times in a row, it is judged that the motor rotates wildly and makes the motor incapacitated
-	//Èç¹ûÁ¬Ðø6´Î½Ó½üÂú·ùÊä³ö£¬ÅÐ¶ÏÎªµç»úÂÒ×ª£¬ÈÃµç»úÊ§ÄÜ	
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½6ï¿½Î½Ó½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½Ãµï¿½ï¿½Ê§ï¿½ï¿½	
 	if(error>6) EN=0,Flag_Stop=1,robot_mode_check_flag=1;  
 }
 
-//PWMÏû³ýº¯Êý
+//PWMï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 void auto_pwm_clear(void)
 {
-	//Ð¡³µ×ËÌ¬¼òÒ×ÅÐ¶Ï
-	float y_accle = (float)(imu.accel.y/1671.84f);//YÖá¼ÓËÙ¶ÈÊµ¼ÊÖµ
-	float z_accle = (float)(imu.accel.z/1671.84f);//ZÖá¼ÓËÙ¶ÈÊµ¼ÊÖµ
+	//Ð¡ï¿½ï¿½ï¿½ï¿½Ì¬ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½
+	float y_accle = (float)(imu.accel.y/1671.84f);//Yï¿½ï¿½ï¿½ï¿½Ù¶ï¿½Êµï¿½ï¿½Öµ
+	float z_accle = (float)(imu.accel.z/1671.84f);//Zï¿½ï¿½ï¿½ï¿½Ù¶ï¿½Êµï¿½ï¿½Öµ
 	float diff;
 	
-	//¼ÆËãY¡¢Z¼ÓËÙ¶ÈÈÚºÏÖµ£¬¸ÃÖµÔ½½Ó½ü9.8£¬±íÊ¾Ð¡³µ×ËÌ¬Ô½Ë®Æ½
+	//ï¿½ï¿½ï¿½ï¿½Yï¿½ï¿½Zï¿½ï¿½ï¿½Ù¶ï¿½ï¿½Úºï¿½Öµï¿½ï¿½ï¿½ï¿½ÖµÔ½ï¿½Ó½ï¿½9.8ï¿½ï¿½ï¿½ï¿½Ê¾Ð¡ï¿½ï¿½ï¿½ï¿½Ì¬Ô½Ë®Æ½
 	if( y_accle > 0 ) diff  = z_accle - y_accle;
 	else diff  = z_accle + y_accle;
 	
 //	debug_show_diff = diff;
 	
-	//PWMÏû³ý¼ì²â
+	//PWMï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if( MOTOR_A.Target !=0.0f || MOTOR_B.Target != 0.0f || MOTOR_C.Target != 0.0f || MOTOR_D.Target != 0.0f )
 	{
-		start_check_flag = 1;//±ê¼ÇÐèÒªÇå¿ÕPWM
-		wait_clear_times = 0;//¸´Î»Çå¿Õ¼ÆÊ±
-		start_clear = 0;     //¸´Î»Çå³ý±êÖ¾
+		start_check_flag = 1;//ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½PWM
+		wait_clear_times = 0;//ï¿½ï¿½Î»ï¿½ï¿½Õ¼ï¿½Ê±
+		start_clear = 0;     //ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾
 		
 		
-		//ÔË¶¯Ê±Ð±ÆÂ¼ì²âµÄÊý¾Ý¸´Î»
+		//ï¿½Ë¶ï¿½Ê±Ð±ï¿½Â¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý¸ï¿½Î»
 		clear_done_once = 0;
 		clear_again_times=0;
 	}
-	else //µ±Ä¿±êËÙ¶ÈÓÉ·Ç0±ä0Ê±£¬¿ªÊ¼¼ÆÊ± 2.5 Ãë£¬ÈôÐ¡³µ²»ÔÚÐ±ÆÂ×´Ì¬ÏÂ£¬Çå¿Õpwm
+	else //ï¿½ï¿½Ä¿ï¿½ï¿½ï¿½Ù¶ï¿½ï¿½É·ï¿½0ï¿½ï¿½0Ê±ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½Ê± 2.5 ï¿½ë£¬ï¿½ï¿½Ð¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½×´Ì¬ï¿½Â£ï¿½ï¿½ï¿½ï¿½pwm
 	{
 		if( start_check_flag==1 )
 		{
 			wait_clear_times++;
 			if( wait_clear_times >= 250 )
 			{
-				//Ð¡³µÔÚË®Æ½ÃæÉÏÊ±²Å±ê¼ÇÇå¿Õpwm£¬·ÀÖ¹Ð¡³µÔÚÐ±ÆÂÉÏÔË¶¯³öÏÖÁïÆÂ
-				if( diff > 8.8f )	start_clear = 1,clear_state = 0;//¿ªÆôÇå³ýpwm
-				else clear_done_once = 1;//Ð¡³µÔÚÐ±ÆÂÉÏ£¬±ê¼ÇÒÑÍê³ÉÇå³ý
+				//Ð¡ï¿½ï¿½ï¿½ï¿½Ë®Æ½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½Å±ï¿½ï¿½ï¿½ï¿½ï¿½pwmï¿½ï¿½ï¿½ï¿½Ö¹Ð¡ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½Ë¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+				if( diff > 8.8f )	start_clear = 1,clear_state = 0;//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pwm
+				else clear_done_once = 1;//Ð¡ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½Ï£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 				
 				start_check_flag = 0;
 			}
@@ -1221,20 +1213,20 @@ void auto_pwm_clear(void)
 		}
 	}
 
-	//Íê³ÉÁËÇå³ýºó£¬Èô³öÏÖÍÆ³µÐÐÎª£¬pwm»ýÀÛÒ»¶¨ÊýÖµºó½«ÔÚ10ÃëºóÔÙ´ÎÇå¿Õ
+	//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ³ï¿½ï¿½ï¿½Îªï¿½ï¿½pwmï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Öµï¿½ï¿½ï¿½ï¿½10ï¿½ï¿½ï¿½ï¿½Ù´ï¿½ï¿½ï¿½ï¿½
 	if( clear_done_once )
 	{
-		//Ð¡³µ½Ó½üÓÚË®Æ½ÃæÊ±²Å×÷»ýÀÛÏû³ý£¬·ÀÖ¹Ð¡³µÔÚÐ±ÆÂÉÏÁï³µ
+		//Ð¡ï¿½ï¿½ï¿½Ó½ï¿½ï¿½ï¿½Ë®Æ½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¹Ð¡ï¿½ï¿½ï¿½ï¿½Ð±ï¿½ï¿½ï¿½ï¿½ï¿½ï³µ
 		if( diff > 8.8f )
 		{
-			//Íê³ÉÇå³ýºópwmÔÙ´Î»ýÀÛ£¬ÖØÐÂÇå³ý
+			//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pwmï¿½Ù´Î»ï¿½ï¿½Û£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 			if( int_abs(MOTOR_A.Motor_Pwm)>300 || int_abs(MOTOR_B.Motor_Pwm)>300 || int_abs(MOTOR_C.Motor_Pwm)>300 || int_abs(MOTOR_D.Motor_Pwm)>300 )
 			{
 				clear_again_times++;
 				if( clear_again_times>1000 )
 				{
 					clear_done_once = 0;
-					start_clear = 1;//¿ªÆôÇå³ýpwm
+					start_clear = 1;//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½pwm
 					clear_state = 0;
 				}
 			}
@@ -1250,4 +1242,3 @@ void auto_pwm_clear(void)
 
 	}
 }
-

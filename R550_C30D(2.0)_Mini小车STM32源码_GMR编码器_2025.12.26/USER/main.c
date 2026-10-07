@@ -1,72 +1,72 @@
 /***********************************************
-¹«Ë¾£ºÂÖÈ¤¿Æ¼¼£¨¶«Ý¸£©ÓÐÏÞ¹«Ë¾
-Æ·ÅÆ£ºWHEELTEC
-¹ÙÍø£ºwheeltec.net
-ÌÔ±¦µêÆÌ£ºshop114407458.taobao.com 
-ËÙÂôÍ¨: https://minibalance.aliexpress.com/store/4455017
-°æ±¾£ºV5.0
-ÐÞ¸ÄÊ±¼ä£º2022-05-05
+ï¿½ï¿½Ë¾ï¿½ï¿½ï¿½ï¿½È¤ï¿½Æ¼ï¿½ï¿½ï¿½ï¿½ï¿½Ý¸ï¿½ï¿½ï¿½ï¿½ï¿½Þ¹ï¿½Ë¾
+Æ·ï¿½Æ£ï¿½WHEELTEC
+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½wheeltec.net
+ï¿½Ô±ï¿½ï¿½ï¿½ï¿½Ì£ï¿½shop114407458.taobao.com 
+ï¿½ï¿½ï¿½ï¿½Í¨: https://minibalance.aliexpress.com/store/4455017
+ï¿½æ±¾ï¿½ï¿½V5.0
+ï¿½Þ¸ï¿½Ê±ï¿½ä£º2022-05-05
 
 Brand: WHEELTEC
 Website: wheeltec.net
 Taobao shop: shop114407458.taobao.com 
 Aliexpress: https://minibalance.aliexpress.com/store/4455017
 Version: V5.0
-Update£º2022-05-05
+Updateï¿½ï¿½2022-05-05
 
 All rights reserved
 ***********************************************/
 #include "system.h"
 #include "pushrod.h"
 #include "pushrod_task.h"
-//Task priority    //ÈÎÎñÓÅÏÈ¼¶
+//Task priority    //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½
 #define START_TASK_PRIO	1
 
-//Task stack size //ÈÎÎñ¶ÑÕ»´óÐ¡	
+//Task stack size //ï¿½ï¿½ï¿½ï¿½ï¿½Õ»ï¿½ï¿½Ð¡	
 #define START_STK_SIZE 	256  
 
-//Task handle     //ÈÎÎñ¾ä±ú
+//Task handle     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 TaskHandle_t StartTask_Handler;
 
-//Task function   //ÈÎÎñº¯Êý
+//Task function   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 void start_task(void *pvParameters);
 
-//Main function //Ö÷º¯Êý
+//Main function //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 int main(void)
 { 
-  systemInit(); //Hardware initialization //Ó²¼þ³õÊ¼»¯
-	//Create the start task //´´½¨¿ªÊ¼ÈÎÎñ
-	xTaskCreate((TaskFunction_t )start_task,            //Task function   //ÈÎÎñº¯Êý
-							(const char*    )"start_task",          //Task name       //ÈÎÎñÃû³Æ
-							(uint16_t       )START_STK_SIZE,        //Task stack size //ÈÎÎñ¶ÑÕ»´óÐ¡
-							(void*          )NULL,                  //Arguments passed to the task function //´«µÝ¸øÈÎÎñº¯ÊýµÄ²ÎÊý
-							(UBaseType_t    )START_TASK_PRIO,       //Task priority   //ÈÎÎñÓÅÏÈ¼¶
-							(TaskHandle_t*  )&StartTask_Handler);   //Task handle     //ÈÎÎñ¾ä±ú    					
-	vTaskStartScheduler();  //Enables task scheduling //¿ªÆôÈÎÎñµ÷¶È	
+  systemInit(); //Hardware initialization //Ó²ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½
+	//Create the start task //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½
+	xTaskCreate((TaskFunction_t )start_task,            //Task function   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+							(const char*    )"start_task",          //Task name       //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+							(uint16_t       )START_STK_SIZE,        //Task stack size //ï¿½ï¿½ï¿½ï¿½ï¿½Õ»ï¿½ï¿½Ð¡
+							(void*          )NULL,                  //Arguments passed to the task function //ï¿½ï¿½ï¿½Ý¸ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä²ï¿½ï¿½ï¿½
+							(UBaseType_t    )START_TASK_PRIO,       //Task priority   //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½
+							(TaskHandle_t*  )&StartTask_Handler);   //Task handle     //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½    					
+	vTaskStartScheduler();  //Enables task scheduling //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½	
 }
  
-//Start task task function //¿ªÊ¼ÈÎÎñÈÎÎñº¯Êý
+//Start task task function //ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 void start_task(void *pvParameters)
 {
-    taskENTER_CRITICAL(); //Enter the critical area //½øÈëÁÙ½çÇø
+    taskENTER_CRITICAL(); //Enter the critical area //ï¿½ï¿½ï¿½ï¿½ï¿½Ù½ï¿½ï¿½ï¿½
 	
-    //Create the task //´´½¨ÈÎÎñ
+    //Create the task //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
 	if(Check == 1)
 		xTaskCreate(Check_task,  "Check_task",  CHECK_STK_SIZE,  NULL, CHECK_TASK_PRIO,  NULL);
 	else if(Check == 0)
-		xTaskCreate(Balance_task,  "Balance_task",  BALANCE_STK_SIZE,  NULL, BALANCE_TASK_PRIO,  NULL);	//Vehicle motion control task //Ð¡³µÔË¶¯¿ØÖÆÈÎÎñ
-	if(SysVal.HardWare_Ver==V1_0) 	//IMU data read task //IMUÊý¾Ý¶ÁÈ¡ÈÎÎñ,¸ù¾Ý²»Í¬µÄÓ²¼þ°æ±¾Æô¶¯²»Í¬µÄÈÎÎñ.
+		xTaskCreate(Balance_task,  "Balance_task",  BALANCE_STK_SIZE,  NULL, BALANCE_TASK_PRIO,  NULL);	//Vehicle motion control task //Ð¡ï¿½ï¿½ï¿½Ë¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+	if(SysVal.HardWare_Ver==V1_0) 	//IMU data read task //IMUï¿½ï¿½ï¿½Ý¶ï¿½È¡ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½Ý²ï¿½Í¬ï¿½ï¿½Ó²ï¿½ï¿½ï¿½æ±¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½.
 		xTaskCreate(MPU6050_task,  "IMU_task",  IMU_STK_SIZE,  NULL, IMU_TASK_PRIO,  NULL);
 	else if( SysVal.HardWare_Ver==V1_1 )
 		xTaskCreate(ICM20948_task,  "IMU_task",  IMU_STK_SIZE,  NULL, IMU_TASK_PRIO,  NULL);
-	xTaskCreate(show_task,     "show_task",     SHOW_STK_SIZE,     NULL, SHOW_TASK_PRIO,     NULL); //The OLED display displays tasks //OLEDÏÔÊ¾ÆÁÏÔÊ¾ÈÎÎñ
-	xTaskCreate(led_task,      "led_task",      LED_STK_SIZE,      NULL, LED_TASK_PRIO,      NULL);	//LED light flashing task //LEDµÆÉÁË¸ÈÎÎñ
-	xTaskCreate(pstwo_task,    "PSTWO_task",    PS2_STK_SIZE,      NULL, PS2_TASK_PRIO,      NULL);	//Read the PS2 controller task //¶ÁÈ¡PS2ÊÖ±úÈÎÎñ
-	xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //´®¿Ú3¡¢´®¿Ú1¡¢CAN·¢ËÍÊý¾ÝÈÎÎñ
-    xTaskCreate(pushrod_task,      "pushrod_task",      PUSHROD_STK_SIZE,      NULL, PUSHROD_TASK_PRIO,      NULL);	//Pushrod control task //ÍÆ¸Ë¿ØÖÆÈÎÎñ
-    vTaskDelete(StartTask_Handler); //Delete the start task //É¾³ý¿ªÊ¼ÈÎÎñ
+		xTaskCreate(show_task,     "show_task",     SHOW_STK_SIZE,     NULL, SHOW_TASK_PRIO,     NULL); //The OLED display displays tasks //OLEDï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½
+		xTaskCreate(led_task,      "led_task",      LED_STK_SIZE,      NULL, LED_TASK_PRIO,      NULL);	//LED light flashing task //LEDï¿½ï¿½ï¿½ï¿½Ë¸ï¿½ï¿½ï¿½ï¿½
+		xTaskCreate(pstwo_task,    "PSTWO_task",    PS2_STK_SIZE,      NULL, PS2_TASK_PRIO,      NULL);	//Read the PS2 controller task //ï¿½ï¿½È¡PS2ï¿½Ö±ï¿½ï¿½ï¿½ï¿½ï¿½
+		xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //ï¿½ï¿½ï¿½ï¿½3ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½1ï¿½ï¿½CANï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    	xTaskCreate(pushrod_task,      "pushrod_task",      PUSHROD_STK_SIZE,      NULL, PUSHROD_TASK_PRIO,      NULL);	//Pushrod control task //ï¿½Æ¸Ë¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    	vTaskDelete(StartTask_Handler); //Delete the start task //É¾ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½
 
-    taskEXIT_CRITICAL();            //Exit the critical section//ÍË³öÁÙ½çÇø
+    taskEXIT_CRITICAL();            //Exit the critical section//ï¿½Ë³ï¿½ï¿½Ù½ï¿½ï¿½ï¿½
 }
 
 

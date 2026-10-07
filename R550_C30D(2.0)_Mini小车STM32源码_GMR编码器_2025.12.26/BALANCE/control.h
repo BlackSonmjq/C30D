@@ -2,15 +2,15 @@
 #define __CONTROL_H
 #include "sys.h"
   /**************************************************************************
-×÷Õß£ºÆ½ºâÐ¡³µÖ®¼Ò
-ÎÒµÄÌÔ±¦Ð¡µê£ºhttp://shop114407458.taobao.com/
+ï¿½ï¿½ï¿½ß£ï¿½Æ½ï¿½ï¿½Ð¡ï¿½ï¿½Ö®ï¿½ï¿½
+ï¿½Òµï¿½ï¿½Ô±ï¿½Ð¡ï¿½ê£ºhttp://shop114407458.taobao.com/
 **************************************************************************/
 #define PI 3.14159265
 #define ZHONGZHI 0 
 #define DIFFERENCE 100
 extern	int Balance_Pwm,Velocity_Pwm,Turn_Pwm;
 int EXTI15_10_IRQHandler(void);
-void Set_Pwm(int motor_a,int motor_b,int servo);
+void Set_Pwm(int motor_a,int motor_b);
 void Kinematic_Analysis(float Vy,float angle);
 void Kinematic_Analysis2(float Vy,float Vz);
 void Key(void);

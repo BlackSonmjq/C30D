@@ -1,192 +1,62 @@
 #include "check.h"
 
-//¶¨Òå×Ô¼ìÏà¹Ø½á¹¹Ìå
+//ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½Ø½á¹¹ï¿½ï¿½
 Check_parameter check_parameter;		
-//·äÃùÆ÷¼ÆÊıÖµ
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
 u32 Buzzer_count1 = 0;
 
 void Check_task(void *pvParameters)
 {
 	u32 lastWakeTime = getSysTickCnt();
-	for(int i=0; i<6; i++)
-	{
-		check_parameter.Servo_count[i] = 500;
-	}
 	check_parameter.Motor_forward = 300;
 	check_parameter.Motor_retreat = 500;
 	while(1)
 	{
 		// This task runs at a frequency of 100Hz (10ms control once)
-		//´ËÈÎÎñÒÔ100HzµÄÆµÂÊÔËĞĞ£¨10ms¿ØÖÆÒ»´Î£©
+		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½100Hzï¿½ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½Ğ£ï¿½10msï¿½ï¿½ï¿½ï¿½Ò»ï¿½Î£ï¿½
 		vTaskDelayUntil(&lastWakeTime, F2T(RATE_100_HZ));
 		//Time count is no longer needed after 30 seconds
-		//Ê±¼ä¼ÆÊı£¬30Ãëºó²»ÔÙĞèÒª
+		//Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½30ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òª
 		if(SysVal.Time_count<3000) SysVal.Time_count++;
 		
 		Buzzer_count1++;
 		//Get the encoder data, that is, the real time wheel speed, 
 		//and convert to transposition international units
-		//»ñÈ¡±àÂëÆ÷Êı¾İ£¬¼´³µÂÖÊµÊ±ËÙ¶È£¬²¢×ª»»Î»¹ú¼Êµ¥Î»
+		//ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½İ£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÊµÊ±ï¿½Ù¶È£ï¿½ï¿½ï¿½×ªï¿½ï¿½Î»ï¿½ï¿½ï¿½Êµï¿½Î»
 		Get_Velocity_Form_Encoder();
 		//Click the user button to proceed to the next step
 		//Double-click to exit the self-check mode
-		//µ¥»÷ÓÃ»§°´¼ü½øÈëÏÂÒ»²½£¬Ë«»÷ÍË³ö×Ô¼ìÄ£Ê½
+		//ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Ë«ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ô¼ï¿½Ä£Ê½
 		Check_Key();
 		switch(check_parameter.Process)
 		{
-			case 3:				//µç»ú×Ô¼ì
-				if(check_parameter.Motor_forward > 0)				check_parameter.Motor_forward--,Full_rotation = 16799;		//Õı×ª
-				else if(check_parameter.Motor_retreat > 0)	check_parameter.Motor_retreat--,Full_rotation = -16799;		//·´×ª
+			case 3:				//ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½
+				if(check_parameter.Motor_forward > 0)				check_parameter.Motor_forward--,Full_rotation = 16799;		//ï¿½ï¿½×ª
+				else if(check_parameter.Motor_retreat > 0)	check_parameter.Motor_retreat--,Full_rotation = -16799;		//ï¿½ï¿½×ª
 				switch(Car_Mode)
 				{
 					case Mec_Car:case Mec_Car_V550: 
-						Set_Pwm( Full_rotation, -Full_rotation, -Full_rotation, Full_rotation, 0    ); break; 									//Mecanum wheel car       //Âó¿ËÄÉÄ·ÂÖĞ¡³µ
-					case Omni_Car:      Set_Pwm(-Full_rotation,  Full_rotation, -Full_rotation, Full_rotation, 0    ); break; //Omni car                //È«ÏòÂÖĞ¡³µ
-					case Akm_Car:       Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation, 0    ); break; //Ackermann structure car //°¢¿ËÂüĞ¡³µ
-					case Diff_Car:      Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation, 0    ); break; //Differential car        //Á½ÂÖ²îËÙĞ¡³µ
+						Set_Pwm( Full_rotation, -Full_rotation, -Full_rotation, Full_rotation); break; 									//Mecanum wheel car       //ï¿½ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½Ğ¡ï¿½ï¿½
+					case Omni_Car:      Set_Pwm(-Full_rotation,  Full_rotation, -Full_rotation, Full_rotation); break; //Omni car                //È«ï¿½ï¿½ï¿½ï¿½Ğ¡ï¿½ï¿½
+					case Akm_Car:       Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation); break; //Ackermann structure car //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ğ¡ï¿½ï¿½
+					case Diff_Car:      Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation); break; //Differential car        //ï¿½ï¿½ï¿½Ö²ï¿½ï¿½ï¿½Ğ¡ï¿½ï¿½
 					case FourWheel_Car:case FourWheel_Car_V550:
-						Set_Pwm( Full_rotation, -Full_rotation, -Full_rotation, Full_rotation, 0    ); break; 									//FourWheel car           //ËÄÇı³µ 
-					case Tank_Car:      Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation, 0    ); break; //Tank Car                //ÂÄ´ø³µ
+						Set_Pwm( Full_rotation, -Full_rotation, -Full_rotation, Full_rotation); break; 									//FourWheel car           //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+					case Tank_Car:      Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation); break; //Tank Car                //ï¿½Ä´ï¿½ï¿½ï¿½
 				} 
-				if(!(check_parameter.Motor_forward > 0) && !(check_parameter.Motor_retreat > 0))				Set_Pwm(0,0,0,0,0);
+				if(!(check_parameter.Motor_forward > 0) && !(check_parameter.Motor_retreat > 0))				Set_Pwm(0,0,0,0);
 				break;
-			case 4:				//ÍË³öµç»ú×Ô¼ì£¬¿ØÖÆµç»úÍ£ÏÂ
-				Set_Pwm(0,0,0,0,0);
+			case 4:				//ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ì£¬ï¿½ï¿½ï¿½Æµï¿½ï¿½Í£ï¿½ï¿½
+				Set_Pwm(0,0,0,0);
 				break;
-			case 6:				//³õÊ¼»¯¶æ»ú
-				TIM8_SERVO_Init(9999, 168-1);
-				break;
-			case 7:
-				//¶æ»úÕı×ª
-				if(check_parameter.Servo_Dir[0]==0 && check_parameter.Servo_count[0]<2500)
-					check_parameter.Servo_count[0] = check_parameter.Servo_count[0] + 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[0]==0 && check_parameter.Servo_count[0]>=2500)
-					check_parameter.Servo_Dir[0] = 1;
-				//¶æ»ú·´×ª
-				if(check_parameter.Servo_Dir[0]==1 && check_parameter.Servo_count[0]>500)
-					check_parameter.Servo_count[0] = check_parameter.Servo_count[0] - 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[0]==1 && check_parameter.Servo_count[0]<=500)
-					check_parameter.Servo_Dir[0] = 2;
-				//ÉèÖÃÕ¼¿Õ±È¿ØÖÆ¶æ»ú×ª¶¯
-				TIM12->CCR2=check_parameter.Servo_count[0];
-				break;
-			case 8:
-				//Èç¹ûÉÏÒ»¸ö¶æ»úÃ»ÓĞ×ªÍê¾ÍÌøµ½ÏÂÒ»¸ö¶æ»úµÄÑéÖ¤Ôò¸øÉÏÒ»¸ö¶æ»ú×ö¸´Î»
-				if((check_parameter.Servo_Dir[0]!=2))				
-					check_parameter.Servo_count[0]=500,TIM12->CCR2=check_parameter.Servo_count[0];
-				//¶æ»úÕı×ª
-				if(check_parameter.Servo_Dir[1]==0 && check_parameter.Servo_count[1]<2500)
-					check_parameter.Servo_count[1] = check_parameter.Servo_count[1] + 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[1]==0 && check_parameter.Servo_count[1]>=2500)
-					check_parameter.Servo_Dir[1] = 1;
-				//¶æ»ú·´×ª
-				if(check_parameter.Servo_Dir[1]==1 && check_parameter.Servo_count[1]>500)
-					check_parameter.Servo_count[1] = check_parameter.Servo_count[1] - 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[1]==1 && check_parameter.Servo_count[1]<=500)
-					check_parameter.Servo_Dir[1] = 2;
-				//ÉèÖÃÕ¼¿Õ±È¿ØÖÆ¶æ»ú×ª¶¯
-				TIM12->CCR1=check_parameter.Servo_count[1];
-				break;
-			case 9:
-				//Èç¹ûÉÏÒ»¸ö¶æ»úÃ»ÓĞ×ªÍê¾ÍÌøµ½ÏÂÒ»¸ö¶æ»úµÄÑéÖ¤Ôò¸øÉÏÒ»¸ö¶æ»ú×ö¸´Î»
-				if((check_parameter.Servo_Dir[1]!=2))				
-					check_parameter.Servo_count[1]=500,TIM12->CCR1=check_parameter.Servo_count[1];
-				//¶æ»úÕı×ª
-				if(check_parameter.Servo_Dir[2]==0 && check_parameter.Servo_count[2]<2500)
-					check_parameter.Servo_count[2] = check_parameter.Servo_count[2] + 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[2]==0 && check_parameter.Servo_count[2]>=2500)
-					check_parameter.Servo_Dir[2] = 1;
-				//¶æ»ú·´×ª
-				if(check_parameter.Servo_Dir[2]==1 && check_parameter.Servo_count[2]>500)
-					check_parameter.Servo_count[2] = check_parameter.Servo_count[2] - 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[2]==1 && check_parameter.Servo_count[2]<=500)
-					check_parameter.Servo_Dir[2] = 2;
-				//ÉèÖÃÕ¼¿Õ±È¿ØÖÆ¶æ»ú×ª¶¯
-				TIM8->CCR4=check_parameter.Servo_count[2];
-				break;
-			case 10:
-				//Èç¹ûÉÏÒ»¸ö¶æ»úÃ»ÓĞ×ªÍê¾ÍÌøµ½ÏÂÒ»¸ö¶æ»úµÄÑéÖ¤Ôò¸øÉÏÒ»¸ö¶æ»ú×ö¸´Î»
-				if((check_parameter.Servo_Dir[2]!=2))				
-					check_parameter.Servo_count[2]=500,TIM8->CCR4=check_parameter.Servo_count[2];
-				//¶æ»úÕı×ª
-				if(check_parameter.Servo_Dir[3]==0 && check_parameter.Servo_count[3]<2500)
-					check_parameter.Servo_count[3] = check_parameter.Servo_count[3] + 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[3]==0 && check_parameter.Servo_count[3]>=2500)
-					check_parameter.Servo_Dir[3] = 1;
-				//¶æ»ú·´×ª
-				if(check_parameter.Servo_Dir[3]==1 && check_parameter.Servo_count[3]>500)
-					check_parameter.Servo_count[3] = check_parameter.Servo_count[3] - 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[3]==1 && check_parameter.Servo_count[3]<=500)
-					check_parameter.Servo_Dir[3] = 2;
-				//ÉèÖÃÕ¼¿Õ±È¿ØÖÆ¶æ»ú×ª¶¯
-				TIM8->CCR3=check_parameter.Servo_count[3];
-				break;
-			case 11:
-				//Èç¹ûÉÏÒ»¸ö¶æ»úÃ»ÓĞ×ªÍê¾ÍÌøµ½ÏÂÒ»¸ö¶æ»úµÄÑéÖ¤Ôò¸øÉÏÒ»¸ö¶æ»ú×ö¸´Î»
-				if((check_parameter.Servo_Dir[3]!=2))				
-					check_parameter.Servo_count[3]=500,TIM8->CCR3=check_parameter.Servo_count[3];
-				//¶æ»úÕı×ª
-				if(check_parameter.Servo_Dir[4]==0 && check_parameter.Servo_count[4]<2500)
-					check_parameter.Servo_count[4] = check_parameter.Servo_count[4] + 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[4]==0 && check_parameter.Servo_count[4]>=2500)
-					check_parameter.Servo_Dir[4] = 1;
-				//¶æ»ú·´×ª
-				if(check_parameter.Servo_Dir[4]==1 && check_parameter.Servo_count[4]>500)
-					check_parameter.Servo_count[4] = check_parameter.Servo_count[4] - 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[4]==1 && check_parameter.Servo_count[4]<=500)
-					check_parameter.Servo_Dir[4] = 2;
-				//ÉèÖÃÕ¼¿Õ±È¿ØÖÆ¶æ»ú×ª¶¯
-				TIM8->CCR2=check_parameter.Servo_count[4];
-				break;
-			case 12:
-				//Èç¹ûÉÏÒ»¸ö¶æ»úÃ»ÓĞ×ªÍê¾ÍÌøµ½ÏÂÒ»¸ö¶æ»úµÄÑéÖ¤Ôò¸øÉÏÒ»¸ö¶æ»ú×ö¸´Î»
-				if((check_parameter.Servo_Dir[4]!=2))				
-					check_parameter.Servo_count[4]=500,TIM8->CCR2=check_parameter.Servo_count[4];
-				//¶æ»úÕı×ª
-				if(check_parameter.Servo_Dir[5]==0 && check_parameter.Servo_count[5]<2500)
-					check_parameter.Servo_count[5] = check_parameter.Servo_count[5] + 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[5]==0 && check_parameter.Servo_count[5]>=2500)
-					check_parameter.Servo_Dir[5] = 1;
-				//¶æ»ú·´×ª
-				if(check_parameter.Servo_Dir[5]==1 && check_parameter.Servo_count[5]>500)
-					check_parameter.Servo_count[5] = check_parameter.Servo_count[5] - 5;
-				//Õı×ª½áÊø£¬ÇĞ»»±êÖ¾Î»
-				if(check_parameter.Servo_Dir[5]==1 && check_parameter.Servo_count[5]<=500)
-					check_parameter.Servo_Dir[5] = 2;
-				//ÉèÖÃÕ¼¿Õ±È¿ØÖÆ¶æ»ú×ª¶¯
-				TIM8->CCR1=check_parameter.Servo_count[5];
-				break;
-			case 13:				//¶æ»ú×Ô¼ì½áÊø¸´Î»ËùÓĞ¶æ»ú¼°Ïà¹Ø²ÎÊı
-				for(int i=0; i<6; i++){
-					check_parameter.Servo_Dir[i] = 0;
-					check_parameter.Servo_count[i] = 500;
-				}
-				TIM8->CCR1 = check_parameter.Servo_count[5];
-				TIM8->CCR2 = check_parameter.Servo_count[4];
-				TIM8->CCR3 = check_parameter.Servo_count[3];
-				TIM8->CCR4 = check_parameter.Servo_count[2];
-				TIM12->CCR1 = check_parameter.Servo_count[1];
-				TIM12->CCR2 = check_parameter.Servo_count[0];
-				break;;
-			case 14:				//·äÃùÆ÷×Ô¼ìÏà¹Ø
+			case 14:				//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½
 				if((Buzzer_count1/100)%2)			Buzzer = 1;
 				else													Buzzer = 0;
 				break;
-			case 15:				//ÍË³ö·äÃùÆ÷×Ô¼ìÊ±¹Ø±Õ·äÃùÆ÷
+			case 15:				//ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½Ê±ï¿½Ø±Õ·ï¿½ï¿½ï¿½ï¿½ï¿½
 				Buzzer = 0;
 				break;
-			case 19:				//´®¿Ú3×Ô¼ì£¬¼ì²âµ½±êÖ¾Î»Ôò»º´æÇø×Ö·û
+			case 19:				//ï¿½ï¿½ï¿½ï¿½3ï¿½Ô¼ì£¬ï¿½ï¿½âµ½ï¿½ï¿½Ö¾Î»ï¿½ò»º´ï¿½ï¿½ï¿½ï¿½Ö·ï¿½
 				if(check_parameter.Usart3_check_flag==1)
 				{
 					USART3_Return();
@@ -204,12 +74,13 @@ void Check_Key(void)
 {
 	u8 tmp;
 
-  //´«ÈëÈÎÎñµÄÆµÂÊ
+  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½
   tmp=KEY_Scan(RATE_100_HZ,0);
-	if(tmp==single_click)				//µ¥»÷
+	if(tmp==single_click)				//ï¿½ï¿½ï¿½ï¿½
 	{
 		check_parameter.Process++;
-		if(check_parameter.Process==21)			//×Ô¼ì½áÊø²¢ÍË³ö
+		if(check_parameter.Process==6) check_parameter.Process=14;
+		if(check_parameter.Process==21)			//ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½
 		{
 			delay_ms(50);
 			NVIC_SystemReset();
@@ -221,7 +92,5 @@ void Check_Key(void)
 		NVIC_SystemReset();
 	}
 }
-
-
 
 
