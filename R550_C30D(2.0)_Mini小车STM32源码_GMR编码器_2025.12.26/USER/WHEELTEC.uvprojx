@@ -397,11 +397,6 @@
               <FilePath>.\main.c</FilePath>
             </File>
             <File>
-              <FileName>stepper_test.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>.\stepper_test.c</FilePath>
-            </File>
-            <File>
               <FileName>stm32f4xx_it.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\stm32f4xx_it.c</FilePath>
@@ -416,6 +411,11 @@
         <Group>
           <GroupName>HARDWARE</GroupName>
           <Files>
+            <File>
+              <FileName>vl53l0x.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\HARDWARE\vl53l0x.c</FilePath>
+            </File>
             <File>
               <FileName>adc.c</FileName>
               <FileType>1</FileType>
@@ -656,6 +656,11 @@
         <Group>
           <GroupName>Balance</GroupName>
           <Files>
+            <File>
+              <FileName>distance_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BALANCE\distance_task.c</FilePath>
+            </File>
             <File>
               <FileName>system.c</FileName>
               <FileType>1</FileType>

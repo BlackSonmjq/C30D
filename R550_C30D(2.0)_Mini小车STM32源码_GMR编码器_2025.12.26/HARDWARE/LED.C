@@ -48,7 +48,8 @@ Output  : none
 返回  值：无
 **************************************************************************/
 void Buzzer_Init(void)
-{	
+{
+#if BUZZER_ENABLED
 	GPIO_InitTypeDef  GPIO_InitStructure;
 	
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);//使能GPIOB时钟
@@ -58,6 +59,7 @@ void Buzzer_Init(void)
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;//100MHz
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;//上拉
   GPIO_Init(GPIOA, &GPIO_InitStructure);//初始化GPIO
+#endif
 }
 /**************************************************************************
 Function: LED light flashing task

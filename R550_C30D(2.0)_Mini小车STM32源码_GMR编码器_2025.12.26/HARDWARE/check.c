@@ -179,11 +179,11 @@ void Check_task(void *pvParameters)
 				TIM12->CCR2 = check_parameter.Servo_count[0];
 				break;;
 			case 14:				//蜂鸣器自检相关
-				if((Buzzer_count1/100)%2)			Buzzer = 1;
-				else													Buzzer = 0;
+				if((Buzzer_count1/100)%2)			Buzzer_Set(1);
+				else													Buzzer_Set(0);
 				break;
 			case 15:				//退出蜂鸣器自检时关闭蜂鸣器
-				Buzzer = 0;
+				Buzzer_Set(0);
 				break;
 			case 19:				//串口3自检，检测到标志位则缓存区字符
 				if(check_parameter.Usart3_check_flag==1)

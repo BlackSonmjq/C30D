@@ -1,4 +1,5 @@
 #include "show.h"
+#include "distance_task.h"
 int Voltage_Show;
 unsigned char i;          
 unsigned char Send_Count; 
@@ -8,7 +9,7 @@ extern int MPU9250SensorCountA, MPU9250SensorCountB, MPU9250SensorCountC, MPU925
 
 
 u8 oled_refresh_flag;
-u8 oled_page=0;
+u8 oled_page=DISTANCE_OLED_PAGE;
 /**************************************************************************
 Function: Read the battery voltage, buzzer alarm, start the self-test, send data to APP, OLED display task
 Input   : none
@@ -29,14 +30,14 @@ void show_task(void *pvParameters)
 		
 		//开机时蜂鸣器短暂蜂鸣，开机提醒
 		//The buzzer will beep briefly when the machine is switched on
-		if(SysVal.Time_count<50)Buzzer=1; 
-		else if(SysVal.Time_count>=51 && SysVal.Time_count<100)Buzzer=0;
+		if(SysVal.Time_count<50)Buzzer_Set(1);
+		else if(SysVal.Time_count>=51 && SysVal.Time_count<100)Buzzer_Set(0);
 		 
 		if(LowVoltage_1==1 || LowVoltage_2==1)Buzzer_count=0;
 		if(LowVoltage_2>=2 && LowVoltage_2%10==2)Buzzer_count=0;  // 每10个周期重置一次
 		if(Buzzer_count<5)Buzzer_count++;
-		if(Buzzer_count<5)Buzzer=1; //The buzzer is buzzing //蜂鸣器蜂鸣
-		else if(Buzzer_count==5)Buzzer=0;
+		if(Buzzer_count<5)Buzzer_Set(1); //The buzzer is buzzing //蜂鸣器蜂鸣
+		else if(Buzzer_count==5)Buzzer_Set(0);
 		
 		//Read the battery voltage //读取电池电压
 		for(i=0;i<100;i++)
@@ -395,6 +396,11 @@ void oled_show(void)
 			OLED_Refresh_Gram();
 		}
 	
+        else if(oled_page==DISTANCE_OLED_PAGE)
+        {
+            DistanceTask_DrawOLED();
+            OLED_Refresh_Gram();
+        }
 		else if(oled_page==1)
 		{
 			//自动回充套件Debug信息

@@ -20,7 +20,7 @@ All rights reserved
 #include "pushrod.h"
 #include "pushrod_task.h"
 #include "stepper_task.h"
-#include "stepper_test.h"
+#include "distance_task.h"
 //Task priority    //�������ȼ�
 #define START_TASK_PRIO	0
 
@@ -69,6 +69,7 @@ void start_task(void *pvParameters)
 	xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //����3������1��CAN������������
     xTaskCreate(pushrod_task,      "pushrod_task",      PUSHROD_STK_SIZE,      NULL, PUSHROD_TASK_PRIO,      NULL);	//Pushrod control task //�Ƹ˿�������
     xTaskCreate(stepper_Task,      "stepper_task",      STEPPER_STK_SIZE,      NULL, STEPPER_TASK_PRIO,      NULL);	//Stepper motor control task //Ƹ˿
+    xTaskCreate(distance_task,     "distance_task",     DISTANCE_STK_SIZE,     NULL, DISTANCE_TASK_PRIO,     NULL);
 	vTaskDelete(StartTask_Handler); //Delete the start task //ɾʼ
 
     taskEXIT_CRITICAL();            //Exit the critical section//�˳��ٽ���

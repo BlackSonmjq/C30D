@@ -10,7 +10,15 @@
 /*--------Buzzer control pin--------*/
 #define Buzzer_PORT GPIOA
 #define Buzzer_PIN GPIO_Pin_8
+/* PA8 is reserved for VL53L0X SCL. Do not enable with this wiring. */
+#define BUZZER_ENABLED 0
+#if BUZZER_ENABLED
 #define Buzzer PAout(8)
+#define Buzzer_Set(value) do { Buzzer = (value); } while (0)
+#else
+#define Buzzer 0
+#define Buzzer_Set(value) ((void)(value))
+#endif
 /*----------------------------------*/
 
 /*--------LED control pin--------*/
