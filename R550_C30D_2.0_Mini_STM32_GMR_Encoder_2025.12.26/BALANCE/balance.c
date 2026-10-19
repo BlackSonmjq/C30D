@@ -203,8 +203,6 @@ void Drive_Motor(float Vx,float Vy,float Vz)
 			MOTOR_A.Target = Vx;
 			MOTOR_B.Target = Vx;
 		}
-		// The PWM value of the servo controls the steering Angle of the front wheel
-		//���PWMֵ���������ǰ��ת��Ƕ�
 		//Wheel (motor) target speed limit //����(���)Ŀ���ٶ��޷�
 		MOTOR_A.Target=target_limit_float(MOTOR_A.Target,-amplitude,amplitude); 
 		MOTOR_B.Target=target_limit_float(MOTOR_B.Target,-amplitude,amplitude); 
@@ -440,8 +438,6 @@ void Set_Pwm(int motor_a,int motor_b,int motor_c,int motor_d)
 	if(motor_d<0)			PWMD1=16799,PWMD2=16799+motor_d;
 	else 	            PWMD2=16799,PWMD1=16799-motor_d;
 	
-	// TIM12 servo pins are now assigned to the A4988 interface.
-	(void)servo;
 }
 
 /**************************************************************************

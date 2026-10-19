@@ -420,16 +420,16 @@ void oled_show(void)
 	 {
 		 if(check_parameter.Process==0)							//ï¿½Ã»ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½
 		 {
-			 OLED_ShowCHinese(00, 00, "ï¿½ï¿½ï¿½ï¿½ï¿½Ä¶ï¿½Ê¹ï¿½ï¿½ï¿½Ö²ï¿½");
-			 OLED_ShowCHinese(00, 16, "  ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½  ");
-			 OLED_ShowCHinese(00, 32, "    È·ï¿½Ï¿ï¿½Ê¼    ");
+			 OLED_ShowCHinese(00, 00, "ÇëÏÈÔÄ¶ÁÊ¹ÓÃÊÖ²á");
+			 OLED_ShowCHinese(00, 16, "  µ¥»÷ÓÃ»§°´¼ü  ");
+			 OLED_ShowCHinese(00, 32, "    È·ÈÏ¿ªÊ¼    ");
 			 OLED_ShowString(104, 50, "0/8");
 		 }
 		 
 		 if(check_parameter.Process==1)					
 		 {
 			 OLED_Show_POT();
-			 OLED_ShowCHinese12(8, 9, "ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½");
+			 OLED_ShowCHinese12(8, 9, "Çë×ª¶¯µçÎ»Æ÷£º");
 			 switch(Car_Mode_Show)
 			 {
 				case Mec_Car:       OLED_ShowString(92,10,"Mec "); break;
@@ -441,15 +441,15 @@ void oled_show(void)
 				case Mec_Car_V550:  OLED_ShowString(92,10,"MecV"); break;
 				case FourWheel_Car_V550: OLED_ShowString(92,10,"4WDV"); break;
 			 }
-			 OLED_ShowCHinese12(12, 22, "ï¿½Ë³ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ï¿½Ô­ï¿½ï¿½ï¿½ï¿½");
-			 OLED_ShowCHinese(00, 34, "  Ä£Ê½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½  ");
+			 OLED_ShowCHinese12(12, 22, "ÍË³öÇ°Ðèµ÷»ØÔ­³µÐÍ");
+			 OLED_ShowCHinese(00, 34, "  Ä£Ê½£ºµçÎ»Æ÷  ");
 			 OLED_ShowString(104, 50, "1/8");
 		 }
 		 if(check_parameter.Process==2)
 		 {
-			 OLED_ShowCHinese(24, 00, "ï¿½Ü¿Õ³ï¿½ï¿½Öºï¿½");
-			 OLED_ShowCHinese(00, 16, "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½");
-			 OLED_ShowCHinese(24, 32, "Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½");
+			 OLED_ShowCHinese(24, 00, "¼Ü¿Õ³µÂÖºó");
+			 OLED_ShowCHinese(00, 16, "µ¥»÷¿ªÊ¼¸ßËÙ×ª¶¯");
+			 OLED_ShowCHinese(24, 32, "Ä£Ê½£ºµç»ú");
 			 OLED_ShowString(104, 50, "2/8");
 		 }
 		 if(check_parameter.Process==3)
@@ -473,18 +473,18 @@ void oled_show(void)
 																OLED_ShowNumber(90,20,-MOTOR_D.Encoder*1000,5,12);
 				else                		OLED_ShowString(70,20,"D+"),
 																OLED_ShowNumber(90,20, MOTOR_D.Encoder*1000,5,12);
-				OLED_ShowCHinese(24, 32, "Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½");
+				OLED_ShowCHinese(24, 32, "Ä£Ê½£ºµç»ú");
 				OLED_ShowString(104, 50, "2/8");
 		 }
 		 if(check_parameter.Process==4)
 		 {
-				OLED_ShowCHinese(00, 00, "    ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½    ");
-				OLED_ShowCHinese(00, 32, "  Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½  ");
+				OLED_ShowCHinese(00, 00, "    µ¥»÷½øÈë    ");
+				OLED_ShowCHinese(00, 32, "  Ä£Ê½£ºÍÓÂÝÒÇ  ");
 			  OLED_ShowString(104, 50, "3/8");
 		 }
 		 if(check_parameter.Process==5)
 		 {
-			 OLED_ShowCHinese(00, 00, "ï¿½Î¶ï¿½Ð¡ï¿½ï¿½ï¿½Û²ï¿½ï¿½ï¿½ï¿½ï¿½");
+			 OLED_ShowCHinese(00, 00, "»Î¶¯Ð¡³µ¹Û²ìÊý¾Ý");
 			 OLED_ShowString(00, 16, "G");
 			 if(imu.gyro.x<0)							 OLED_ShowString(16, 16, "-"),
 																	 OLED_ShowNumber(24, 16, -imu.gyro.x, 5, 12);
@@ -526,75 +526,75 @@ void oled_show(void)
 
 		 if(check_parameter.Process==14)
 		 {
-			 OLED_ShowCHinese(24, 16, "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
-			 if(Buzzer==1)		OLED_ShowCHinese(88, 16, "ï¿½ï¿½");
-			 else							OLED_ShowCHinese(88, 16, "ï¿½ï¿½");
-			 OLED_ShowCHinese(00, 32, "  Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½  ");
+			 OLED_ShowCHinese(24, 16, "·äÃùÆ÷£º");
+			 if(Buzzer==1)		OLED_ShowCHinese(88, 16, "¿ª");
+			 else							OLED_ShowCHinese(88, 16, "¹Ø");
+			 OLED_ShowCHinese(00, 32, "  Ä£Ê½£º·äÃùÆ÷  ");
 			 OLED_ShowString(104, 50, "5/8");
 		 }
 		 if(check_parameter.Process==15)
 		 {
-			 OLED_ShowCHinese(00, 00, "  ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½Ü¿ï¿½ï¿½ï¿½  ");
-			 OLED_ShowCHinese(32, 16, "ï¿½ï¿½ï¿½Ø£ï¿½");
-			 if(EN==1)					OLED_ShowCHinese(80, 16, "ï¿½ï¿½");
-			 else								OLED_ShowCHinese(80, 16, "ï¿½ï¿½");
-			 OLED_ShowCHinese(8, 32, "Ä£Ê½ï¿½ï¿½Ê¹ï¿½Ü¿ï¿½ï¿½ï¿½");
+			 OLED_ShowCHinese(00, 00, "  ²¦¶¯Ê¹ÄÜ¿ª¹Ø  ");
+			 OLED_ShowCHinese(32, 16, "¿ª¹Ø£º");
+			 if(EN==1)					OLED_ShowCHinese(80, 16, "¿ª");
+			 else								OLED_ShowCHinese(80, 16, "¹Ø");
+			 OLED_ShowCHinese(8, 32, "Ä£Ê½£ºÊ¹ÄÜ¿ª¹Ø");
 			 OLED_ShowString(104, 50, "6/8");
 		 }
 		 if(check_parameter.Process==16)
 		 {
-			  OLED_ShowCHinese(00, 00, "È·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ³ï¿½ï¿½ï¿½");
-			  OLED_ShowCHinese(24, 16, "ï¿½óµ¥»ï¿½ï¿½ï¿½ï¿½ï¿½");
-				OLED_ShowCHinese(24, 32, "Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
+			  OLED_ShowCHinese(00, 00, "È·ÈÏÀ¶ÑÀºìµÆ³£ÁÁ");
+			  OLED_ShowCHinese(24, 16, "ºóµ¥»÷½øÈë");
+				OLED_ShowCHinese(24, 32, "Ä£Ê½£ºÀ¶ÑÀ");
 			  OLED_ShowString(104, 50, "7/8");
 		 }
 		 if(check_parameter.Process==17)
 		 {
-			 OLED_ShowCHinese(8, 00, "Ð¡ï¿½ï¿½ï¿½Ð¶ï¿½×´Ì¬ï¿½ï¿½");
-			 if(check_parameter.Usart2_check_dir==1)				OLED_ShowCHinese(48, 16, "ï¿½ï¿½Ç°");
-			 else if(check_parameter.Usart2_check_dir==2)		OLED_ShowCHinese(48, 16, "ï¿½ï¿½ï¿½ï¿½");
-			 else if(check_parameter.Usart2_check_dir==3)		OLED_ShowCHinese(48, 16, "ï¿½ï¿½ï¿½ï¿½");
-			 else if(check_parameter.Usart2_check_dir==4)		OLED_ShowCHinese(48, 16, "ï¿½ï¿½ï¿½ï¿½");
-			 else if(check_parameter.Usart2_check_dir==5)		OLED_ShowCHinese(48, 16, "ï¿½ï¿½ï¿½");
-			 else if(check_parameter.Usart2_check_dir==6)		OLED_ShowCHinese(48, 16, "ï¿½ï¿½ï¿½ï¿½");
-			 else if(check_parameter.Usart2_check_dir==7)		OLED_ShowCHinese(48, 16, "ï¿½ï¿½ï¿½ï¿½");
-			 else if(check_parameter.Usart2_check_dir==8)		OLED_ShowCHinese(48, 16, "ï¿½ï¿½ï¿½ï¿½");
+			 OLED_ShowCHinese(8, 00, "Ð¡³µÐÐ¶¯×´Ì¬£º");
+			 if(check_parameter.Usart2_check_dir==1)				OLED_ShowCHinese(48, 16, "ÏòÇ°");
+			 else if(check_parameter.Usart2_check_dir==2)		OLED_ShowCHinese(48, 16, "ÓÒÉÏ");
+			 else if(check_parameter.Usart2_check_dir==3)		OLED_ShowCHinese(48, 16, "ÏòÓÒ");
+			 else if(check_parameter.Usart2_check_dir==4)		OLED_ShowCHinese(48, 16, "ÓÒÏÂ");
+			 else if(check_parameter.Usart2_check_dir==5)		OLED_ShowCHinese(48, 16, "Ïòºó");
+			 else if(check_parameter.Usart2_check_dir==6)		OLED_ShowCHinese(48, 16, "×óÏÂ");
+			 else if(check_parameter.Usart2_check_dir==7)		OLED_ShowCHinese(48, 16, "Ïò×ó");
+			 else if(check_parameter.Usart2_check_dir==8)		OLED_ShowCHinese(48, 16, "×óÉÏ");
 			 else if(check_parameter.Usart2_check_dir==9)		OLED_ShowCHinese(48, 16, "Í£Ö¹");
-			 OLED_ShowCHinese(24, 32, "Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
+			 OLED_ShowCHinese(24, 32, "Ä£Ê½£ºÀ¶ÑÀ");
 			 OLED_ShowString(104, 50, "7/8");
 		 }
 		 if(check_parameter.Process==18)
 		 {
-				OLED_ShowCHinese(8, 00, "Ê¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
-			  OLED_ShowCHinese(20, 16, "ï¿½Ð¼ï¿½ï¿½");
+				OLED_ShowCHinese(8, 00, "Ê¹ÓÃÊý¾ÝÏßÁ¬½Ó");
+			  OLED_ShowCHinese(20, 16, "ÖÐ¼äµÄ");
 			  OLED_ShowString16(68, 16, "USB");
-				OLED_ShowCHinese(92,16, "ï¿½ï¿½");
-				OLED_ShowCHinese(20, 32, "Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
+				OLED_ShowCHinese(92,16, "¿Ú");
+				OLED_ShowCHinese(20, 32, "Ä£Ê½£º´®¿Ú");
 			  OLED_ShowString16(100,32, "3");
 			 OLED_ShowString(104, 50, "8/8");
 		 }
 		 if(check_parameter.Process==19)
 		 {
-			 OLED_ShowCHinese(00, 00, "ï¿½ï¿½ï¿½ï¿½");
+			 OLED_ShowCHinese(00, 00, "·¢ËÍ");
 			 OLED_ShowString16(36, 00, "#");
-			 OLED_ShowCHinese(48, 00, "ï¿½ï¿½Î²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
+			 OLED_ShowCHinese(48, 00, "½áÎ²µÄÊý¾Ý");
 			 
-			 OLED_ShowCHinese(8, 16, "ï¿½ï¿½ï¿½ï¿½ï¿½Ê£ï¿½");
+			 OLED_ShowCHinese(8, 16, "²¨ÌØÂÊ£º");
 			 OLED_ShowString16(72, 16, "115200");
 //			 OLED_ShowCHinese(00, 00, "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
 //			 OLED_ShowString16(64, 00, "WHEELTEC");
 //			 OLED_ShowCHinese(00, 16, "ï¿½ï¿½ï¿½Õµï¿½");
 //			 OLED_ShowString16(48, 16, "ASCII:");
 //			 OLED_ShowNumber(96, 18, (USART3->DR), 4, 12);		//ï¿½Ú´ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï·ï¿½ï¿½Íµï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½Asciiï¿½ï¿½ï¿½ï¿½Ê¾
-			 OLED_ShowCHinese(20, 32, "Ä£Ê½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
+			 OLED_ShowCHinese(20, 32, "Ä£Ê½£º´®¿Ú");
 			 OLED_ShowString16(100,32, "3");
 			 OLED_ShowString(104, 50, "8/8");
 		 }
 		 if(check_parameter.Process==20)
 		 {
-				OLED_ShowCHinese(00, 00, "ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ê¼ï¿½Ä£Ê½");
-			  OLED_ShowCHinese(00, 16, "ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½Øµï¿½");
-			  OLED_ShowCHinese(12, 32, "ï¿½ï¿½Ç°ï¿½ï¿½ï¿½Í£ï¿½");
+				OLED_ShowCHinese(00, 00, "¼´½«ÍË³öÖÊ¼ìÄ£Ê½");
+			  OLED_ShowCHinese(00, 16, "Çë×ª¶¯µçÎ»Æ÷»Øµ½");
+			  OLED_ShowCHinese(12, 32, "µ±Ç°³µÐÍ£º");
 			  switch(Car_Mode_Show)
 			  {
 					case Mec_Car:       OLED_ShowString16(92,32,"Mec "); break; 
@@ -608,7 +608,7 @@ void oled_show(void)
 			  }
 				OLED_ShowString(104, 50, "8/8");
 		 }
-		 OLED_ShowCHinese12(00, 50, "ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë«ï¿½ï¿½ï¿½Ë³ï¿½");
+		 OLED_ShowCHinese12(00, 50, "µ¥»÷¼ÌÐøË«»÷ÍË³ö");
 		 OLED_Refresh_Gram();
 	 }
 }
