@@ -48,6 +48,8 @@
 /*------------------------------------*/
 #define EN     PDin(3)  
 
+#define SERVO_INIT 1500  //Servo zero point //������
+
 void Enable_Pin(void);
 void TIM1_PWM_Init(u16 arr,u16 psc);
 void TIM9_PWM_Init(u16 arr,u16 psc);

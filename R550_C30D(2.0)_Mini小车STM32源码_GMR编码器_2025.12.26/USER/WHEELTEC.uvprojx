@@ -412,6 +412,11 @@
           <GroupName>HARDWARE</GroupName>
           <Files>
             <File>
+              <FileName>vl53l0x.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\HARDWARE\vl53l0x.c</FilePath>
+            </File>
+            <File>
               <FileName>adc.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\HARDWARE\adc.c</FilePath>
@@ -457,9 +462,14 @@
               <FilePath>..\HARDWARE\timer.c</FilePath>
             </File>
             <File>
-              <FileName>stepper.c</FileName>
+              <FileName>a4988.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\HARDWARE\stepper.c</FilePath>
+              <FilePath>..\HARDWARE\a4988.c</FilePath>
+            </File>
+            <File>
+              <FileName>stepper_motor.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\HARDWARE\stepper_motor.c</FilePath>
             </File>
             <File>
               <FileName>usartx.c</FileName>
@@ -647,6 +657,11 @@
           <GroupName>Balance</GroupName>
           <Files>
             <File>
+              <FileName>distance_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BALANCE\distance_task.c</FilePath>
+            </File>
+            <File>
               <FileName>system.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BALANCE\system.c</FilePath>
@@ -660,6 +675,11 @@
               <FileName>pushrod_task.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\BALANCE\pushrod_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>stepper_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\BALANCE\stepper_task.c</FilePath>
             </File>
             <File>
               <FileName>robot_select_init.c</FileName>

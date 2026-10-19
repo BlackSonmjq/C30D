@@ -234,7 +234,9 @@ void systemInit(void)
     //������D��ʼ�������ڶ�ȡ���A��ʵʱ�ٶ�
     Encoder_Init_TIM5();
 
-    stepper_init();
+    // PB14/PB15/PC7/PC8 are reserved for two A4988 drivers.
+    // EN pins are external; neither STEP pin pulses automatically.
+    StepperMotor_Init();
 
     //Initialize motor speed control and, for controlling motor speed, PWM frequency 10kHz
     //��ʼ������ٶȿ����Լ������ڿ��Ƶ���ٶȣ�PWMƵ��10KHZ

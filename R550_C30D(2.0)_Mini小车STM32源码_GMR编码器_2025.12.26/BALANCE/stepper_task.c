@@ -1,13 +1,11 @@
 #include "stepper_task.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
-void stepper_task(void *pvParameters)
+void stepper_Task(void *pvParameters)
 {
-    stepper_init();
-    while(1)
-    {
-        stepper_run(STEPPER_1, 3200, 1000);
-        vTaskDelay(10*1000);
-        stepper_stop(STEPPER_1);
-        vTaskDelay(10*1000);
-    }
+    (void)pvParameters;
+    StepperMotor_Init();
+    /* A FreeRTOS task must not return. Initialization is one-shot. */
+    vTaskDelete(NULL);
 }

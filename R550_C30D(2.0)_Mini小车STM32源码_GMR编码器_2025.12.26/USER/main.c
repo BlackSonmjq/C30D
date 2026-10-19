@@ -19,8 +19,10 @@ All rights reserved
 #include "system.h"
 #include "pushrod.h"
 #include "pushrod_task.h"
+#include "stepper_task.h"
+#include "distance_task.h"
 //Task priority    //�������ȼ�
-#define START_TASK_PRIO	1
+#define START_TASK_PRIO	0
 
 //Task stack size //�����ջ��С	
 #define START_STK_SIZE 	256  
@@ -36,6 +38,8 @@ int main(void)
 { 
   systemInit(); //Hardware initialization //Ӳ����ʼ��
 	//Create the start task //������ʼ����
+	
+	
 	xTaskCreate((TaskFunction_t )start_task,            //Task function   //������
 							(const char*    )"start_task",          //Task name       //��������
 							(uint16_t       )START_STK_SIZE,        //Task stack size //�����ջ��С
@@ -59,12 +63,14 @@ void start_task(void *pvParameters)
 		xTaskCreate(MPU6050_task,  "IMU_task",  IMU_STK_SIZE,  NULL, IMU_TASK_PRIO,  NULL);
 	else if( SysVal.HardWare_Ver==V1_1 )
 		xTaskCreate(ICM20948_task,  "IMU_task",  IMU_STK_SIZE,  NULL, IMU_TASK_PRIO,  NULL);
-		xTaskCreate(show_task,     "show_task",     SHOW_STK_SIZE,     NULL, SHOW_TASK_PRIO,     NULL); //The OLED display displays tasks //OLED��ʾ����ʾ����
-		xTaskCreate(led_task,      "led_task",      LED_STK_SIZE,      NULL, LED_TASK_PRIO,      NULL);	//LED light flashing task //LED����˸����
-		xTaskCreate(pstwo_task,    "PSTWO_task",    PS2_STK_SIZE,      NULL, PS2_TASK_PRIO,      NULL);	//Read the PS2 controller task //��ȡPS2�ֱ�����
-		xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //����3������1��CAN������������
-    	xTaskCreate(pushrod_task,      "pushrod_task",      PUSHROD_STK_SIZE,      NULL, PUSHROD_TASK_PRIO,      NULL);	//Pushrod control task //�Ƹ˿�������
-    	vTaskDelete(StartTask_Handler); //Delete the start task //ɾ����ʼ����
+	xTaskCreate(show_task,     "show_task",     SHOW_STK_SIZE,     NULL, SHOW_TASK_PRIO,     NULL); //The OLED display displays tasks //OLED��ʾ����ʾ����
+	xTaskCreate(led_task,      "led_task",      LED_STK_SIZE,      NULL, LED_TASK_PRIO,      NULL);	//LED light flashing task //LED����˸����
+	xTaskCreate(pstwo_task,    "PSTWO_task",    PS2_STK_SIZE,      NULL, PS2_TASK_PRIO,      NULL);	//Read the PS2 controller task //��ȡPS2�ֱ�����
+	xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //����3������1��CAN������������
+    xTaskCreate(pushrod_task,      "pushrod_task",      PUSHROD_STK_SIZE,      NULL, PUSHROD_TASK_PRIO,      NULL);	//Pushrod control task //�Ƹ˿�������
+    xTaskCreate(stepper_Task,      "stepper_task",      STEPPER_STK_SIZE,      NULL, STEPPER_TASK_PRIO,      NULL);	//Stepper motor control task //Ƹ˿
+    xTaskCreate(distance_task,     "distance_task",     DISTANCE_STK_SIZE,     NULL, DISTANCE_TASK_PRIO,     NULL);
+	vTaskDelete(StartTask_Handler); //Delete the start task //ɾʼ
 
     taskEXIT_CRITICAL();            //Exit the critical section//�˳��ٽ���
 }
