@@ -5,9 +5,9 @@
 Function: Initialize TIM2 as the encoder interface mode
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½TIM2ï¿½ï¿½Ê¼ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½Ä£Ê½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ ï¿½ï¿½ Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£º°ÑTIM2³õÊ¼»¯Îª±àÂëÆ÷½Ó¿ÚÄ£Ê½
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ »Ø Öµ£ºÎÞ
 **************************************************************************/
 void Encoder_Init_TIM2(void)
 {
@@ -15,8 +15,8 @@ void Encoder_Init_TIM2(void)
   TIM_ICInitTypeDef TIM_ICInitStructure;  
   GPIO_InitTypeDef GPIO_InitStructure;
 	
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);   //Ê¹ï¿½Ü¶ï¿½Ê±ï¿½ï¿½
-  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA|RCC_AHB1Periph_GPIOB, ENABLE);  //Ê¹ï¿½ï¿½A Bï¿½ï¿½
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);   //Ê¹ÄÜ¶¨Ê±Æ÷
+  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA|RCC_AHB1Periph_GPIOB, ENABLE);  //Ê¹ÓÃA B¿Ú
  
   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_15;  //PA15
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
@@ -32,23 +32,23 @@ void Encoder_Init_TIM2(void)
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
   GPIO_Init(GPIOB, &GPIO_InitStructure);  
 
-  GPIO_PinAFConfig(GPIOA,GPIO_PinSource15,GPIO_AF_TIM2);   //ï¿½ï¿½ï¿½ï¿½ÎªTIM2 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½
-  GPIO_PinAFConfig(GPIOB,GPIO_PinSource3,GPIO_AF_TIM2);   //ï¿½ï¿½ï¿½ï¿½ÎªTIM2 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½
+  GPIO_PinAFConfig(GPIOA,GPIO_PinSource15,GPIO_AF_TIM2);   //¸´ÓÃÎªTIM2 ±àÂëÆ÷½Ó¿Ú
+  GPIO_PinAFConfig(GPIOB,GPIO_PinSource3,GPIO_AF_TIM2);   //¸´ÓÃÎªTIM2 ±àÂëÆ÷½Ó¿Ú
   
   TIM_TimeBaseStructInit(&TIM_TimeBaseStructure);
   
-  TIM_TimeBaseStructure.TIM_Prescaler = 0x0; 							// No prescaling     //ï¿½ï¿½ï¿½ï¿½Æµ
-  TIM_TimeBaseStructure.TIM_Period = ENCODER_TIM_PERIOD;  //ï¿½è¶¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½×°Öµ
-  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1; //Ñ¡ï¿½ï¿½Ê±ï¿½Ó·ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµ
-  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up; //TIMï¿½ï¿½ï¿½Ï¼ï¿½ï¿½ï¿½    
-  TIM_TimeBaseInit(TIM2, &TIM_TimeBaseStructure);  //ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+  TIM_TimeBaseStructure.TIM_Prescaler = 0x0; 							// No prescaling     //²»·ÖÆµ
+  TIM_TimeBaseStructure.TIM_Period = ENCODER_TIM_PERIOD;  //Éè¶¨¼ÆÊýÆ÷×Ô¶¯ÖØ×°Öµ
+  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1; //Ñ¡ÔñÊ±ÖÓ·ÖÆµ£º²»·ÖÆµ
+  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up; //TIMÏòÉÏ¼ÆÊý    
+  TIM_TimeBaseInit(TIM2, &TIM_TimeBaseStructure);  //³õÊ¼»¯¶¨Ê±Æ÷
   
-  TIM_EncoderInterfaceConfig(TIM2, TIM_EncoderMode_TI12, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);//Ê¹ï¿½Ã±ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½3
+  TIM_EncoderInterfaceConfig(TIM2, TIM_EncoderMode_TI12, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);//Ê¹ÓÃ±àÂëÆ÷Ä£Ê½3
   TIM_ICStructInit(&TIM_ICInitStructure);
   TIM_ICInitStructure.TIM_ICFilter = 0;
   TIM_ICInit(TIM2, &TIM_ICInitStructure);
   
-  TIM_ClearFlag(TIM2, TIM_FLAG_Update);//ï¿½ï¿½ï¿½TIMï¿½Ä¸ï¿½ï¿½Â±ï¿½Ö¾Î»
+  TIM_ClearFlag(TIM2, TIM_FLAG_Update);//Çå³ýTIMµÄ¸üÐÂ±êÖ¾Î»
   TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
   TIM_SetCounter(TIM2,0);
   TIM_Cmd(TIM2, ENABLE); 
@@ -58,9 +58,9 @@ void Encoder_Init_TIM2(void)
 Function: Initialize TIM3 as the encoder interface mode
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½TIM3ï¿½ï¿½Ê¼ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½Ä£Ê½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£º°ÑTIM3³õÊ¼»¯Îª±àÂëÆ÷½Ó¿ÚÄ£Ê½
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ»Ø  Öµ£ºÎÞ
 **************************************************************************/
 void Encoder_Init_TIM3(void)
 {
@@ -68,8 +68,8 @@ void Encoder_Init_TIM3(void)
   TIM_ICInitTypeDef TIM_ICInitStructure;  
   GPIO_InitTypeDef GPIO_InitStructure;
 	
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);   //Ê¹ï¿½Ü¶ï¿½Ê±ï¿½ï¿½
-  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);  //Ê¹ï¿½ï¿½Aï¿½ï¿½
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);   //Ê¹ÄÜ¶¨Ê±Æ÷
+  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);  //Ê¹ÓÃA¿Ú
 
   GPIO_InitStructure.GPIO_Pin = GPIO_Pin_4 | GPIO_Pin_5;  //PB4 PB5
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
@@ -78,22 +78,22 @@ void Encoder_Init_TIM3(void)
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
   GPIO_Init(GPIOB, &GPIO_InitStructure);  
 
-  GPIO_PinAFConfig(GPIOB,GPIO_PinSource4,GPIO_AF_TIM3);   //ï¿½ï¿½ï¿½ï¿½ÎªTIM2 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½
-  GPIO_PinAFConfig(GPIOB,GPIO_PinSource5,GPIO_AF_TIM3);   //ï¿½ï¿½ï¿½ï¿½ÎªTIM2 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½
+  GPIO_PinAFConfig(GPIOB,GPIO_PinSource4,GPIO_AF_TIM3);   //¸´ÓÃÎªTIM2 ±àÂëÆ÷½Ó¿Ú
+  GPIO_PinAFConfig(GPIOB,GPIO_PinSource5,GPIO_AF_TIM3);   //¸´ÓÃÎªTIM2 ±àÂëÆ÷½Ó¿Ú
   
   TIM_TimeBaseStructInit(&TIM_TimeBaseStructure);  
-  TIM_TimeBaseStructure.TIM_Prescaler = 0x0; 							// No prescaling     //ï¿½ï¿½ï¿½ï¿½Æµ
-  TIM_TimeBaseStructure.TIM_Period = ENCODER_TIM_PERIOD;  //ï¿½è¶¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½×°Öµ
-  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1; //Ñ¡ï¿½ï¿½Ê±ï¿½Ó·ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµ
-  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up; //TIMï¿½ï¿½ï¿½Ï¼ï¿½ï¿½ï¿½    
-  TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure);  //ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
+  TIM_TimeBaseStructure.TIM_Prescaler = 0x0; 							// No prescaling     //²»·ÖÆµ
+  TIM_TimeBaseStructure.TIM_Period = ENCODER_TIM_PERIOD;  //Éè¶¨¼ÆÊýÆ÷×Ô¶¯ÖØ×°Öµ
+  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1; //Ñ¡ÔñÊ±ÖÓ·ÖÆµ£º²»·ÖÆµ
+  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up; //TIMÏòÉÏ¼ÆÊý    
+  TIM_TimeBaseInit(TIM3, &TIM_TimeBaseStructure);  //³õÊ¼»¯¶¨Ê±Æ÷
   
-  TIM_EncoderInterfaceConfig(TIM3, TIM_EncoderMode_TI12, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);//Ê¹ï¿½Ã±ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½3
+  TIM_EncoderInterfaceConfig(TIM3, TIM_EncoderMode_TI12, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);//Ê¹ÓÃ±àÂëÆ÷Ä£Ê½3
   TIM_ICStructInit(&TIM_ICInitStructure);
   TIM_ICInitStructure.TIM_ICFilter = 0;
   TIM_ICInit(TIM3, &TIM_ICInitStructure);  
 	
-  TIM_ClearFlag(TIM3, TIM_FLAG_Update);//ï¿½ï¿½ï¿½TIMï¿½Ä¸ï¿½ï¿½Â±ï¿½Ö¾Î»
+  TIM_ClearFlag(TIM3, TIM_FLAG_Update);//Çå³ýTIMµÄ¸üÐÂ±êÖ¾Î»
   TIM_ITConfig(TIM3, TIM_IT_Update, ENABLE);
 	TIM_SetCounter(TIM3,0);
   TIM_Cmd(TIM3, ENABLE); 
@@ -102,36 +102,36 @@ void Encoder_Init_TIM3(void)
 Function: Initialize TIM4 as the encoder interface mode
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½TIM4ï¿½ï¿½Ê¼ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½Ä£Ê½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ ï¿½ï¿½ Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£º°ÑTIM4³õÊ¼»¯Îª±àÂëÆ÷½Ó¿ÚÄ£Ê½
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ »Ø Öµ£ºÎÞ
 **************************************************************************/
 void Encoder_Init_TIM4(void)
 {
 	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;  
   TIM_ICInitTypeDef TIM_ICInitStructure;  
   GPIO_InitTypeDef GPIO_InitStructure;
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);//Ê¹ï¿½Ü¶ï¿½Ê±ï¿½ï¿½4ï¿½ï¿½Ê±ï¿½ï¿½
-  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);//Ê¹ï¿½ï¿½PBï¿½Ë¿ï¿½Ê±ï¿½ï¿½
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7;//ï¿½Ë¿ï¿½ï¿½ï¿½ï¿½ï¿½
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);//Ê¹ÄÜ¶¨Ê±Æ÷4µÄÊ±ÖÓ
+  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);//Ê¹ÄÜPB¶Ë¿ÚÊ±ÖÓ
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7;//¶Ë¿ÚÅäÖÃ
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
   GPIO_InitStructure.GPIO_OType = GPIO_OType_OD;
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
-  GPIO_Init(GPIOB, &GPIO_InitStructure);   //ï¿½ï¿½ï¿½ï¿½ï¿½è¶¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½GPIOB
+  GPIO_Init(GPIOB, &GPIO_InitStructure);   //¸ù¾ÝÉè¶¨²ÎÊý³õÊ¼»¯GPIOB
 
-  GPIO_PinAFConfig(GPIOB,GPIO_PinSource6,GPIO_AF_TIM4); //ï¿½ï¿½ï¿½ï¿½ÎªTIM4 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½
-  GPIO_PinAFConfig(GPIOB,GPIO_PinSource7,GPIO_AF_TIM4); //ï¿½ï¿½ï¿½ï¿½ÎªTIM4 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½
+  GPIO_PinAFConfig(GPIOB,GPIO_PinSource6,GPIO_AF_TIM4); //¸´ÓÃÎªTIM4 ±àÂëÆ÷½Ó¿Ú
+  GPIO_PinAFConfig(GPIOB,GPIO_PinSource7,GPIO_AF_TIM4); //¸´ÓÃÎªTIM4 ±àÂëÆ÷½Ó¿Ú
   
   TIM_TimeBaseStructInit(&TIM_TimeBaseStructure);
   
   TIM_TimeBaseStructure.TIM_Prescaler = 0x0; // No prescaling 
-  TIM_TimeBaseStructure.TIM_Period = ENCODER_TIM_PERIOD; //ï¿½è¶¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½×°Öµ
-  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;//Ñ¡ï¿½ï¿½Ê±ï¿½Ó·ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµ
-  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;   //TIMï¿½ï¿½ï¿½Ï¼ï¿½ï¿½ï¿½  
+  TIM_TimeBaseStructure.TIM_Period = ENCODER_TIM_PERIOD; //Éè¶¨¼ÆÊýÆ÷×Ô¶¯ÖØ×°Öµ
+  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;//Ñ¡ÔñÊ±ÖÓ·ÖÆµ£º²»·ÖÆµ
+  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;   //TIMÏòÉÏ¼ÆÊý  
   TIM_TimeBaseInit(TIM4, &TIM_TimeBaseStructure);
   
-  TIM_EncoderInterfaceConfig(TIM4, TIM_EncoderMode_TI12, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);//Ê¹ï¿½Ã±ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½3
+  TIM_EncoderInterfaceConfig(TIM4, TIM_EncoderMode_TI12, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);//Ê¹ÓÃ±àÂëÆ÷Ä£Ê½3
   TIM_ICStructInit(&TIM_ICInitStructure);
   TIM_ICInitStructure.TIM_ICFilter = 0;
   TIM_ICInit(TIM4, &TIM_ICInitStructure);
@@ -145,37 +145,37 @@ void Encoder_Init_TIM4(void)
 Function: Initialize TIM5 as the encoder interface mode
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½TIM5ï¿½ï¿½Ê¼ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½Ä£Ê½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£º°ÑTIM5³õÊ¼»¯Îª±àÂëÆ÷½Ó¿ÚÄ£Ê½
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ»Ø  Öµ£ºÎÞ
 **************************************************************************/
 void Encoder_Init_TIM5(void)
 {
 	TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;  
   TIM_ICInitTypeDef TIM_ICInitStructure;  
   GPIO_InitTypeDef GPIO_InitStructure;
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM5, ENABLE);//Ê¹ï¿½Ü¶ï¿½Ê±ï¿½ï¿½4ï¿½ï¿½Ê±ï¿½ï¿½
-  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);//Ê¹ï¿½ï¿½PBï¿½Ë¿ï¿½Ê±ï¿½ï¿½
+  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM5, ENABLE);//Ê¹ÄÜ¶¨Ê±Æ÷4µÄÊ±ÖÓ
+  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);//Ê¹ÄÜPB¶Ë¿ÚÊ±ÖÓ
 	
-	 GPIO_PinAFConfig(GPIOA,GPIO_PinSource0,GPIO_AF_TIM5); //ï¿½ï¿½ï¿½ï¿½ÎªTIM4 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½
-  GPIO_PinAFConfig(GPIOA,GPIO_PinSource1,GPIO_AF_TIM5); //ï¿½ï¿½ï¿½ï¿½ÎªTIM4 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ó¿ï¿½
+	 GPIO_PinAFConfig(GPIOA,GPIO_PinSource0,GPIO_AF_TIM5); //¸´ÓÃÎªTIM4 ±àÂëÆ÷½Ó¿Ú
+  GPIO_PinAFConfig(GPIOA,GPIO_PinSource1,GPIO_AF_TIM5); //¸´ÓÃÎªTIM4 ±àÂëÆ÷½Ó¿Ú
 	
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1;//ï¿½Ë¿ï¿½ï¿½ï¿½ï¿½ï¿½
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_0 | GPIO_Pin_1;//¶Ë¿ÚÅäÖÃ
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
   GPIO_InitStructure.GPIO_OType = GPIO_OType_OD;
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
-  GPIO_Init(GPIOA, &GPIO_InitStructure);   //ï¿½ï¿½ï¿½ï¿½ï¿½è¶¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½GPIOB
+  GPIO_Init(GPIOA, &GPIO_InitStructure);   //¸ù¾ÝÉè¶¨²ÎÊý³õÊ¼»¯GPIOB
 
   TIM_TimeBaseStructInit(&TIM_TimeBaseStructure);
   
   TIM_TimeBaseStructure.TIM_Prescaler = 0x0; // No prescaling 
-  TIM_TimeBaseStructure.TIM_Period = ENCODER_TIM_PERIOD; //ï¿½è¶¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½×°Öµ
-  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;//Ñ¡ï¿½ï¿½Ê±ï¿½Ó·ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµ
-  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;   //TIMï¿½ï¿½ï¿½Ï¼ï¿½ï¿½ï¿½  
+  TIM_TimeBaseStructure.TIM_Period = ENCODER_TIM_PERIOD; //Éè¶¨¼ÆÊýÆ÷×Ô¶¯ÖØ×°Öµ
+  TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1;//Ñ¡ÔñÊ±ÖÓ·ÖÆµ£º²»·ÖÆµ
+  TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;   //TIMÏòÉÏ¼ÆÊý  
   TIM_TimeBaseInit(TIM5, &TIM_TimeBaseStructure);
   
-  TIM_EncoderInterfaceConfig(TIM5, TIM_EncoderMode_TI12, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);//Ê¹ï¿½Ã±ï¿½ï¿½ï¿½ï¿½ï¿½Ä£Ê½3
+  TIM_EncoderInterfaceConfig(TIM5, TIM_EncoderMode_TI12, TIM_ICPolarity_Rising, TIM_ICPolarity_Rising);//Ê¹ÓÃ±àÂëÆ÷Ä£Ê½3
   TIM_ICStructInit(&TIM_ICInitStructure);
   TIM_ICInitStructure.TIM_ICFilter = 0;
   TIM_ICInit(TIM5, &TIM_ICInitStructure);
@@ -190,9 +190,9 @@ void Encoder_Init_TIM5(void)
 Function: Read the encoder count
 Input   : The timer
 Output  : Encoder value (representing speed)
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½
-ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ(ï¿½ï¿½ï¿½ï¿½ï¿½Ù¶ï¿½)
+º¯Êý¹¦ÄÜ£º¶ÁÈ¡±àÂëÆ÷¼ÆÊý
+Èë¿Ú²ÎÊý£º¶¨Ê±Æ÷
+·µ»Ø  Öµ£º±àÂëÆ÷ÊýÖµ(´ú±íËÙ¶È)
 **************************************************************************/
 int Read_Encoder(u8 TIMX)
 {
@@ -212,62 +212,62 @@ int Read_Encoder(u8 TIMX)
 Function: Tim2 interrupt service function
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½TIM2ï¿½Ð¶Ï·ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ ï¿½ï¿½ Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£ºTIM2ÖÐ¶Ï·þÎñº¯Êý
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ »Ø Öµ£ºÎÞ
 **************************************************************************/
 void TIM2_IRQHandler(void)
 { 		    		  			    
-	if(TIM2->SR&0X0001) //Overflow interrupt //ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½
+	if(TIM2->SR&0X0001) //Overflow interrupt //Òç³öÖÐ¶Ï
 	{    				   				     	    	
 	}				   
-	TIM2->SR&=~(1<<0); //Clear the interrupt flag bit //ï¿½ï¿½ï¿½ï¿½Ð¶Ï±ï¿½Ö¾Î» 	    
+	TIM2->SR&=~(1<<0); //Clear the interrupt flag bit //Çå³ýÖÐ¶Ï±êÖ¾Î» 	    
 }
 /**************************************************************************
 Function: Tim3 interrupt service function
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½TIM3ï¿½Ð¶Ï·ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ ï¿½ï¿½ Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£ºTIM3ÖÐ¶Ï·þÎñº¯Êý
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ »Ø Öµ£ºÎÞ
 **************************************************************************/
 void TIM3_IRQHandler(void)
 { 		    		  			    
-	if(TIM3->SR&0X0001) //Overflow interrupt //ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½
+	if(TIM3->SR&0X0001) //Overflow interrupt //Òç³öÖÐ¶Ï
 	{    				   				     	    	
 	}				   
-	TIM3->SR&=~(1<<0); //Clear the interrupt flag bit //ï¿½ï¿½ï¿½ï¿½Ð¶Ï±ï¿½Ö¾Î»  	    
+	TIM3->SR&=~(1<<0); //Clear the interrupt flag bit //Çå³ýÖÐ¶Ï±êÖ¾Î»  	    
 }
 /**************************************************************************
 Function: Tim4 interrupt service function
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½TIM4ï¿½Ð¶Ï·ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ ï¿½ï¿½ Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£ºTIM4ÖÐ¶Ï·þÎñº¯Êý
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ »Ø Öµ£ºÎÞ
 **************************************************************************/
 void TIM4_IRQHandler(void)
 { 		    		  			    
-	if(TIM4->SR&0X0001) //Overflow interrupt //ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½
+	if(TIM4->SR&0X0001) //Overflow interrupt //Òç³öÖÐ¶Ï
 	{    				   				     	    	
 	}				   
-	TIM4->SR&=~(1<<0); //Clear the interrupt flag bit //ï¿½ï¿½ï¿½ï¿½Ð¶Ï±ï¿½Ö¾Î»  	    
+	TIM4->SR&=~(1<<0); //Clear the interrupt flag bit //Çå³ýÖÐ¶Ï±êÖ¾Î»  	    
 }
 
 /**************************************************************************
 Function: Tim9 interrupt service function
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½TIM9ï¿½Ð¶Ï·ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ ï¿½ï¿½ Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£ºTIM9ÖÐ¶Ï·þÎñº¯Êý
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ »Ø Öµ£ºÎÞ
 **************************************************************************/
 void TIM5_IRQHandler(void)
 { 		    		  			    
-	if(TIM5->SR&0X0001) //Overflow interrupt //ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½
+	if(TIM5->SR&0X0001) //Overflow interrupt //Òç³öÖÐ¶Ï
 	{    				   				     	    	
 	}				   
-	TIM5->SR&=~(1<<0); //Clear the interrupt flag bit //ï¿½ï¿½ï¿½ï¿½Ð¶Ï±ï¿½Ö¾Î»  	    
+	TIM5->SR&=~(1<<0); //Clear the interrupt flag bit //Çå³ýÖÐ¶Ï±êÖ¾Î»  	    
 }
 
 void TIM8_BRK_TIM12_IRQHandler(void)

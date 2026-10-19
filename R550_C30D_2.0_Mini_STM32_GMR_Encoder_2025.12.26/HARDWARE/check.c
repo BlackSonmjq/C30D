@@ -1,8 +1,8 @@
 #include "check.h"
 
-//ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½Ø½á¹¹ï¿½ï¿½
+//¶¨Òå×Ô¼ìÏà¹Ø½á¹¹Ìå
 Check_parameter check_parameter;		
-//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+//·äÃùÆ÷¼ÆÊıÖµ
 u32 Buzzer_count1 = 0;
 
 void Check_task(void *pvParameters)
@@ -13,50 +13,50 @@ void Check_task(void *pvParameters)
 	while(1)
 	{
 		// This task runs at a frequency of 100Hz (10ms control once)
-		//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½100Hzï¿½ï¿½Æµï¿½ï¿½ï¿½ï¿½ï¿½Ğ£ï¿½10msï¿½ï¿½ï¿½ï¿½Ò»ï¿½Î£ï¿½
+		//´ËÈÎÎñÒÔ100HzµÄÆµÂÊÔËĞĞ£¨10ms¿ØÖÆÒ»´Î£©
 		vTaskDelayUntil(&lastWakeTime, F2T(RATE_100_HZ));
 		//Time count is no longer needed after 30 seconds
-		//Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½30ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òª
+		//Ê±¼ä¼ÆÊı£¬30Ãëºó²»ÔÙĞèÒª
 		if(SysVal.Time_count<3000) SysVal.Time_count++;
 		
 		Buzzer_count1++;
 		//Get the encoder data, that is, the real time wheel speed, 
 		//and convert to transposition international units
-		//ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½İ£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÊµÊ±ï¿½Ù¶È£ï¿½ï¿½ï¿½×ªï¿½ï¿½Î»ï¿½ï¿½ï¿½Êµï¿½Î»
+		//»ñÈ¡±àÂëÆ÷Êı¾İ£¬¼´³µÂÖÊµÊ±ËÙ¶È£¬²¢×ª»»Î»¹ú¼Êµ¥Î»
 		Get_Velocity_Form_Encoder();
 		//Click the user button to proceed to the next step
 		//Double-click to exit the self-check mode
-		//ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Ë«ï¿½ï¿½ï¿½Ë³ï¿½ï¿½Ô¼ï¿½Ä£Ê½
+		//µ¥»÷ÓÃ»§°´¼ü½øÈëÏÂÒ»²½£¬Ë«»÷ÍË³ö×Ô¼ìÄ£Ê½
 		Check_Key();
 		switch(check_parameter.Process)
 		{
-			case 3:				//ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½
-				if(check_parameter.Motor_forward > 0)				check_parameter.Motor_forward--,Full_rotation = 16799;		//ï¿½ï¿½×ª
-				else if(check_parameter.Motor_retreat > 0)	check_parameter.Motor_retreat--,Full_rotation = -16799;		//ï¿½ï¿½×ª
+			case 3:				//µç»ú×Ô¼ì
+				if(check_parameter.Motor_forward > 0)				check_parameter.Motor_forward--,Full_rotation = 16799;		//Õı×ª
+				else if(check_parameter.Motor_retreat > 0)	check_parameter.Motor_retreat--,Full_rotation = -16799;		//·´×ª
 				switch(Car_Mode)
 				{
 					case Mec_Car:case Mec_Car_V550: 
-						Set_Pwm( Full_rotation, -Full_rotation, -Full_rotation, Full_rotation); break; 									//Mecanum wheel car       //ï¿½ï¿½ï¿½ï¿½ï¿½Ä·ï¿½ï¿½Ğ¡ï¿½ï¿½
-					case Omni_Car:      Set_Pwm(-Full_rotation,  Full_rotation, -Full_rotation, Full_rotation); break; //Omni car                //È«ï¿½ï¿½ï¿½ï¿½Ğ¡ï¿½ï¿½
-					case Akm_Car:       Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation); break; //Ackermann structure car //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ğ¡ï¿½ï¿½
-					case Diff_Car:      Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation); break; //Differential car        //ï¿½ï¿½ï¿½Ö²ï¿½ï¿½ï¿½Ğ¡ï¿½ï¿½
+						Set_Pwm( Full_rotation, -Full_rotation, -Full_rotation, Full_rotation); break; 									//Mecanum wheel car       //Âó¿ËÄÉÄ·ÂÖĞ¡³µ
+					case Omni_Car:      Set_Pwm(-Full_rotation,  Full_rotation, -Full_rotation, Full_rotation); break; //Omni car                //È«ÏòÂÖĞ¡³µ
+					case Akm_Car:       Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation); break; //Ackermann structure car //°¢¿ËÂüĞ¡³µ
+					case Diff_Car:      Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation); break; //Differential car        //Á½ÂÖ²îËÙĞ¡³µ
 					case FourWheel_Car:case FourWheel_Car_V550:
-						Set_Pwm( Full_rotation, -Full_rotation, -Full_rotation, Full_rotation); break; 									//FourWheel car           //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-					case Tank_Car:      Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation); break; //Tank Car                //ï¿½Ä´ï¿½ï¿½ï¿½
+						Set_Pwm( Full_rotation, -Full_rotation, -Full_rotation, Full_rotation); break; 									//FourWheel car           //ËÄÇı³µ 
+					case Tank_Car:      Set_Pwm( Full_rotation,  Full_rotation,  Full_rotation, Full_rotation); break; //Tank Car                //ÂÄ´ø³µ
 				} 
 				if(!(check_parameter.Motor_forward > 0) && !(check_parameter.Motor_retreat > 0))				Set_Pwm(0,0,0,0);
 				break;
-			case 4:				//ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ì£¬ï¿½ï¿½ï¿½Æµï¿½ï¿½Í£ï¿½ï¿½
+			case 4:				//ÍË³öµç»ú×Ô¼ì£¬¿ØÖÆµç»úÍ£ÏÂ
 				Set_Pwm(0,0,0,0);
 				break;
-			case 14:				//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½
+			case 14:				//·äÃùÆ÷×Ô¼ìÏà¹Ø
 				if((Buzzer_count1/100)%2)			Buzzer_Set(1);
 				else													Buzzer_Set(0);
 				break;
-			case 15:				//ï¿½Ë³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ï¿½Ê±ï¿½Ø±Õ·ï¿½ï¿½ï¿½ï¿½ï¿½
+			case 15:				//ÍË³ö·äÃùÆ÷×Ô¼ìÊ±¹Ø±Õ·äÃùÆ÷
 				Buzzer_Set(0);
 				break;
-			case 19:				//ï¿½ï¿½ï¿½ï¿½3ï¿½Ô¼ì£¬ï¿½ï¿½âµ½ï¿½ï¿½Ö¾Î»ï¿½ò»º´ï¿½ï¿½ï¿½ï¿½Ö·ï¿½
+			case 19:				//´®¿Ú3×Ô¼ì£¬¼ì²âµ½±êÖ¾Î»Ôò»º´æÇø×Ö·û
 				if(check_parameter.Usart3_check_flag==1)
 				{
 					USART3_Return();
@@ -74,14 +74,14 @@ void Check_Key(void)
 {
 	u8 tmp;
 
-  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµï¿½ï¿½
+  //´«ÈëÈÎÎñµÄÆµÂÊ
   tmp=KEY_Scan(RATE_100_HZ,0);
-	if(tmp==single_click)				//ï¿½ï¿½ï¿½ï¿½
+	if(tmp==single_click)				//µ¥»÷
 	{
 		check_parameter.Process++;
-		// èˆµæœºè‡ªæ£€æ­¥éª¤ï¼ˆ6ï½13ï¼‰å·²ç§»é™¤ï¼Œè·³è¿‡è¿™äº›æ­¥éª¤ä»¥ä¿æŠ¤æ­¥è¿›é©±åŠ¨å¼•è„šã€‚
+		// ¶æ»ú×Ô¼ì²½Öè£¨6¡«13£©ÒÑÒÆ³ı£¬Ìø¹ıÕâĞ©²½ÖèÒÔ±£»¤²½½øÇı¶¯Òı½Å¡£
 		if(check_parameter.Process==6) check_parameter.Process=14;
-		if(check_parameter.Process==21)			//ï¿½Ô¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë³ï¿½
+		if(check_parameter.Process==21)			//×Ô¼ì½áÊø²¢ÍË³ö
 		{
 			delay_ms(50);
 			NVIC_SystemReset();

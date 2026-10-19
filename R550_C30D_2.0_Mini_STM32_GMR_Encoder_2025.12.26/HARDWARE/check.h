@@ -6,17 +6,17 @@
 
 typedef struct
 {
-	unsigned char Process;				//ï¿½ï¿½Ö¾ï¿½Ô¼ï¿½Ä£Ê½ï¿½Ä½ï¿½ï¿½ï¿½
-	int Motor_forward;						//ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½Öµ
-	int Motor_retreat;						//ï¿½ï¿½ï¿½ï¿½ï¿½×ªï¿½ï¿½ï¿½ï¿½Öµ
-	unsigned char Usart2_check_dir;			//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò£ï¿½Ø·ï¿½ï¿½ï¿½ï¿½Ö¾Î»
-	unsigned char Usart3_check_flag;		//ï¿½ï¿½ï¿½ï¿½3ï¿½Ô¼ï¿½ï¿½Ö¾Î»
-	unsigned char Usart3_rec_buffer[50];//ï¿½ï¿½ï¿½ï¿½3ï¿½ï¿½ï¿½Õ»ï¿½ï¿½ï¿½ï¿½ï¿½
+	unsigned char Process;				//±êÖ¾×Ô¼ìÄ£Ê½µÄ½ø¶È
+	int Motor_forward;						//µç»úÕý×ª¼ÆÊýÖµ
+	int Motor_retreat;						//µç»ú·´×ª¼ÆÊýÖµ
+	unsigned char Usart2_check_dir;			//À¶ÑÀ½ÓÊÕÒ£¿Ø·½Ïò±êÖ¾Î»
+	unsigned char Usart3_check_flag;		//´®¿Ú3×Ô¼ì±êÖ¾Î»
+	unsigned char Usart3_rec_buffer[50];//´®¿Ú3½ÓÊÕ»º´æÇø
 	unsigned char Usart3_rec_count;
 }Check_parameter;
 
-#define CHECK_TASK_PRIO		4     //Task priority //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½
-#define CHECK_STK_SIZE 		512   //Task stack size //ï¿½ï¿½ï¿½ï¿½ï¿½Õ»ï¿½ï¿½Ð¡
+#define CHECK_TASK_PRIO		4     //Task priority //ÈÎÎñÓÅÏÈ¼¶
+#define CHECK_STK_SIZE 		512   //Task stack size //ÈÎÎñ¶ÑÕ»´óÐ¡
 
 extern Check_parameter check_parameter;
 

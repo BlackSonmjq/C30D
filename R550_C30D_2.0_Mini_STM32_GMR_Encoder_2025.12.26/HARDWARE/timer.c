@@ -3,28 +3,28 @@
 
 //Input the capture flag for channel 1, 
 //the capture flag for the higher bits, and the overflow flag for the lower 6 bits
-//Í¨ï¿½ï¿½1ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½6Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾		
+//Í¨µÀ1ÊäÈë²¶»ñ±êÖ¾£¬¸ßÁ½Î»×ö²¶»ñ±êÖ¾£¬µÍ6Î»×öÒç³ö±êÖ¾		
 u8 TIM8CH1_CAPTURE_STA = 0;	
 u16 TIM8CH1_CAPTURE_UPVAL;
 u16 TIM8CH1_CAPTURE_DOWNVAL;
 
 //Input the capture flag for channel 2, 
 //the capture flag for the higher bits, and the overflow flag for the lower 6 bits
-//Í¨ï¿½ï¿½2ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½6Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾	
+//Í¨µÀ2ÊäÈë²¶»ñ±êÖ¾£¬¸ßÁ½Î»×ö²¶»ñ±êÖ¾£¬µÍ6Î»×öÒç³ö±êÖ¾	
 u8 TIM8CH2_CAPTURE_STA = 0;		
 u16 TIM8CH2_CAPTURE_UPVAL;
 u16 TIM8CH2_CAPTURE_DOWNVAL;
 
 //Input the capture flag for channel 3, 
 //the capture flag for the higher bits, and the overflow flag for the lower 6 bits
-//Í¨ï¿½ï¿½3ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½6Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾	
+//Í¨µÀ3ÊäÈë²¶»ñ±êÖ¾£¬¸ßÁ½Î»×ö²¶»ñ±êÖ¾£¬µÍ6Î»×öÒç³ö±êÖ¾	
 u8 TIM8CH3_CAPTURE_STA = 0;		
 u16 TIM8CH3_CAPTURE_UPVAL;
 u16 TIM8CH3_CAPTURE_DOWNVAL;
 
 //Input the capture flag for channel 4, 
 //the capture flag for the higher bits, and the overflow flag for the lower 6 bits
-//Í¨ï¿½ï¿½4ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾ï¿½ï¿½ï¿½ï¿½6Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾
+//Í¨µÀ4ÊäÈë²¶»ñ±êÖ¾£¬¸ßÁ½Î»×ö²¶»ñ±êÖ¾£¬µÍ6Î»×öÒç³ö±êÖ¾
 u8 TIM8CH4_CAPTURE_STA = 0;			
 u16 TIM8CH4_CAPTURE_UPVAL;
 u16 TIM8CH4_CAPTURE_DOWNVAL;
@@ -35,19 +35,19 @@ u32 TIM8_T3;
 u32 TIM8_T4;
 
 //Variables related to remote control acquisition of model aircraft
-//ï¿½ï¿½Ä£Ò£ï¿½Ø²É¼ï¿½ï¿½ï¿½Ø±ï¿½ï¿½ï¿½
+//º½Ä£Ò£¿Ø²É¼¯Ïà¹Ø±äÁ¿
 int Remoter_Ch1=1500,Remoter_Ch2=1500,Remoter_Ch3=1500,Remoter_Ch4=1500;
 //Model aircraft remote control receiver variable
-//ï¿½ï¿½Ä£Ò£ï¿½Ø½ï¿½ï¿½Õ±ï¿½ï¿½ï¿½
+//º½Ä£Ò£¿Ø½ÓÊÕ±äÁ¿
 int L_Remoter_Ch1=1500,L_Remoter_Ch2=1500,L_Remoter_Ch3=1500,L_Remoter_Ch4=1500;  
 
 /**************************************************************************
 Function: Model aircraft remote control initialization function, timer 1 input capture initialization
 Input   : arr: Automatic reload value, psc: clock preset frequency
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½Ä£Ò£ï¿½Ø³ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½1ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½arrï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½×°Öµï¿½ï¿½pscï¿½ï¿½Ê±ï¿½ï¿½Ô¤ï¿½ï¿½Æµï¿½ï¿½ 
-ï¿½ï¿½ ï¿½ï¿½ Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£ºº½Ä£Ò£¿Ø³õÊ¼»¯º¯Êý£¬¶¨Ê±Æ÷1ÊäÈë²¶»ñ³õÊ¼»¯
+Èë¿Ú²ÎÊý£ºarr£º×Ô¶¯ÖØ×°Öµ£¬psc£ºÊ±ÖÓÔ¤·ÖÆµÊý 
+·µ »Ø Öµ£ºÎÞ
 **************************************************************************/ 
 void TIM8_Cap_Init(u16 arr, u16 psc)
 {
@@ -56,14 +56,14 @@ void TIM8_Cap_Init(u16 arr, u16 psc)
 	NVIC_InitTypeDef NVIC_InitStructure;
 	TIM_ICInitTypeDef TIM_ICInitStructure;
 	
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM8,ENABLE);  	//TIM1Ê±ï¿½ï¿½Ê¹ï¿½ï¿½    
-	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE); 	//Ê¹ï¿½ï¿½PORTEÊ±ï¿½ï¿½	
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM8,ENABLE);  	//TIM1Ê±ÖÓÊ¹ÄÜ    
+	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE); 	//Ê¹ÄÜPORTEÊ±ÖÓ	
 		
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7 | GPIO_Pin_8 | GPIO_Pin_9; //GPIOC
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;//ï¿½ï¿½ï¿½Ã¹ï¿½ï¿½ï¿½
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;	//ï¿½Ù¶ï¿½100MHz
-	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP; //ï¿½ï¿½ï¿½ì¸´ï¿½ï¿½ï¿½ï¿½ï¿½
-	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_DOWN; //ï¿½ï¿½ï¿½ï¿½
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;//¸´ÓÃ¹¦ÄÜ
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;	//ËÙ¶È100MHz
+	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP; //ÍÆÍì¸´ÓÃÊä³ö
+	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_DOWN; //ÏÂÀ­
 	GPIO_Init(GPIOC,&GPIO_InitStructure); 
 
 	GPIO_PinAFConfig(GPIOC,GPIO_PinSource6,GPIO_AF_TIM8); 
@@ -71,106 +71,106 @@ void TIM8_Cap_Init(u16 arr, u16 psc)
 	GPIO_PinAFConfig(GPIOC,GPIO_PinSource8,GPIO_AF_TIM8);
 	GPIO_PinAFConfig(GPIOC,GPIO_PinSource9,GPIO_AF_TIM8);
 
-	/*** Initialize timer 1 || ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½1 ***/
-	//Set the counter to automatically reload //ï¿½è¶¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½×°Öµ 
+	/*** Initialize timer 1 || ³õÊ¼»¯¶¨Ê±Æ÷1 ***/
+	//Set the counter to automatically reload //Éè¶¨¼ÆÊýÆ÷×Ô¶¯ÖØ×°Öµ 
 	TIM_TimeBaseStructure.TIM_Period = arr; 
-	//Pre-divider //Ô¤ï¿½ï¿½Æµï¿½ï¿½ 
+	//Pre-divider //Ô¤·ÖÆµÆ÷ 
 	TIM_TimeBaseStructure.TIM_Prescaler = psc; 	
-	//Set the clock split: TDTS = Tck_tim //ï¿½ï¿½ï¿½ï¿½Ê±ï¿½Ó·Ö¸ï¿½:TDTS = Tck_tim
+	//Set the clock split: TDTS = Tck_tim //ÉèÖÃÊ±ÖÓ·Ö¸î:TDTS = Tck_tim
 	TIM_TimeBaseStructure.TIM_ClockDivision = TIM_CKD_DIV1; 
-	//TIM up count mode //TIMï¿½ï¿½ï¿½Ï¼ï¿½ï¿½ï¿½Ä£Ê½	
+	//TIM up count mode //TIMÏòÉÏ¼ÆÊýÄ£Ê½	
 	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up; 
 	//Initializes the timebase unit for TIMX based on the parameter specified in TIM_TimeBaseInitStruct
-	//ï¿½ï¿½ï¿½ï¿½TIM_TimeBaseInitStructï¿½ï¿½Ö¸ï¿½ï¿½ï¿½Ä²ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½TIMxï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Î»
+	//¸ù¾ÝTIM_TimeBaseInitStructÖÐÖ¸¶¨µÄ²ÎÊý³õÊ¼»¯TIMxµÄÊ±¼ä»ùÊýµ¥Î»
 	TIM_TimeBaseInit(TIM8, &TIM_TimeBaseStructure); 
 
-	/*** ï¿½ï¿½Ê¼ï¿½ï¿½TIM1ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½1 || Initialize TIM1 for the capture parameter, channel 1 ***/
-	//Select input //Ñ¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
+	/*** ³õÊ¼»¯TIM1ÊäÈë²¶»ñ²ÎÊý£¬Í¨µÀ1 || Initialize TIM1 for the capture parameter, channel 1 ***/
+	//Select input //Ñ¡ÔñÊäÈë¶Ë 
 	TIM_ICInitStructure.TIM_Channel = TIM_Channel_1; 
-  //Rising edge capture //ï¿½ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½
+  //Rising edge capture //ÉÏÉýÑØ²¶»ñ
 	TIM_ICInitStructure.TIM_ICPolarity = TIM_ICPolarity_Rising;	
 	TIM_ICInitStructure.TIM_ICSelection = TIM_ICSelection_DirectTI; 
-	//Configure input frequency division, regardless of frequency //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµ,ï¿½ï¿½ï¿½ï¿½Æµ 
+	//Configure input frequency division, regardless of frequency //ÅäÖÃÊäÈë·ÖÆµ,²»·ÖÆµ 
 	TIM_ICInitStructure.TIM_ICPrescaler = TIM_ICPSC_DIV1;	
-  //IC1F=0000 Configure input filter //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë²ï¿½ï¿½ï¿½
+  //IC1F=0000 Configure input filter //ÅäÖÃÊäÈëÂË²¨Æ÷
 	TIM_ICInitStructure.TIM_ICFilter = 0x0F;	  
 	TIM_ICInit(TIM8, &TIM_ICInitStructure);
 
-	/*** ï¿½ï¿½Ê¼ï¿½ï¿½TIM1ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½2 || Initialize TIM1 for the capture parameter, channel 2 ***/
-	//CC1S=01 Select input //Ñ¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
+	/*** ³õÊ¼»¯TIM1ÊäÈë²¶»ñ²ÎÊý£¬Í¨µÀ2 || Initialize TIM1 for the capture parameter, channel 2 ***/
+	//CC1S=01 Select input //Ñ¡ÔñÊäÈë¶Ë 
 	TIM_ICInitStructure.TIM_Channel = TIM_Channel_2;
-	//Rising edge capture //ï¿½ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½
+	//Rising edge capture //ÉÏÉýÑØ²¶»ñ
 	TIM_ICInitStructure.TIM_ICPolarity = TIM_ICPolarity_Rising;	
 	TIM_ICInitStructure.TIM_ICSelection = TIM_ICSelection_DirectTI; 
-	//Configure input frequency division, regardless of frequency //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµ,ï¿½ï¿½ï¿½ï¿½Æµ 
+	//Configure input frequency division, regardless of frequency //ÅäÖÃÊäÈë·ÖÆµ,²»·ÖÆµ 
 	TIM_ICInitStructure.TIM_ICPrescaler = TIM_ICPSC_DIV1;	  
-	TIM_ICInitStructure.TIM_ICFilter = 0x00;	  //IC1F=0000 ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë²ï¿½ï¿½ï¿½
+	TIM_ICInitStructure.TIM_ICFilter = 0x00;	  //IC1F=0000 ÅäÖÃÊäÈëÂË²¨Æ÷
 	TIM_ICInit(TIM8, &TIM_ICInitStructure);
 
-	/*** ï¿½ï¿½Ê¼ï¿½ï¿½TIM1ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½3 || Initialize TIM1 for the capture parameter, channel 3 ***/
-	//Select input //Ñ¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
+	/*** ³õÊ¼»¯TIM1ÊäÈë²¶»ñ²ÎÊý£¬Í¨µÀ3 || Initialize TIM1 for the capture parameter, channel 3 ***/
+	//Select input //Ñ¡ÔñÊäÈë¶Ë 
 	TIM_ICInitStructure.TIM_Channel = TIM_Channel_3;   
-	//Rising edge capture //ï¿½ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½
+	//Rising edge capture //ÉÏÉýÑØ²¶»ñ
 	TIM_ICInitStructure.TIM_ICPolarity = TIM_ICPolarity_Rising;
 	TIM_ICInitStructure.TIM_ICSelection = TIM_ICSelection_DirectTI; 
-	//Configure input frequency division, regardless of frequency //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµ,ï¿½ï¿½ï¿½ï¿½Æµ 
+	//Configure input frequency division, regardless of frequency //ÅäÖÃÊäÈë·ÖÆµ,²»·ÖÆµ 
 	TIM_ICInitStructure.TIM_ICPrescaler = TIM_ICPSC_DIV1;	  
-	//IC1F=0000 Configure input filter //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë²ï¿½  
+	//IC1F=0000 Configure input filter //ÅäÖÃÊäÈëÂË²¨Æ÷£¬²»ÂË²¨  
 	TIM_ICInitStructure.TIM_ICFilter = 0x00;	  
 	TIM_ICInit(TIM8, &TIM_ICInitStructure);
 
-	/*** ï¿½ï¿½Ê¼ï¿½ï¿½TIM1ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¨ï¿½ï¿½4 || Initialize TIM1 for the capture parameter, channel 4 ***/
-	//Select input //Ñ¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 
+	/*** ³õÊ¼»¯TIM1ÊäÈë²¶»ñ²ÎÊý£¬Í¨µÀ4 || Initialize TIM1 for the capture parameter, channel 4 ***/
+	//Select input //Ñ¡ÔñÊäÈë¶Ë 
 	TIM_ICInitStructure.TIM_Channel = TIM_Channel_4; 
-	//Rising edge capture //ï¿½ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½
+	//Rising edge capture //ÉÏÉýÑØ²¶»ñ
 	TIM_ICInitStructure.TIM_ICPolarity = TIM_ICPolarity_Rising;	
 	TIM_ICInitStructure.TIM_ICSelection = TIM_ICSelection_DirectTI; 
-	//Configure input frequency division, regardless of frequency //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æµ,ï¿½ï¿½ï¿½ï¿½Æµ 
+	//Configure input frequency division, regardless of frequency //ÅäÖÃÊäÈë·ÖÆµ,²»·ÖÆµ 
 	TIM_ICInitStructure.TIM_ICPrescaler = TIM_ICPSC_DIV1;	   
-	//IC1F=0000 Configure input filter //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë²ï¿½  
+	//IC1F=0000 Configure input filter //ÅäÖÃÊäÈëÂË²¨Æ÷£¬²»ÂË²¨  
 	TIM_ICInitStructure.TIM_ICFilter = 0x00;	  
 	TIM_ICInit(TIM8, &TIM_ICInitStructure);
 
-  /*** interrupt packet initialization || ï¿½Ð¶Ï·ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ ***/
-  //TIM1 interrupts //TIM1ï¿½Ð¶ï¿½
+  /*** interrupt packet initialization || ÖÐ¶Ï·Ö×é³õÊ¼»¯ ***/
+  //TIM1 interrupts //TIM1ÖÐ¶Ï
 	NVIC_InitStructure.NVIC_IRQChannel = TIM8_CC_IRQn; 
-  //Preempt priority 0 //ï¿½ï¿½Õ¼ï¿½ï¿½ï¿½È¼ï¿½0ï¿½ï¿½	
+  //Preempt priority 0 //ÏÈÕ¼ÓÅÏÈ¼¶0¼¶	
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;  
-	//Level 0 from priority //ï¿½ï¿½ï¿½ï¿½ï¿½È¼ï¿½0ï¿½ï¿½
+	//Level 0 from priority //´ÓÓÅÏÈ¼¶0¼¶
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 2; 
-	//IRQ channels are enabled //IRQÍ¨ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½
+	//IRQ channels are enabled //IRQÍ¨µÀ±»Ê¹ÄÜ
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; 
 	//Initializes the peripheral NVIC register according to the parameters specified in NVIC_InitStruct
-	//ï¿½ï¿½ï¿½ï¿½NVIC_InitStructï¿½ï¿½Ö¸ï¿½ï¿½ï¿½Ä²ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½NVICï¿½Ä´ï¿½ï¿½ï¿½ 
+	//¸ù¾ÝNVIC_InitStructÖÐÖ¸¶¨µÄ²ÎÊý³õÊ¼»¯ÍâÉèNVIC¼Ä´æÆ÷ 
 	NVIC_Init(&NVIC_InitStructure);   
 	
   //Allow CC1IE,CC2IE,CC3IE,CC4IE to catch interrupts, not allowed update_interrupts
-  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶Ï£ï¿½ï¿½ï¿½ï¿½ï¿½CC1IE,CC2IE,CC3IE,CC4IEï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½	
+  //²»ÔÊÐí¸üÐÂÖÐ¶Ï£¬ÔÊÐíCC1IE,CC2IE,CC3IE,CC4IE²¶»ñÖÐ¶Ï	
 	TIM_ITConfig(TIM8, TIM_IT_CC1|TIM_IT_CC2|TIM_IT_CC3|TIM_IT_CC4,	ENABLE);   
-	//Advanced timer output must be enabled //ï¿½ß¼ï¿½ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¹ï¿½ï¿½ï¿½ï¿½ï¿½	
+	//Advanced timer output must be enabled //¸ß¼¶¶¨Ê±Æ÷Êä³ö±ØÐëÊ¹ÄÜÕâ¾ä	
 	TIM_CtrlPWMOutputs(TIM8,ENABLE); 	
-	//Enable timer //Ê¹ï¿½Ü¶ï¿½Ê±ï¿½ï¿½
+	//Enable timer //Ê¹ÄÜ¶¨Ê±Æ÷
 	TIM_Cmd(TIM8, ENABLE); 		
 }
 /**************************************************************************
 Function: Model aircraft remote control receiving interrupt, namely timer 8 input capture interrupt
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½Ä£Ò£ï¿½Ø½ï¿½ï¿½ï¿½ï¿½Ð¶Ï£ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½8ï¿½ï¿½ï¿½ë²¶ï¿½ï¿½ï¿½Ð¶ï¿½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ ï¿½ï¿½ Öµï¿½ï¿½ï¿½ï¿½
+º¯Êý¹¦ÄÜ£ºº½Ä£Ò£¿Ø½ÓÊÕÖÐ¶Ï£¬¼´¶¨Ê±Æ÷8ÊäÈë²¶»ñÖÐ¶Ï
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ »Ø Öµ£ºÎÞ
 **************************************************************************/ 
 void TIM8_CC_IRQHandler(void)
 {
 	static u8 ch1_filter_times=0,ch2_filter_times=0,ch3_filter_times=0,ch4_filter_times=0;
 	
-	//ï¿½ï¿½ï¿½Óºï¿½Ä£Ò£Ò£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Òªï¿½ï¿½ï¿½ï¿½Ç°ï¿½ï¿½ï¿½Ë£ï¿½ï¿½Å¿ï¿½ï¿½ï¿½ï¿½ï¿½Ê½ï¿½ï¿½Ä£ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½ï¿½
+	//Á¬½Óº½Ä£Ò£Ò£¿ØÆ÷ºó£¬ÐèÒªÍÆÏÂÇ°½ø¸Ë£¬²Å¿ÉÒÔÕýÊ½º½Ä£¿ØÖÆÐ¡³µ
 	//After connecting the remote controller of the model aircraft, 
 	//you need to push down the forward lever to officially control the car of the model aircraft
   if(Remoter_Ch2>1600&&Remote_ON_Flag==0&&SysVal.Time_count>=CONTROL_DELAY)
   {
 		//Model aircraft remote control mark position 1, other marks position 0
-		//ï¿½ï¿½Ä£Ò£ï¿½Ø±ï¿½Ö¾Î»ï¿½ï¿½1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾Î»ï¿½ï¿½0
+		//º½Ä£Ò£¿Ø±êÖ¾Î»ÖÃ1£¬ÆäËü±êÖ¾Î»ÖÃ0
 		Remote_ON_Flag=1;
 	  APP_ON_Flag=0;
 		PS2_ON_Flag=0;
@@ -180,26 +180,26 @@ void TIM8_CC_IRQHandler(void)
 		Usart5_ON_Flag=0;
 	}
 	
-//	//Channel 1 //Í¨ï¿½ï¿½Ò»
+//	//Channel 1 //Í¨µÀÒ»
 	if ((TIM8CH1_CAPTURE_STA & 0X80) == 0) 			
 	{
-		if (TIM_GetITStatus(TIM8, TIM_IT_CC1) != RESET) //A capture event occurred on channel 1 //Í¨ï¿½ï¿½1ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½
+		if (TIM_GetITStatus(TIM8, TIM_IT_CC1) != RESET) //A capture event occurred on channel 1 //Í¨µÀ1·¢Éú²¶»ñÊÂ¼þ
 		{
-			TIM_ClearITPendingBit(TIM8, TIM_IT_CC1); //Clear the interrupt flag bit //ï¿½ï¿½ï¿½ï¿½Ð¶Ï±ï¿½Ö¾Î»
-			if (TIM8CH1_CAPTURE_STA & 0X40)	//A falling edge is caught //ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Â½ï¿½ï¿½ï¿½
+			TIM_ClearITPendingBit(TIM8, TIM_IT_CC1); //Clear the interrupt flag bit //Çå³ýÖÐ¶Ï±êÖ¾Î»
+			if (TIM8CH1_CAPTURE_STA & 0X40)	//A falling edge is caught //²¶»ñµ½Ò»¸öÏÂ½µÑØ
 			{
-				TIM8CH1_CAPTURE_DOWNVAL = TIM_GetCapture1(TIM8); //Record the timer value at this point //ï¿½ï¿½Â¼ï¿½Â´ï¿½Ê±ï¿½Ä¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+				TIM8CH1_CAPTURE_DOWNVAL = TIM_GetCapture1(TIM8); //Record the timer value at this point //¼ÇÂ¼ÏÂ´ËÊ±µÄ¶¨Ê±Æ÷¼ÆÊýÖµ
 				if (TIM8CH1_CAPTURE_DOWNVAL < TIM8CH1_CAPTURE_UPVAL)
 				{
 					TIM8_T1 = 9999;
 				}
 				else
 					TIM8_T1 = 0;
-				Remoter_Ch1 = TIM8CH1_CAPTURE_DOWNVAL - TIM8CH1_CAPTURE_UPVAL + TIM8_T1;	//Time to get the total high level //ï¿½Ãµï¿½ï¿½ÜµÄ¸ßµï¿½Æ½ï¿½ï¿½Ê±ï¿½ï¿½
+				Remoter_Ch1 = TIM8CH1_CAPTURE_DOWNVAL - TIM8CH1_CAPTURE_UPVAL + TIM8_T1;	//Time to get the total high level //µÃµ½×ÜµÄ¸ßµçÆ½µÄÊ±¼ä
 				if(abs(Remoter_Ch1-L_Remoter_Ch1)>500)
 				{
 					ch1_filter_times++;
-					if( ch1_filter_times<=5 ) Remoter_Ch1=L_Remoter_Ch1; //Filter //ï¿½Ë²ï¿½	
+					if( ch1_filter_times<=5 ) Remoter_Ch1=L_Remoter_Ch1; //Filter //ÂË²¨	
 					else ch1_filter_times=0;
 				}
 				else
@@ -208,39 +208,39 @@ void TIM8_CC_IRQHandler(void)
 				}
 				L_Remoter_Ch1=Remoter_Ch1;
 				
-				TIM8CH1_CAPTURE_STA = 0; //Capture flag bit to zero	//ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾Î»ï¿½ï¿½ï¿½ï¿½
-				TIM_OC1PolarityConfig(TIM8, TIM_ICPolarity_Rising); //Set to rising edge capture //ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½		  
+				TIM8CH1_CAPTURE_STA = 0; //Capture flag bit to zero	//²¶»ñ±êÖ¾Î»ÇåÁã
+				TIM_OC1PolarityConfig(TIM8, TIM_ICPolarity_Rising); //Set to rising edge capture //ÉèÖÃÎªÉÏÉýÑØ²¶»ñ		  
 			}
 			else 
 			{
 				//When the capture time occurs but not the falling edge, the first time the rising edge is captured, record the timer value at this time
-				//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½äµ«ï¿½ï¿½ï¿½ï¿½ï¿½Â½ï¿½ï¿½Ø£ï¿½ï¿½ï¿½Ò»ï¿½Î²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø£ï¿½ï¿½ï¿½Â¼ï¿½ï¿½Ê±ï¿½Ä¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
-				TIM8CH1_CAPTURE_UPVAL = TIM_GetCapture1(TIM8); //Obtain rising edge data //ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-				TIM8CH1_CAPTURE_STA |= 0X40; //The flag has been caught on the rising edge //ï¿½ï¿½ï¿½ï¿½Ñ²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-				TIM_OC1PolarityConfig(TIM8, TIM_ICPolarity_Falling); //Set to Falling Edge Capture //ï¿½ï¿½ï¿½ï¿½Îªï¿½Â½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½
+				//·¢Éú²¶»ñÊ±¼äµ«²»ÊÇÏÂ½µÑØ£¬µÚÒ»´Î²¶»ñµ½ÉÏÉýÑØ£¬¼ÇÂ¼´ËÊ±µÄ¶¨Ê±Æ÷¼ÆÊýÖµ
+				TIM8CH1_CAPTURE_UPVAL = TIM_GetCapture1(TIM8); //Obtain rising edge data //»ñÈ¡ÉÏÉýÑØÊý¾Ý
+				TIM8CH1_CAPTURE_STA |= 0X40; //The flag has been caught on the rising edge //±ê¼ÇÒÑ²¶»ñµ½ÉÏÉýÑØ
+				TIM_OC1PolarityConfig(TIM8, TIM_ICPolarity_Falling); //Set to Falling Edge Capture //ÉèÖÃÎªÏÂ½µÑØ²¶»ñ
 			}
 		}
 	}
-  //Channel 2 //Í¨ï¿½ï¿½ï¿½ï¿½
+  //Channel 2 //Í¨µÀ¶þ
 	if ((TIM8CH2_CAPTURE_STA & 0X80) == 0)		
 	{
-		if (TIM_GetITStatus(TIM8, TIM_IT_CC2) != RESET)	//A capture event occurred on channel 2 //Í¨ï¿½ï¿½2ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½
+		if (TIM_GetITStatus(TIM8, TIM_IT_CC2) != RESET)	//A capture event occurred on channel 2 //Í¨µÀ2·¢Éú²¶»ñÊÂ¼þ
 		{
-			TIM_ClearITPendingBit(TIM8, TIM_IT_CC2); //Clear the interrupt flag bit //ï¿½ï¿½ï¿½ï¿½Ð¶Ï±ï¿½Ö¾Î»
-			if (TIM8CH2_CAPTURE_STA & 0X40)	//A falling edge is caught //ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Â½ï¿½ï¿½ï¿½
+			TIM_ClearITPendingBit(TIM8, TIM_IT_CC2); //Clear the interrupt flag bit //Çå³ýÖÐ¶Ï±êÖ¾Î»
+			if (TIM8CH2_CAPTURE_STA & 0X40)	//A falling edge is caught //²¶»ñµ½Ò»¸öÏÂ½µÑØ
 			{
-				TIM8CH2_CAPTURE_DOWNVAL = TIM_GetCapture2(TIM8); //Record the timer value at this point //ï¿½ï¿½Â¼ï¿½Â´ï¿½Ê±ï¿½Ä¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+				TIM8CH2_CAPTURE_DOWNVAL = TIM_GetCapture2(TIM8); //Record the timer value at this point //¼ÇÂ¼ÏÂ´ËÊ±µÄ¶¨Ê±Æ÷¼ÆÊýÖµ
 				if (TIM8CH2_CAPTURE_DOWNVAL < TIM8CH2_CAPTURE_UPVAL)
 				{
 					TIM8_T2 = 9999;
 				}
 				else
 					TIM8_T2 = 0;
-				Remoter_Ch2 = TIM8CH2_CAPTURE_DOWNVAL - TIM8CH2_CAPTURE_UPVAL + TIM8_T2; //Time to get the total high level //ï¿½Ãµï¿½ï¿½ÜµÄ¸ßµï¿½Æ½ï¿½ï¿½Ê±ï¿½ï¿½
+				Remoter_Ch2 = TIM8CH2_CAPTURE_DOWNVAL - TIM8CH2_CAPTURE_UPVAL + TIM8_T2; //Time to get the total high level //µÃµ½×ÜµÄ¸ßµçÆ½µÄÊ±¼ä
 				if(abs(Remoter_Ch2-L_Remoter_Ch2)>500)
 				{
 					ch2_filter_times++;
-					if( ch2_filter_times<=5 ) Remoter_Ch2=L_Remoter_Ch2; //Filter //ï¿½Ë²ï¿½	
+					if( ch2_filter_times<=5 ) Remoter_Ch2=L_Remoter_Ch2; //Filter //ÂË²¨	
 					else ch2_filter_times=0;
 				}
 				else
@@ -250,39 +250,39 @@ void TIM8_CC_IRQHandler(void)
 				
 				L_Remoter_Ch2=Remoter_Ch2;
 				
-				TIM8CH2_CAPTURE_STA = 0; //Capture flag bit to zero	//ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾Î»ï¿½ï¿½ï¿½ï¿½
-				TIM_OC2PolarityConfig(TIM8, TIM_ICPolarity_Rising); //Set to rising edge capture //ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½		  
+				TIM8CH2_CAPTURE_STA = 0; //Capture flag bit to zero	//²¶»ñ±êÖ¾Î»ÇåÁã
+				TIM_OC2PolarityConfig(TIM8, TIM_ICPolarity_Rising); //Set to rising edge capture //ÉèÖÃÎªÉÏÉýÑØ²¶»ñ		  
 			}
 			else 
 			{
 				//When the capture time occurs but not the falling edge, the first time the rising edge is captured, record the timer value at this time
-				//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½äµ«ï¿½ï¿½ï¿½ï¿½ï¿½Â½ï¿½ï¿½Ø£ï¿½ï¿½ï¿½Ò»ï¿½Î²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø£ï¿½ï¿½ï¿½Â¼ï¿½ï¿½Ê±ï¿½Ä¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
-				TIM8CH2_CAPTURE_UPVAL = TIM_GetCapture2(TIM8); //Obtain rising edge data //ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-				TIM8CH2_CAPTURE_STA |= 0X40; //The flag has been caught on the rising edge //ï¿½ï¿½ï¿½ï¿½Ñ²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-				TIM_OC2PolarityConfig(TIM8, TIM_ICPolarity_Falling); //Set to Falling Edge Capture //ï¿½ï¿½ï¿½ï¿½Îªï¿½Â½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½
+				//·¢Éú²¶»ñÊ±¼äµ«²»ÊÇÏÂ½µÑØ£¬µÚÒ»´Î²¶»ñµ½ÉÏÉýÑØ£¬¼ÇÂ¼´ËÊ±µÄ¶¨Ê±Æ÷¼ÆÊýÖµ
+				TIM8CH2_CAPTURE_UPVAL = TIM_GetCapture2(TIM8); //Obtain rising edge data //»ñÈ¡ÉÏÉýÑØÊý¾Ý
+				TIM8CH2_CAPTURE_STA |= 0X40; //The flag has been caught on the rising edge //±ê¼ÇÒÑ²¶»ñµ½ÉÏÉýÑØ
+				TIM_OC2PolarityConfig(TIM8, TIM_ICPolarity_Falling); //Set to Falling Edge Capture //ÉèÖÃÎªÏÂ½µÑØ²¶»ñ
 			}
 		}
 	}
-  //Channel 3 //Í¨ï¿½ï¿½ï¿½ï¿½
+  //Channel 3 //Í¨µÀÈý
 	if ((TIM8CH3_CAPTURE_STA & 0X80) == 0)			
 	{
-		if (TIM_GetITStatus(TIM8, TIM_IT_CC3) != RESET)	//A capture event occurred on channel 3 //Í¨ï¿½ï¿½3ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½
+		if (TIM_GetITStatus(TIM8, TIM_IT_CC3) != RESET)	//A capture event occurred on channel 3 //Í¨µÀ3·¢Éú²¶»ñÊÂ¼þ
 		{
-			TIM_ClearITPendingBit(TIM8, TIM_IT_CC3); //Clear the interrupt flag bit //ï¿½ï¿½ï¿½ï¿½Ð¶Ï±ï¿½Ö¾Î»
-			if (TIM8CH3_CAPTURE_STA & 0X40)	//A falling edge is caught //ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Â½ï¿½ï¿½ï¿½
+			TIM_ClearITPendingBit(TIM8, TIM_IT_CC3); //Clear the interrupt flag bit //Çå³ýÖÐ¶Ï±êÖ¾Î»
+			if (TIM8CH3_CAPTURE_STA & 0X40)	//A falling edge is caught //²¶»ñµ½Ò»¸öÏÂ½µÑØ
 			{
-				TIM8CH3_CAPTURE_DOWNVAL = TIM_GetCapture3(TIM8); //Record the timer value at this point //ï¿½ï¿½Â¼ï¿½Â´ï¿½Ê±ï¿½Ä¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+				TIM8CH3_CAPTURE_DOWNVAL = TIM_GetCapture3(TIM8); //Record the timer value at this point //¼ÇÂ¼ÏÂ´ËÊ±µÄ¶¨Ê±Æ÷¼ÆÊýÖµ
 				if (TIM8CH3_CAPTURE_DOWNVAL < TIM8CH3_CAPTURE_UPVAL)
 				{
 					TIM8_T3 = 9999;
 				}
 				else
 					TIM8_T3 = 0;
-				Remoter_Ch3 = TIM8CH3_CAPTURE_DOWNVAL - TIM8CH3_CAPTURE_UPVAL + TIM8_T3; //Time to get the total high level //ï¿½Ãµï¿½ï¿½ÜµÄ¸ßµï¿½Æ½ï¿½ï¿½Ê±ï¿½ï¿½
+				Remoter_Ch3 = TIM8CH3_CAPTURE_DOWNVAL - TIM8CH3_CAPTURE_UPVAL + TIM8_T3; //Time to get the total high level //µÃµ½×ÜµÄ¸ßµçÆ½µÄÊ±¼ä
 				if(abs(Remoter_Ch3-L_Remoter_Ch3)>500)
 				{
 					ch3_filter_times++;
-					if( ch3_filter_times<=5 ) Remoter_Ch3=L_Remoter_Ch3; //Filter //ï¿½Ë²ï¿½	
+					if( ch3_filter_times<=5 ) Remoter_Ch3=L_Remoter_Ch3; //Filter //ÂË²¨	
 					else ch3_filter_times=0;
 				}
 				else
@@ -290,41 +290,41 @@ void TIM8_CC_IRQHandler(void)
 					ch3_filter_times=0;
 				}
 				L_Remoter_Ch3=Remoter_Ch3;	
-				TIM8CH3_CAPTURE_STA = 0; //Capture flag bit to zero	//ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾Î»ï¿½ï¿½ï¿½ï¿½
-				TIM_OC3PolarityConfig(TIM8, TIM_ICPolarity_Rising); //Set to rising edge capture //ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½		  
+				TIM8CH3_CAPTURE_STA = 0; //Capture flag bit to zero	//²¶»ñ±êÖ¾Î»ÇåÁã
+				TIM_OC3PolarityConfig(TIM8, TIM_ICPolarity_Rising); //Set to rising edge capture //ÉèÖÃÎªÉÏÉýÑØ²¶»ñ		  
 			}
 			else 
 			{
 				//When the capture time occurs but not the falling edge, the first time the rising edge is captured, record the timer value at this time
-				//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½äµ«ï¿½ï¿½ï¿½ï¿½ï¿½Â½ï¿½ï¿½Ø£ï¿½ï¿½ï¿½Ò»ï¿½Î²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø£ï¿½ï¿½ï¿½Â¼ï¿½ï¿½Ê±ï¿½Ä¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
-				TIM8CH3_CAPTURE_UPVAL = TIM_GetCapture3(TIM8); //Obtain rising edge data //ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-				TIM8CH3_CAPTURE_STA |= 0X40; //The flag has been caught on the rising edge //ï¿½ï¿½ï¿½ï¿½Ñ²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-				TIM_OC3PolarityConfig(TIM8, TIM_ICPolarity_Falling); //Set to Falling Edge Capture //ï¿½ï¿½ï¿½ï¿½Îªï¿½Â½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½
+				//·¢Éú²¶»ñÊ±¼äµ«²»ÊÇÏÂ½µÑØ£¬µÚÒ»´Î²¶»ñµ½ÉÏÉýÑØ£¬¼ÇÂ¼´ËÊ±µÄ¶¨Ê±Æ÷¼ÆÊýÖµ
+				TIM8CH3_CAPTURE_UPVAL = TIM_GetCapture3(TIM8); //Obtain rising edge data //»ñÈ¡ÉÏÉýÑØÊý¾Ý
+				TIM8CH3_CAPTURE_STA |= 0X40; //The flag has been caught on the rising edge //±ê¼ÇÒÑ²¶»ñµ½ÉÏÉýÑØ
+				TIM_OC3PolarityConfig(TIM8, TIM_ICPolarity_Falling); //Set to Falling Edge Capture //ÉèÖÃÎªÏÂ½µÑØ²¶»ñ
 			}
 		}
 	}
 //	
 
-		//Channel 4 //Í¨ï¿½ï¿½ï¿½ï¿½
+		//Channel 4 //Í¨µÀËÄ
 		if ((TIM8CH4_CAPTURE_STA & 0X80) == 0)		
 		{
-			if (TIM_GetITStatus(TIM8, TIM_IT_CC4) != RESET)	//A capture event occurred on channel 4 //Í¨ï¿½ï¿½4ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¼ï¿½
+			if (TIM_GetITStatus(TIM8, TIM_IT_CC4) != RESET)	//A capture event occurred on channel 4 //Í¨µÀ4·¢Éú²¶»ñÊÂ¼þ
 			{
-				TIM_ClearITPendingBit(TIM8, TIM_IT_CC4); //Clear the interrupt flag bit //ï¿½ï¿½ï¿½ï¿½Ð¶Ï±ï¿½Ö¾Î»
-				if (TIM8CH4_CAPTURE_STA & 0X40)	//A falling edge is caught //ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½Â½ï¿½ï¿½ï¿½
+				TIM_ClearITPendingBit(TIM8, TIM_IT_CC4); //Clear the interrupt flag bit //Çå³ýÖÐ¶Ï±êÖ¾Î»
+				if (TIM8CH4_CAPTURE_STA & 0X40)	//A falling edge is caught //²¶»ñµ½Ò»¸öÏÂ½µÑØ
 				{
-					TIM8CH4_CAPTURE_DOWNVAL = TIM_GetCapture4(TIM8); //Record the timer value at this point //ï¿½ï¿½Â¼ï¿½Â´ï¿½Ê±ï¿½Ä¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
+					TIM8CH4_CAPTURE_DOWNVAL = TIM_GetCapture4(TIM8); //Record the timer value at this point //¼ÇÂ¼ÏÂ´ËÊ±µÄ¶¨Ê±Æ÷¼ÆÊýÖµ
 					if (TIM8CH4_CAPTURE_DOWNVAL < TIM8CH4_CAPTURE_UPVAL)
 					{
 						TIM8_T4 = 9999;
 					}
 					else
 						TIM8_T4 = 0;
-					Remoter_Ch4 = TIM8CH4_CAPTURE_DOWNVAL - TIM8CH4_CAPTURE_UPVAL + TIM8_T4; //Time to get the total high level //ï¿½Ãµï¿½ï¿½ÜµÄ¸ßµï¿½Æ½ï¿½ï¿½Ê±ï¿½ï¿½
+					Remoter_Ch4 = TIM8CH4_CAPTURE_DOWNVAL - TIM8CH4_CAPTURE_UPVAL + TIM8_T4; //Time to get the total high level //µÃµ½×ÜµÄ¸ßµçÆ½µÄÊ±¼ä
 					if(abs(Remoter_Ch4-L_Remoter_Ch4)>500)
 					{
 						ch4_filter_times++;
-						if( ch4_filter_times<=5 ) Remoter_Ch4=L_Remoter_Ch4; //Filter //ï¿½Ë²ï¿½	
+						if( ch4_filter_times<=5 ) Remoter_Ch4=L_Remoter_Ch4; //Filter //ÂË²¨	
 						else ch4_filter_times=0;
 					}
 					else
@@ -333,16 +333,16 @@ void TIM8_CC_IRQHandler(void)
 					}
 					
 					L_Remoter_Ch4=Remoter_Ch4;			
-					TIM8CH4_CAPTURE_STA = 0; //Capture flag bit to zero	//ï¿½ï¿½ï¿½ï¿½ï¿½Ö¾Î»ï¿½ï¿½ï¿½ï¿½
-					TIM_OC4PolarityConfig(TIM8, TIM_ICPolarity_Rising); //Set to rising edge capture //ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½		  
+					TIM8CH4_CAPTURE_STA = 0; //Capture flag bit to zero	//²¶»ñ±êÖ¾Î»ÇåÁã
+					TIM_OC4PolarityConfig(TIM8, TIM_ICPolarity_Rising); //Set to rising edge capture //ÉèÖÃÎªÉÏÉýÑØ²¶»ñ		  
 				}
 				else 
 				{
 					//When the capture time occurs but not the falling edge, the first time the rising edge is captured, record the timer value at this time
-				  //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½äµ«ï¿½ï¿½ï¿½ï¿½ï¿½Â½ï¿½ï¿½Ø£ï¿½ï¿½ï¿½Ò»ï¿½Î²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø£ï¿½ï¿½ï¿½Â¼ï¿½ï¿½Ê±ï¿½Ä¶ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Öµ
-					TIM8CH4_CAPTURE_UPVAL = TIM_GetCapture4(TIM8); //Obtain rising edge data //ï¿½ï¿½È¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-					TIM8CH4_CAPTURE_STA |= 0X40; //The flag has been caught on the rising edge //ï¿½ï¿½ï¿½ï¿½Ñ²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-					TIM_OC4PolarityConfig(TIM8, TIM_ICPolarity_Falling); //Set to Falling Edge Capture //ï¿½ï¿½ï¿½ï¿½Îªï¿½Â½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½
+				  //·¢Éú²¶»ñÊ±¼äµ«²»ÊÇÏÂ½µÑØ£¬µÚÒ»´Î²¶»ñµ½ÉÏÉýÑØ£¬¼ÇÂ¼´ËÊ±µÄ¶¨Ê±Æ÷¼ÆÊýÖµ
+					TIM8CH4_CAPTURE_UPVAL = TIM_GetCapture4(TIM8); //Obtain rising edge data //»ñÈ¡ÉÏÉýÑØÊý¾Ý
+					TIM8CH4_CAPTURE_STA |= 0X40; //The flag has been caught on the rising edge //±ê¼ÇÒÑ²¶»ñµ½ÉÏÉýÑØ
+					TIM_OC4PolarityConfig(TIM8, TIM_ICPolarity_Falling); //Set to Falling Edge Capture //ÉèÖÃÎªÏÂ½µÑØ²¶»ñ
 				}
 			}
 		}
@@ -351,9 +351,9 @@ void TIM8_CC_IRQHandler(void)
 Function: TIM1 Update Interrupt
 Input   : none
 Output  : none
-ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü£ï¿½ï¿½ï¿½Ê±ï¿½ï¿½8ï¿½ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½
-ï¿½ï¿½Ú²ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
-ï¿½ï¿½ï¿½ï¿½  Öµï¿½ï¿½ï¿½ï¿½ 
+º¯Êý¹¦ÄÜ£º¶¨Ê±Æ÷8¸üÐÂÖÐ¶Ï
+Èë¿Ú²ÎÊý£ºÎÞ
+·µ»Ø  Öµ£ºÎÞ 
 **************************************************************************/
 void TIM8_UP_TIM13_IRQHandler(void)
 {

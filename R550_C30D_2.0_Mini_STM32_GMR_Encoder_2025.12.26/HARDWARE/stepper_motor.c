@@ -85,8 +85,8 @@ void StepperMotor_Init(void)
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM12, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM8, ENABLE);
 
-    /* 工程系统时钟为 168 MHz；TIM12 为 84 MHz，TIM8 为 168 MHz。
-       以下预分频值使两个定时器均以 1 MHz 计数，即每计数一次为 1 us。 */
+    /* ����ϵͳʱ��Ϊ 168 MHz��TIM12 Ϊ 84 MHz��TIM8 Ϊ 168 MHz��
+       ����Ԥ��Ƶֵʹ������ʱ������ 1 MHz ��������ÿ����һ��Ϊ 1 us�� */
     StepperMotor_InitTimer(TIM12, 83);
     StepperMotor_InitTimer(TIM8, 167);
     stepper_running[0] = 0;

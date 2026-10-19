@@ -9,7 +9,7 @@ void A4988_Init(void)
 
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB | RCC_AHB1Periph_GPIOC, ENABLE);
 
-    /* 在切换为输出模式前，先预置安全的低电平。 */
+    /* ���л�Ϊ���ģʽǰ����Ԥ�ð�ȫ�ĵ͵�ƽ�� */
     GPIO_ResetBits(GPIOB, GPIO_Pin_14 | GPIO_Pin_15);
     GPIO_ResetBits(GPIOC, GPIO_Pin_7 | GPIO_Pin_8);
 
@@ -58,7 +58,7 @@ void A4988_Step(u8 motor)
         return;
     }
 
-    /* 给 DIR 留出建立时间，并确保 STEP 高、低电平均超过 1 us。 */
+    /* �� DIR ��������ʱ�䣬��ȷ�� STEP �ߡ��͵�ƽ������ 1 us�� */
     delay_us(2);
     GPIO_SetBits(port, pin);
     delay_us(2);

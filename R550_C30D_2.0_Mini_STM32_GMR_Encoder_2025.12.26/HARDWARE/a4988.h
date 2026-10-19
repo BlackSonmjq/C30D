@@ -6,8 +6,8 @@
 #define A4988_MOTOR_Left   1
 #define A4988_MOTOR_Right  2
 
-/* å·¦è·¯ï¼šPB14=DIRã€PB15=STEPï¼›å³è·¯ï¼šPC7=DIRã€PC8=STEPã€‚
-   ä¸¤è·¯ EN å‡é¡»ç”±å¤–éƒ¨ç”µè·¯æä¾›ç¡®å®šç”µå¹³ã€‚ */
+/* ×óÂ·£ºPB14=DIR¡¢PB15=STEP£»ÓÒÂ·£ºPC7=DIR¡¢PC8=STEP¡£
+   Á½Â· EN ¾ùÐëÓÉÍâ²¿µçÂ·Ìá¹©È·¶¨µçÆ½¡£ */
 void A4988_Init(void);
 void A4988_SetDir(u8 motor, u8 high);
 void A4988_Step(u8 motor);
