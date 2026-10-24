@@ -13,4 +13,3 @@ void stepper_Task(void *pvParameters)
         StepperMotor_MovePulses(A4988_MOTOR_Left, 40000);
         vTaskDelay(pdMS_TO_TICKS(1000U));
     }
-}

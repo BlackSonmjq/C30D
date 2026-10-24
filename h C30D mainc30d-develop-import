@@ -1,0 +1,48 @@
+> [33mc36a0c2[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m 删除冗余库
+< [33m80a9833[m[33m ([m[1;31mC30D/develop[m[33m)[m 修复中文编码问题
+< [33m6e80e90[m 修复 OLED 源码混合编码乱码
+< [33m9e82599[m 修复 EIDE 编译问题并迁移源码目录
+<   [33ma496f56[m Merge branch 'develop' of https://github.com/BlackSonmjq/C30D into develop
+[32m|[m[33m\[m  
+[32m|[m < [33md104f1b[m Add VL53L0X ranging driver and FreeRTOS OLED display
+[32m|[m < [33m0ecff0d[m Stop tracking local VS Code settings
+[32m|[m < [33mfb22aa3[m 处理了一些问题
+[32m|[m < [33m87df05e[m 新增stepper_task
+[32m|[m <   [33m00eeb17[m Merge branch 'develop' into feature/Stepped_Motor_Setting
+[32m|[m [34m|[m[35m\[m  
+[32m|[m < [35m|[m [33mc5242de[m 步进电机正常版
+[32m|[m < [35m|[m [33m868e5ff[m 步进电机库
+[32m|[m < [35m|[m [33m040f239[m 步进电机库
+[32m|[m < [35m|[m [33m6b7c7ea[m 步进电机库
+< [35m|[m [35m|[m [33m8087bb5[m 初步构建代码
+[35m|[m [35m|[m[35m/[m  
+[35m|[m[35m/[m[35m|[m   
+< [35m|[m   [33mf0a9912[m Merge pull request #4 from BlackSonmjq/feature/FreeRtos_task_create
+[35m|[m[1;31m\[m [35m\[m  
+[35m|[m [1;31m|[m[35m/[m  
+[35m|[m[35m/[m[1;31m|[m   
+[35m|[m < [33mbbf35ee[m merge develop
+[35m|[m <   [33m50e0a1a[m Merge remote-tracking branch 'target/develop' into feature/FreeRtos_task_create
+[35m|[m [1;32m|[m[35m\[m  
+[35m|[m [1;32m|[m[35m/[m  
+[35m|[m[35m/[m[1;32m|[m   
+< [1;32m|[m   [33m5a25873[m Merge branch 'develop' of https://github.com/BlackSonmjq/C30D into develop
+[1;34m|[m[1;35m\[m [1;32m\[m  
+[1;34m|[m < [1;32m|[m [33m056cd11[m Add files via upload
+< [1;35m|[m [1;32m|[m [33m34d15e8[m ignorance
+< [1;35m|[m [1;32m|[m [33m5bea2b2[m 新增readme
+[1;35m|[m[1;35m/[m [1;32m/[m  
+< [1;32m|[m [33m8e33281[m 底盘电控抑制转动
+< [1;32m|[m [33m42a4c68[m 采用底盘控制IMU抑制转动
+[1;35m|[m < [33m9f0d776[m 修改ign
+[1;35m|[m < [33m34d9dc8[m Stop tracking Keil OBJ build outputs
+[1;35m|[m < [33mc9dfa0c[m 修改ign
+[1;35m|[m < [33md53d0ad[m 修改gitignore
+[1;35m|[m < [33m124dc83[m 修复编码
+[1;35m|[m < [33m5d88deb[m 修复文字编码不统一问题
+[1;35m|[m < [33m1788314[m 添加 Git 忽略规则
+[1;35m|[m < [33mb22dc20[m 增加FreeRtos中Pushrod任务
+[1;35m|[m < [33m0a8498d[m docs: 添加推杆模块使用说明
+[1;35m|[m < [33m105ffbe[m feat: integrate four pushrod controls
+[1;35m|[m[1;35m/[m  
+< [33mb6bcc38[m 修复漂移问题
