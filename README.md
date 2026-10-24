@@ -1,53 +1,348 @@
-> 当前 PA8 已分配给 VL53L0X 的 SCL，PC9 为 SDA，原蜂鸣器功能已禁用；下文有关蜂鸣器提示的旧说明不再适用。测距驱动用法见 HARDWARE/README_VL53L0X.md。
+# C30D 底盘与外设固件
 
-# C30D 底盘 IMU 航向控制固件
+本项目基于 STM32F407 和 FreeRTOS，包含底盘控制、IMU 航向保持、两路 A4988 步进电机、四路推杆控制和 VL53L0X 激光测距。本文统一维护工程和各零部件说明。
 
-本工程在 C30D STM32 底盘中加入了基于车载 IMU 的航向保持控制。上位机只需发送普通速度指令；车辆直行时由底盘在 100 Hz 控制周期内完成航向估计和纠偏，不再依赖上位机侧 IMU 控制节点。
+源码目录：[R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/)。
 
-## 已实现功能
+## 目录
 
-- 使用底盘 IMU 的 Z 轴陀螺仪进行航向积分和 PD 纠偏。
-- 上电前约 10 秒采集静止 IMU 样本，以平均值校准陀螺仪零偏。
-- IMU 校准完成后，PA8 有源蜂鸣器短响一次。
-- 仅在车辆平移且上位机未请求转向时启用航向保持。
-- 停车或主动转向时复位航向控制器，避免停车后反复纠偏。
-- 主动转向指令直接传递给底盘，不会被航向保持覆盖。
-- 加入陀螺低通、积分死区、底盘死区补偿和输出斜率限制。
-- 切换到 APP、遥控器、PS2、CAN、USART1、USART5 或自动回充模式时自动复位航向控制器。
+- [函数速查](#函数速查)
+- [当前启动行为](#当前启动行为)
+- [引脚与资源分配](#引脚与资源分配)
+- [两路 A4988 步进电机](#两路-a4988-步进电机)
+- [推杆控制](#推杆控制)
+- [VL53L0X 激光测距](#vl53l0x-激光测距)
+- [IMU 航向控制](#imu-航向控制)
+- [串口协议](#串口协议)
+- [编译与上电检查](#编译与上电检查)
 
-## 当前控制参数
+## 函数速查
 
-参数定义在 [`BALANCE/heading_control.h`](BALANCE/heading_control.h)：
+### 步进电机
 
-| 参数 | 当前值 | 说明 |
-| --- | ---: | --- |
-| `HEADING_CONTROL_KP` | 1.05 | 航向误差比例增益 |
-| `HEADING_CONTROL_KI` | 0.0 | 积分关闭，避免长期累积后摆动 |
-| `HEADING_CONTROL_KD` | 0.26 | 使用低通后的陀螺角速度进行阻尼 |
-| `HEADING_CONTROL_MAX_ANGULAR_VELOCITY` | 0.60 rad/s | 最大自动纠偏角速度 |
-| `HEADING_CONTROL_MIN_ANGULAR_VELOCITY` | 0.04 rad/s | 底盘死区补偿 |
-| `HEADING_CONTROL_OUTPUT_SLEW_RATE` | 0.40 rad/s² | 纠偏输出最大变化速度 |
-| `HEADING_CONTROL_GYRO_FILTER_ALPHA` | 0.25 | 陀螺一阶低通系数 |
-| `HEADING_CONTROL_YAW_TOLERANCE` | 0.015 rad | 航向误差容差 |
-| `HEADING_CONTROL_GYRO_TOLERANCE` | 0.025 rad/s | 静止角速度容差 |
-| `HEADING_CONTROL_GYRO_INTEGRATION_DEADZONE` | 0.002 rad/s | 航向积分角速度死区 |
+声明：[stepper_motor.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/stepper_motor.h)；实现：[stepper_motor.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/stepper_motor.c)。
 
-## 执行逻辑
+motor 取 A4988_MOTOR_Left（1）或 A4988_MOTOR_Right（2）。
 
-1. 上电后保持车辆静止，固件采集约 10 秒 IMU 数据并计算平均零偏。
-2. 校准完成后蜂鸣器短响，表示底盘可以接收控制指令。
-3. 当 `|Move_X| > 0.02 m/s` 或 `|Move_Y| > 0.02 m/s`，并且 `|Move_Z| < 0.01 rad/s` 时，锁定当前航向并启用自动纠偏。
-4. 上位机请求转向时，固件复位航向状态并直接执行 `Move_Z`。
-5. 车辆停止平移时，固件立即复位航向状态，不在原地继续来回纠偏。
-6. 再次开始直行时，以当时的实际方向作为新的目标航向。
+| 函数 | 参数与用途 | 返回值 |
+| --- | --- | --- |
+| StepperMotor_Init() | 初始化两路 GPIO 和 STEP 定时器；运动前调用 | void |
+| StepperMotor_SetSpeed(motor, arr) | 设置目标周期；arr 为非零 16 位 ARR，目标频率约 1000000/(arr+1) Hz | u8：成功 1，电机编号无效或 arr=0 时为 0 |
+| StepperMotor_MovePulses(motor, signed_pulses) | 阻塞运动；正数 DIR 高，负数 DIR 低，0 不运动；完成后停止 STEP | u32：实际完成的脉冲周期数，无效输入为 0 |
+| StepperMotor_Disable(motor) | 停止 STEP 并保持低电平；外部 EN 不变，可能仍有保持力矩 | void |
+| StepperMotor_UpdateIRQ(motor) | 内部定时器中断分发，处理计数和下一脉冲；应用层无需调用 | void |
 
-主要实现文件：
+MovePulses 必须在开中断、非临界区的任务或裸机主循环调用；禁止在 ISR 中调用。同一电机不能并发运动，其他任务可用 Disable 停止运动。UpdateIRQ 中不得调用 FreeRTOS API。
 
-- [`BALANCE/heading_control.c`](BALANCE/heading_control.c)：航向估计、PID、滤波、死区与斜率限制。
-- [`BALANCE/heading_control.h`](BALANCE/heading_control.h)：控制参数。
-- [`BALANCE/balance.c`](BALANCE/balance.c)：控制模式判断、启停条件和电机指令接入。
-- [`BALANCE/imu_task.c`](BALANCE/imu_task.c)：启动阶段 IMU 平均零偏校准。
-- [`BALANCE/README_heading_control.md`](BALANCE/README_heading_control.md)：航向控制专项说明和首次实车数据。
+底层声明：[a4988.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/a4988.h)；实现：[a4988.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/a4988.c)。
+
+| 函数 | 参数与用途 | 返回值 |
+| --- | --- | --- |
+| A4988_Init() | 初始化两路 DIR/STEP 为低电平 GPIO 输出 | void |
+| A4988_SetDir(motor, high) | 设置 DIR，high=0 为低电平，非零为高电平 | void |
+| A4988_Step(motor) | GPIO 阻塞输出一次 STEP 脉冲；仅在对应定时器输出已停止时使用 | void |
+
+### 推杆
+
+声明：[pushrod.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/pushrod.h)；实现：[pushrod.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/pushrod.c)。
+
+| 函数 | 参数与用途 | 返回值 |
+| --- | --- | --- |
+| Pushrod_Init() | 初始化 PC0～PC3，全部输出低电平 | void |
+| Pushrod_Start(id) | id=1～4，对应输出置高 | Pushrod_Result |
+| Pushrod_Stop(id) | id=1～4，对应输出置低 | Pushrod_Result |
+
+Pushrod_Result：PUSHROD_OK 表示成功；PUSHROD_INVALID_ARGUMENT 表示编号无效；PUSHROD_NOT_INITIALIZED 表示尚未初始化。
+
+### 激光测距驱动
+
+声明：[vl53l0x.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/vl53l0x.h)；实现：[vl53l0x.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/vl53l0x.c)。
+
+| 函数 | 参数与用途 | 返回值 |
+| --- | --- | --- |
+| VL53L0X_Init() | 初始化传感器、SPAD、默认配置和参考校准；先完成 delay_init(168)，确保 XSHUT 为高 | VL53L0X_Status |
+| VL53L0X_ReadSingle(result) | 执行一次测距；result 指向 VL53L0X_Result | VL53L0X_Status |
+| VL53L0X_StartContinuous() | 启动连续测距 | VL53L0X_Status |
+| VL53L0X_ReadContinuous(result) | 查询就绪状态并读取结果，不等待新测量完成 | VL53L0X_Status；未就绪为 VL53L0X_NOT_READY |
+| VL53L0X_StopContinuous() | 停止连续测距 | VL53L0X_Status |
+
+结果字段：distance_mm 为毫米距离；raw_range_status 为设备原始状态。只有返回 VL53L0X_OK 时才使用距离；未就绪、通信或参数错误不会更新结果，不能重复使用旧数据作为新测量。
+
+| VL53L0X_Status | 含义 |
+| --- | --- |
+| VL53L0X_OK | 成功 |
+| VL53L0X_NOT_READY | 暂无新测量 |
+| VL53L0X_ERROR_I2C | I²C 通信错误 |
+| VL53L0X_ERROR_TIMEOUT | 等待超时 |
+| VL53L0X_ERROR_ID | 器件识别失败 |
+| VL53L0X_ERROR_ARGUMENT | 参数无效 |
+| VL53L0X_ERROR_STATE | 调用状态不正确 |
+| VL53L0X_ERROR_RANGE | 本次测距无效 |
+| VL53L0X_ERROR_CONFIG | 配置校验失败 |
+
+驱动由一个任务独占，不得并发或从 ISR 调用。当前默认 distance_task 已使用驱动；普通应用应通过下方快照接口读取，独立调用底层前须停止默认测距任务。
+
+### 测距快照与显示
+
+声明：[distance_task.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/distance_task.h)；实现：[distance_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/distance_task.c)。
+
+| 函数 | 参数与用途 | 返回值 |
+| --- | --- | --- |
+| distance_task(pvParameters) | FreeRTOS 任务入口，默认启动传感器、采样和失败重试；由启动任务创建 | void，任务循环运行 |
+| DistanceTask_GetData(data) | data 指向 DistanceTask_Data，读取线程安全快照；有效数据达到 500 ms 未更新时标记超时 | void，通过 data 输出 |
+| DistanceTask_DrawOLED() | 绘制距离与状态到帧缓冲；由 show_task 统一调用和刷新 | void |
+
+DistanceTask_Data 包含 distance_mm、valid、status、update_tick。必须先检查 valid；无效或过期时距离为 0，不能当作有效读数。
+
+### IMU 航向控制
+
+声明：[heading_control.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/heading_control.h)；实现：[heading_control.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/heading_control.c)。
+
+| 函数 | 参数与用途 | 返回值 |
+| --- | --- | --- |
+| HeadingControl_Reset() | 清空航向积分、目标和控制器状态 | void |
+| HeadingControl_Update(gyro_z_raw) | 输入已扣除启动零偏的 Z 轴陀螺原始 short 值；由 Balance_task 按 100 Hz 调用，勿传入 rad/s 浮点值 | float：角速度修正量，单位 rad/s |
+
+### 其他任务入口
+
+这些函数由 FreeRTOS 调度，不作为一次性普通函数调用。
+
+| 函数 | 默认行为 | 源码 |
+| --- | --- | --- |
+| stepper_Task(void *pvParameters) | 左路步进往复运行 | [stepper_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c) |
+| pushrod_task(void *pvParameters) | 1 号推杆周期启动、停止 | [pushrod_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/pushrod_task.c) |
+
+## 当前启动行为
+
+[USER/main.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/USER/main.c) 完成 systemInit() 后启动 FreeRTOS，创建底盘控制或检查任务、对应硬件版本的 IMU 任务、显示、LED、PS2、通信、推杆、步进和测距任务。当前源码没有 A4988_TEST_MODE 独立测试开关。
+
+- 步进任务自动让左路电机往复运行，具体参数见下文。
+- 推杆任务自动让 1 号推杆交替启动和停止。
+- 测距任务将 PA3 拉高，等待 10 ms 后初始化传感器并开始测距。
+- IMU 上电约 10 秒采集静止样本校准；蜂鸣器已禁用。
+- OLED 默认显示测距页，长按 PE0 用户键约 0.6 秒循环切换三页。
+
+上电前须确认步进电机与推杆的自动动作符合预期；如需改变启动行为，修改对应任务并重新编译烧录。
+
+## 引脚与资源分配
+
+| 部件 | 引脚 / 资源 | 说明 |
+| --- | --- | --- |
+| A4988 Left | DIR=PB14，STEP=PB15/TIM12_CH2 | EN 外部控制 |
+| A4988 Right | DIR=PC7，STEP=PC8/TIM8_CH3 | EN 外部控制 |
+| 推杆 1～4 | PC0～PC3 | 高电平启动，低电平停止 |
+| VL53L0X | SCL=PA8，SDA=PC9，XSHUT=PA3 | 独立软件 I²C |
+| 原 IMU 总线 | PB10/PB11 | 与测距总线分离 |
+| 蜂鸣器 | 原 PA8 | 已禁用，须断开原蜂鸣器及驱动电路 |
+
+TIM8/TIM12 已用于步进，不能同时用于原舵机或遥控输入；PC9 已用于测距，PC6 不参与步进驱动。
+
+
+## 两路 A4988 步进电机
+
+独立库为 [`HARDWARE/stepper_motor.h`](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/stepper_motor.h) 和 [`HARDWARE/stepper_motor.c`](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/stepper_motor.c)；底层 DIR/STEP 引脚定义见 [`HARDWARE/a4988.h`](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/a4988.h)。左路 DIR=PB14、STEP=PB15/TIM12_CH2，右路 DIR=PC7、STEP=PC8/TIM8_CH3。两路 EN 均由外部接线控制，PC6、PC9 不参与步进驱动。TIM12 和 TIM8 已被 STEP 输出占用，不能同时用作原舵机或遥控输入。
+
+```c
+StepperMotor_Init();                              // 上电初始化一次；测试程序已调用
+StepperMotor_SetSpeed(A4988_MOTOR_Left, 4999);    // 目标约 200 脉冲/秒（参数仍为 ARR）
+StepperMotor_MovePulses(A4988_MOTOR_Left, 800);  // DIR 高，走 800 个脉冲
+StepperMotor_MovePulses(A4988_MOTOR_Left, -800); // DIR 低，走 800 个脉冲
+StepperMotor_Disable(A4988_MOTOR_Left);          // 停止 STEP 脉冲并拉低 STEP
+```
+
+`StepperMotor_SetSpeed(motor, arr)` 可分别调整两路目标转速；参数仍是 ARR 值，1 MHz 计数时目标脉冲频率约为 `1000000 / (arr + 1)` Hz，默认 `4999`。已移除软件最高、最低速度限制，参数仍受 16 位 ARR 范围约束；有效 STEP 脉冲需要非零 ARR。`arr=999` 对应约 1 kHz，`arr=99` 对应约 10 kHz，实际频率还受单脉冲的软件重启时间影响。运行中改值会从后续脉冲逐步生效。`StepperMotor_MovePulses()` 为阻塞式函数：正数和负数分别选择两个 DIR 电平，`0` 不运动；返回完成的脉冲周期数。每段最多用前后各 200 个脉冲加减速，默认从约 50 脉冲/秒加速到约 200 脉冲/秒，再减速；目标速度低于 50 脉冲/秒时直接以目标周期启动；到达目标会自动停止脉冲。**停止脉冲不等于 A4988 真正失能**：外部 EN 若仍有效，电机可能保持力矩。脉冲数也不等于毫米，实际行程取决于电机整步数、细分档位和传动机构。
+
+当前任务见 [BALANCE/stepper_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c)：左路设置 ARR=99（目标约 10 kHz），循环执行 -40000 脉冲、等待 1 秒、+40000 脉冲、等待 1 秒。实际频率受加减速和软件重启开销影响；脉冲数不能直接换算为毫米。旧的 USER/stepper_test.c、.h 和独立测试模式已移除。
+
+### A4988 接口定义与接线
+
+DIR 使用 3.3 V GPIO 推挽输出；STEP 空闲时为低电平，需要运动时由定时器输出脉冲。系统启动时会优先调用 `A4988_Init()`，先将 DIR/STEP 配置为低电平推挽输出，避免 STEP 引脚在其他外设初始化期间悬空；随后由 `StepperMotor_Init()` 完成定时器初始化。两路 STEP 不会自动产生脉冲。
+
+| 驱动器 | DIR | STEP | 定时器通道 | EN |
+| --- | --- | --- | --- | --- |
+| Left | PB14 | PB15 | TIM12_CH2 | 外部接线控制 |
+| Right | PC7 | PC8 | TIM8_CH3 | 外部接线控制 |
+
+初始化后两路 DIR 和 STEP 均为低电平。两路 EN 不由 STM32 控制；A4988 的 EN 为低电平有效，必须通过外部接线提供确定电平，不能悬空。PC6、PC9 不参与步进驱动。TIM8 和 TIM12 已被 STEP 输出占用，不能同时用于舵机或遥控输入。
+
+底层接口定义在 [`HARDWARE/a4988.h`](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/a4988.h)，步进电机接口定义在 [`HARDWARE/stepper_motor.h`](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/stepper_motor.h)：
+
+```c
+A4988_SetDir(A4988_MOTOR_Left, 1);                 // DIR 输出高电平，正反向取决于接线
+A4988_Step(A4988_MOTOR_Left);                      // GPIO 阻塞式输出一个 STEP 上升沿
+StepperMotor_SetSpeed(A4988_MOTOR_Left, 4999);    // 目标约 200 脉冲/秒
+StepperMotor_MovePulses(A4988_MOTOR_Left, 800);   // DIR 高，输出 800 个脉冲
+StepperMotor_MovePulses(A4988_MOTOR_Left, -800);  // DIR 低，输出 800 个脉冲
+StepperMotor_Disable(A4988_MOTOR_Left);           // 停止 STEP，不切断保持电流
+```
+
+`A4988_Step()` 只能在对应电机的 PWM 停止时使用。`StepperMotor_MovePulses()` 使用定时器单脉冲模式，CCR 为当前周期的一半，约为 50% 占空比；运动完成后自动停止并将 STEP 保持低电平。该函数必须从开中断、非临界区的任务或裸机主循环调用，禁止在 ISR 或关中断状态下调用。每个电机同一时刻只能有一个运动调用；另一任务可以调用 `StepperMotor_Disable()` 停止当前运动。需要两路同步运动时，应用层还需自行协调。
+
+### A4988 电源与控制引脚
+
+两块 A4988 的 VDD 接 3.3 V，GND 与 STM32 共地，VMOT 接适合电机的独立电源，并按驱动板要求设置限流和电源去耦。RST、SLP、MS1～MS3 按所用 A4988 模块和细分需求连接；本接口没有占用这些引脚。细分档位由 MS1～MS3 的硬件接线决定，脉冲数不直接等于毫米，实际行程还取决于电机步距角和传动机构。
+
+### FreeRTOS 步进任务与脉冲时序
+
+当前 `main.c` 创建 `stepper_Task`。任务调用运动接口时，TIM12/TIM8 更新中断负责脉冲计数、加减速和启动下一脉冲，任务每次休眠 1 tick 等待运动结束。单脉冲模式可避免中断延迟时产生未计数的连续脉冲，但中断重启仍会产生少量软件开销；长时间全局关中断或更高、同优先级中断可能拉长脉冲间隔。
+
+两个步进更新中断的抢占优先级为 4，高于 FreeRTOS 系统调用阈值 5；中断中不得调用 FreeRTOS API。`TIM8_BRK_TIM12` 和 `TIM8_UP_TIM13` 为共享向量，不能直接再启用其中的 TIM8 Break 或 TIM13 等其他中断源。
+
+烧录后建议先架空或空载验证：使用逻辑分析仪检查 PB15/PC8 的脉冲数量、加减速段、匀速段间隔和停止后的低电平时间，再进行带载测试。测试前确认 EN、电源、共地、限流和驱动器细分设置正确。
+
+
+
+## 推杆控制
+
+驱动见 [HARDWARE/pushrod.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/pushrod.h) 和 [HARDWARE/pushrod.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/pushrod.c)，任务见 [BALANCE/pushrod_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/pushrod_task.c)。
+
+四路编号 1～4，依次对应 PC0～PC3。初始化后输出低电平；控制对象的另一输入按驱动约定接 GND。GPIO 为控制信号，推杆电源与驱动电路须按硬件要求接线。
+
+~~~c
+Pushrod_Init();
+Pushrod_Result result = Pushrod_Start(1); // PC0 输出高电平
+Pushrod_Stop(1);                         // PC0 输出低电平
+~~~
+
+接口返回 PUSHROD_OK、PUSHROD_INVALID_ARGUMENT 或 PUSHROD_NOT_INITIALIZED。当前任务初始化后循环启动 1 号推杆、等待 10000 tick、停止、再等待 10000 tick；实际时长取决于 FreeRTOS tick 频率。
+
+
+## VL53L0X 激光测距
+
+`vl53l0x.c` / `vl53l0x.h` 已加入 Keil 工程 HARDWARE 分组，使用 STM32F407 标准外设库。独立开漏软件 I²C：**PA8=SCL，PC9=SDA**，不使用原有 PB10/PB11 IMU 总线，也不占用定时器。
+
+### 接线
+
+| 模块 | STM32 |
+| --- | --- |
+| SCL | PA8 |
+| SDA | PC9 |
+| GND | GND |
+| VCC | 按模块规格供电，优先使用 3.3V |
+| XSHUT | PA3，上电后由测距任务拉高，默认开启 |
+| GPIO1 | 不连接，驱动轮询结果就绪寄存器 |
+
+SCL/SDA 需要外部上拉或模块自带上拉；GPIO 内部弱上拉不能替代 I²C 总线上拉。确认信号电平适合 STM32 与模块，不能将总线上拉至 5V。裸芯片的 AVDD 范围为 2.6～3.5V，2V8 I/O 模式的高电平应与 AVDD 匹配。
+
+PA8 原为蜂鸣器引脚，现在 `LED.H` 中 `BUZZER_ENABLED=0`，蜂鸣器初始化和所有控制写入均禁用。**接线时必须断开 PA8 上原有蜂鸣器及其驱动电路**，防止负载影响 SCL。PC9 不能再同时用于原 TIM8 四通道舵机或遥控输入；当前步进模块只使用 PC8。
+
+### 单次测距
+
+当前工程由 distance_task 调用驱动。以下为独立使用示例，使用前须停止默认测距任务，避免并发访问。先完成系统时钟、`delay_init(168)` 和板级初始化，再初始化传感器；不要在中断里调用。以下代码放在一个应用任务中，其他任务不要同时访问驱动：
+
+```c
+#include "vl53l0x.h"
+#include "delay.h"
+
+VL53L0X_Result result;
+VL53L0X_Status status;
+
+status = VL53L0X_Init();
+if (status == VL53L0X_OK) {
+    status = VL53L0X_ReadSingle(&result);
+    if (status == VL53L0X_OK) {
+        /* result.distance_mm 为有效距离，单位 mm */
+    }
+}
+```
+
+### 连续测距
+
+```c
+status = VL53L0X_Init();
+if (status == VL53L0X_OK)
+    status = VL53L0X_StartContinuous();
+
+/* 在同一个任务中周期调用，建议每次间隔 10ms 或更长 */
+status = VL53L0X_ReadContinuous(&result);
+if (status == VL53L0X_OK) {
+    /* 使用 result.distance_mm */
+} else if (status == VL53L0X_NOT_READY) {
+    /* 本次没有新结果，稍后再读取 */
+}
+
+/* 不再测距时调用 */
+status = VL53L0X_StopContinuous();
+```
+
+默认 7 位地址为 `0x29`，对应手册中的写地址 `0x52`、读地址 `0x53`。初始化包含 `0xC0=0xEE` 器件识别、2V8 I/O、出厂 SPAD 映射配置、默认调谐、100ms 测量预算、VHV 与相位参考校准；不包含用户盖板串扰和距离偏移校准。
+
+`VL53L0X_ERROR_RANGE` 表示当前距离不可作为有效值使用，结果结构保留原始状态用于诊断。`raw_range_status` 是设备寄存器的原始状态，不是 ST API 的 `RangeStatus`；本驱动仅接受原始状态 11。通信错误、参数错误或未就绪时不更新输出结构，不能使用旧值冒充新测量。
+
+单次测距和初始化等待使用有限次数轮询，每个等待阶段最多 200 次，每次附加约 1ms 延时；总耗时还包括 I²C 通信及任务调度。连续读取不等待测量完成，只进行就绪查询和必要的数据传输。时钟拉伸等待亦有上限，I²C NACK/通信超时后驱动失效，须重新 `VL53L0X_Init()`；若仍失败，检查接线、上拉及 XSHUT，必要时重启传感器电源。
+
+参考用户提供的 `VL53L0X.pdf`（DocID029104 Rev 1，尤其第 8、14～21 页）及同目录 Arduino 示例。默认初始化表来源于随附 Pololu/ST 示例库，许可保留于 `LICENSE_VL53L0X.txt`，并修正示例 SPAD 恢复阶段的括号错误。原始状态判定参照 [ST 驱动源码](https://github.com/stm32duino/VL53L0X/blob/main/src/vl53l0x_class.cpp)。本模块提供基础测距，不等同于完整 ST API 的软件信号质量评估和工厂校准功能。
+
+历史验证记录：测距驱动加入时曾使用 Keil ARMCC 5.06 编译、链接通过；尚无传感器硬件测距或逻辑分析仪时序验证记录。本次仅整合文档，未重新编译固件。
+
+当前驱动直接从 NVM 读取出厂 SPAD 信息，保留配置回读校验和错误处理。临时初始化阶段、SPAD 数量和光信号率诊断接口已移除。当前 XSHUT 接 PA3，由测距任务输出高电平释放；早期 XSHUT 不外接的接线说明已不适用。默认任务使用单次测距；连续接口仅供底层独立使用，勿与测距任务并发调用。
+
+### 默认开启
+
+测距任务启动后立即将 PA3 配置为推挽高电平，释放 VL53L0X 的 XSHUT，等待 10 ms 后初始化并开始测距。初始化失败后间隔 1 秒重试，不需要用户按键。
+
+
+### 测距任务与 OLED
+
+`distance_task.c` / `distance_task.h` 已加入 Keil 工程，由 `start_task` 直接调用 `xTaskCreate(distance_task, ...)` 创建。使用 PA8=SCL、PC9=SDA；测距任务启动后默认将 PA3 的 XSHUT 拉高并开启传感器。
+
+任务独占传感器总线，使用 100ms 测量预算的单次测距，每次测量前延时 50ms。通信错误或超时后间隔 1 秒重新初始化。无效测量不作为有效距离发布；超过 500ms 未更新的数据快照返回超时。
+
+OLED 默认显示测距页，保留距离（mm）和基本状态，删除 Raw、SPAD、信号率和初始化阶段诊断。显示函数由现有 show_task 统一调用和刷新；长按 PE0 用户键约 0.6 秒循环切换三页。测距任务不直接操作 OLED 总线。
+
+头文件提供任务入口 distance_task、任务优先级和栈大小，以及数据读取和显示接口。测距轮询和重试参数封装在 .c 文件中。应用读取方式：
+
+```c
+#include "distance_task.h"
+
+DistanceTask_Data data;
+DistanceTask_GetData(&data);
+if (data.valid) {
+    /* data.distance_mm 为有效距离，单位 mm */
+}
+```
+
+结构体保留 distance_mm、valid、status 和 update_tick。无效或过期时 distance_mm 为 0，必须检查 valid，不能将 0 当成有效测距结果。
+
+
+
+
+## IMU 航向控制
+
+航向保持算法已从 ROS 2 上位机移至 C30D 固件。`Balance_task` 以 100 Hz 调用
+`HeadingControl_Update()`，使用完成零偏修正后的 `imu.gyro.z` 计算底盘角速度修正量。
+
+### 生效条件
+
+- C30D 已完成上电 10 秒 IMU 零偏采集；采集期间底盘必须保持静止。
+- 当前为默认 USART3/ROS 控制模式。
+- 车型不是阿克曼车型。
+- 未启用 APP、航模遥控器、PS2、CAN、USART1、USART5 或自动回充控制。
+
+切换到其他控制模式时 PID 状态会清零；重新进入 ROS 控制模式时会以当前方向作为新的零航向。
+
+PA8 已用于测距 SCL，BUZZER_ENABLED=0；当前无蜂鸣提示，不能以是否听到蜂鸣判断校准完成。
+
+### 参数
+
+参数位于 [BALANCE/heading_control.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/heading_control.h)，原头文件名为 `heading_control.h`：
+
+- `HEADING_CONTROL_KP`：1.32
+- `HEADING_CONTROL_KI`：0.0
+- `HEADING_CONTROL_KD`：0.18
+- `HEADING_CONTROL_MAX_ANGULAR_VELOCITY`：1.0 rad/s
+- `HEADING_CONTROL_MIN_ANGULAR_VELOCITY`：0.08 rad/s
+- `HEADING_CONTROL_INTEGRAL_LIMIT`：0.5
+- `HEADING_CONTROL_YAW_TOLERANCE`：0.01 rad
+- `HEADING_CONTROL_GYRO_TOLERANCE`：0.03 rad/s
+- `HEADING_CONTROL_GYRO_INTEGRATION_DEADZONE`：0.002 rad/s
+
+启动阶段使用约 10 秒内的全部静止 IMU 样本计算平均零偏，不再使用单个末次采样。小于 `0.002 rad/s` 的残余静态角速度不参与航向积分，以抑制长时间累计漂移。
+
+微分项直接使用陀螺仪角速度进行阻尼。只有航向误差和旋转角速度同时进入容差范围，控制器才停止输出并清空积分；尚未稳定且 PID 输出小于 `0.08 rad/s` 时，控制器保持同方向的最小角速度，以克服电机和底盘死区。
+
+如需临时关闭底盘侧航向保持，将 `HEADING_CONTROL_ENABLE` 改为 `0` 并重新编译烧录。
+
 
 ## 串口协议
 
@@ -72,38 +367,17 @@
 
 反馈帧长度为 24 字节，包含软件失能标志、编码器解算速度、三轴加速度、三轴陀螺仪和电池电压。字节 22 为字节 0–21 的异或校验，字节 23 为帧尾 `0x7D`。
 
-## 编译与烧录
 
-Keil 工程：[`USER/WHEELTEC.uvprojx`](USER/WHEELTEC.uvprojx)
 
-当前工程已经使用 ARMCC 5.06 编译通过：
+## 编译与上电检查
 
-```text
-0 Error(s), 0 Warning(s)
-```
+Keil 工程：[USER/WHEELTEC.uvprojx](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/USER/WHEELTEC.uvprojx)，历史使用 ARMCC 5.06 编译。烧录文件输出路径为 OBJ/WHEELTEC.hex；修改源码后须重新编译。本次文档整合未执行编译或硬件测试，不能据历史编译记录判断当前源码或现有 HEX 的状态。
 
-生成的烧录文件：[`OBJ/WHEELTEC.hex`](OBJ/WHEELTEC.hex)
+1. 确认步进、推杆的启动动作，空载或架空验证，检查供电、共地、限流、EN 和细分设置。
+2. 确认 PA8 的原蜂鸣器电路已断开，测距 SCL/SDA 有合适的上拉，XSHUT 接 PA3。
+3. 串口 ISP 烧录后将 BOOT0/下载开关拨回 0/RUN，退出烧录软件，再断电重启。
+4. 车辆放平，上电后保持静止约 10 秒，等待 IMU 校准。当前没有蜂鸣提示。
+5. 检查 OLED 测距状态及串口 24 字节反馈帧的帧头、帧尾和异或校验；无反馈时先排查供电、运行模式及端口。
+6. 步进使用逻辑分析仪检查脉冲数量、加减速和停止电平；测距尚需实物验证。
 
-烧录后如果使用串口 ISP，请将 `BOOT0` 或下载开关拨回 `0/RUN`，退出烧录软件，再断电重启。若停留在下载模式，CH9102 串口虽然存在，但不会输出底盘反馈帧。
-
-## 上电检查
-
-1. 将车辆放平并保持静止。
-2. 上电后等待约 10 秒，不要移动或碰撞车辆。
-3. 听到一次短蜂鸣，表示 IMU 零偏校准完成。
-4. 检查串口能否持续收到帧头 `0x7B`、帧尾 `0x7D` 且异或校验正确的 24 字节反馈帧。
-5. 未听到蜂鸣或串口无数据时，先检查 `BOOT0/RUN` 状态和供电，不要发送运动指令。
-
-## 实车调参记录
-
-首次串口测试中，旧参数在停车阶段出现约 `-0.037～+0.039 rad/s` 的正反角速度。原因不是积分项，而是 `0.08 rad/s` 固定死区补偿形成开关式纠偏，同时停车后航向环仍然工作。
-
-本次修改将死区补偿降为 `0.04 rad/s`，提高角速度阻尼，加入低通和输出斜率限制，并修正停车/主动转向逻辑。新固件已经完成编译、烧录、启动蜂鸣和静态串口反馈检查；低速动态复测应在空旷场地完成后再继续微调参数。
-
-## 安全注意事项
-
-- 首次动态测试必须在空旷平地进行，并安排人员随时断电。
-- 每次测试结束都应连续发送零速度帧，不能只依赖上位机进程正常退出。
-- 修改 PID 后先使用低速、短时间指令，确认方向和停止行为正确后再提高速度。
-- 调参期间不要同时启用多个控制来源。
-
+首次动态测试使用低速、短时间指令，在空旷平地进行，并安排人员随时断电。每次测试结束连续发送零速度帧；调参期间避免多个控制来源同时生效。
