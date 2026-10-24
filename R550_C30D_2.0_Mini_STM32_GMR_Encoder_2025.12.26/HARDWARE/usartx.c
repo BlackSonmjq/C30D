@@ -1,4 +1,9 @@
 #include "usartx.h"
+#include "stepper_task.h"
+#include "usart.h"
+
+/* Keep USART1 text readable; set to 1 only for binary host telemetry. */
+#define USART1_BINARY_FEEDBACK_ENABLED 0
 SEND_DATA Send_Data;
 RECEIVE_DATA Receive_Data;
 SEND_AutoCharge_DATA Send_AutoCharge_Data;
@@ -21,6 +26,8 @@ Output  : none
 void data_task(void *pvParameters)
 {
 	 u32 lastWakeTime = getSysTickCnt();
+     u8 stepper_ready_sent = 0;
+     StepperTask_Data stepper_data;
 	
    while(1)
     {	
@@ -32,11 +39,22 @@ void data_task(void *pvParameters)
 				//Assign the data to be sent
 				//对要进行发送的数据进行赋值
 				data_transition(); 
-				USART1_SEND();     //Serial port 1 sends data //串口1发送数据
+#if USART1_BINARY_FEEDBACK_ENABLED
+                USART1_SEND();
+#endif
 				USART3_SEND();     //Serial port 3 (ROS) sends data  //串口3(ROS)发送数据
 				USART5_SEND();		 //Serial port 5 sends data //串口5发送数据
 				CAN_SEND();        //CAN send data //CAN发送数据	
 			}
+            /* USART1 text completion notification, once per boot. */
+            if (!stepper_ready_sent) {
+                StepperTask_GetData(&stepper_data);
+                if (stepper_data.state == STEPPER_TARGET_REACHED) {
+                    any_printf(USART1, "stepper position ready %lu\r\n",
+                               (unsigned long)stepper_data.pulses);
+                    stepper_ready_sent = 1;
+                }
+            }
 		}
 }
 /**************************************************************************
@@ -522,6 +540,13 @@ int USART1_IRQHandler(void)
 		int check=0,error=1,i;
 		
 		Usart_Receive = USART_ReceiveData(USART1); //Read the data //读取数据
+        /* Recognize text only outside an existing binary control frame.
+           Accept before the chassis startup delay; the task waits for range. */
+        if (Count == 0 && (Usart_Receive == '1' || Usart_Receive == '2')) {
+            if (Usart_Receive == '1') StepperTask_RequestStartFromISR();
+            else StepperTask_RequestReturnFromISR();
+            return 0;
+        }
 		if(SysVal.Time_count<CONTROL_DELAY)
 			// Data is not processed until 10 seconds after startup
 		  //开机10秒前不处理数据

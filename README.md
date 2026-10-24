@@ -30,6 +30,8 @@ motor 取 A4988_MOTOR_Left（1）或 A4988_MOTOR_Right（2）。
 | StepperMotor_SetSpeed(motor, arr) | 设置目标周期；arr 为非零 16 位 ARR，目标频率约 1000000/(arr+1) Hz | u8：成功 1，电机编号无效或 arr=0 时为 0 |
 | StepperMotor_MovePulses(motor, signed_pulses) | 阻塞运动；正数 DIR 高，负数 DIR 低，0 不运动；完成后停止 STEP | u32：实际完成的脉冲周期数，无效输入为 0 |
 | StepperMotor_Disable(motor) | 停止 STEP 并保持低电平；外部 EN 不变，可能仍有保持力矩 | void |
+| StepperMotor_StartContinuous(motor, forward) | 非阻塞连续运动并清零计数；forward=1 DIR 高，0 DIR 低 | u8：成功 1，无效电机编号 0 |
+| StepperMotor_GetCompletedPulses(motor) | 读取本次运动已计数的脉冲；先 Disable 再读最终值 | u32：STEP 脉冲数，无效编号 0 |
 | StepperMotor_UpdateIRQ(motor) | 内部定时器中断分发，处理计数和下一脉冲；应用层无需调用 | void |
 
 MovePulses 必须在开中断、非临界区的任务或裸机主循环调用；禁止在 ISR 中调用。同一电机不能并发运动，其他任务可用 Disable 停止运动。UpdateIRQ 中不得调用 FreeRTOS API。
@@ -103,24 +105,32 @@ DistanceTask_Data 包含 distance_mm、valid、status、update_tick。必须先�
 | HeadingControl_Reset() | 清空航向积分、目标和控制器状态 | void |
 | HeadingControl_Update(gyro_z_raw) | 输入已扣除启动零偏的 Z 轴陀螺原始 short 值；由 Balance_task 按 100 Hz 调用，勿传入 rad/s 浮点值 | float：角速度修正量，单位 rad/s |
 
+### 步进测距运动状态
+
+声明：[stepper_task.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.h)。
+
+| 函数 | 参数与用途 | 返回值 |
+| --- | --- | --- |
+| StepperTask_GetData(data) | 任务上下文读取 StepperTask_Data 快照，包含 pulses 和 state | void，通过 data 输出 |
+
 ### 其他任务入口
 
 这些函数由 FreeRTOS 调度，不作为一次性普通函数调用。
 
 | 函数 | 默认行为 | 源码 |
 | --- | --- | --- |
-| stepper_Task(void *pvParameters) | 左路步进往复运行 | [stepper_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c) |
+| stepper_Task(void *pvParameters) | 左路前进至距离 ≤130 mm；达到 70000 脉冲时自动回退 | [stepper_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c) |
 | pushrod_task(void *pvParameters) | 1 号推杆周期启动、停止 | [pushrod_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/pushrod_task.c) |
 
 ## 当前启动行为
 
 [USER/main.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/USER/main.c) 完成 systemInit() 后启动 FreeRTOS，创建底盘控制或检查任务、对应硬件版本的 IMU 任务、显示、LED、PS2、通信、推杆、步进和测距任务。当前源码没有 A4988_TEST_MODE 独立测试开关。
 
-- 步进任务自动让左路电机往复运行，具体参数见下文。
+- 步进任务等待串口 1 文本字符 1（ASCII 0x31）触发，再等待有效测距后让左路电机沿负脉冲方向连续前进；距离 ≤130 mm 时停止并等待返回命令，达到最大 70000 个 STEP 脉冲时停止并自动按实际脉冲数回退，具体参数见下文。
 - 推杆任务自动让 1 号推杆交替启动和停止。
 - 测距任务将 PA3 拉高，等待 10 ms 后初始化传感器并开始测距。
 - IMU 上电约 10 秒采集静止样本校准；蜂鸣器已禁用。
-- OLED 默认显示测距页，长按 PE0 用户键约 0.6 秒循环切换三页。
+- OLED 测距页新增 Steps 累计 STEP 脉冲数，运动时刷新，停止后保留最终计数（包含细分）。OLED 默认显示测距页，长按 PE0 用户键约 0.6 秒循环切换三页。
 
 上电前须确认步进电机与推杆的自动动作符合预期；如需改变启动行为，修改对应任务并重新编译烧录。
 
@@ -152,7 +162,22 @@ StepperMotor_Disable(A4988_MOTOR_Left);          // 停止 STEP 脉冲并拉低 
 
 `StepperMotor_SetSpeed(motor, arr)` 可分别调整两路目标转速；参数仍是 ARR 值，1 MHz 计数时目标脉冲频率约为 `1000000 / (arr + 1)` Hz，默认 `4999`。已移除软件最高、最低速度限制，参数仍受 16 位 ARR 范围约束；有效 STEP 脉冲需要非零 ARR。`arr=999` 对应约 1 kHz，`arr=99` 对应约 10 kHz，实际频率还受单脉冲的软件重启时间影响。运行中改值会从后续脉冲逐步生效。`StepperMotor_MovePulses()` 为阻塞式函数：正数和负数分别选择两个 DIR 电平，`0` 不运动；返回完成的脉冲周期数。每段最多用前后各 200 个脉冲加减速，默认从约 50 脉冲/秒加速到约 200 脉冲/秒，再减速；目标速度低于 50 脉冲/秒时直接以目标周期启动；到达目标会自动停止脉冲。**停止脉冲不等于 A4988 真正失能**：外部 EN 若仍有效，电机可能保持力矩。脉冲数也不等于毫米，实际行程取决于电机整步数、细分档位和传动机构。
 
-当前任务见 [BALANCE/stepper_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c)：左路设置 ARR=99（目标约 10 kHz），循环执行 -40000 脉冲、等待 1 秒、+40000 脉冲、等待 1 秒。实际频率受加减速和软件重启开销影响；脉冲数不能直接换算为毫米。旧的 USER/stepper_test.c、.h 和独立测试模式已移除。
+当前任务见 [BALANCE/stepper_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c)：上电先等待串口 1 文本字符 1（ASCII 0x31），收到后等待有效测距，距离大于 130 mm 时让左路连续前进，距离小于等于 130 mm 时停止。左路负脉冲方向为前进，DIR 低（STEPPER_FORWARD=0），ARR=99（目标约 10000 脉冲/秒），每 10 ms 检查一次测距快照；最多前进 70000 个 STEP 脉冲，达到上限后自动停止并反向返回已完成的实际脉冲数。传感器本身约 100 ms 测量预算加 50 ms 轮询间隔，实际停止位置会受采样延迟和机械惯性影响，不能保证恰好 130 mm。
+
+初始距离已 ≤130 mm 时不运动；运动中测距无效或过期立即停止。达到目标距离后保持停止，等待串口 1 文本字符 2 触发按实际前进脉冲数返回；达到 70000 脉冲上限时自动返回，不等待字符 2。返回完成后进入 RETURNED，返回过程中异常停止则进入 RETURN_STOP；运动中及完成后重复发送 1 不重新启动。串口助手不要勾选十六进制发送（十六进制方式须发送 31/32，不能发 01/02），可附带 CRLF。到达目标后，通信任务在 USART1（115200，PA9=TX、PA10=RX）发送一次 ASCII 行：stepper position ready <累计脉冲数>，末尾为 CRLF；例如 stepper position ready 12345。自动回退完成或故障停车不发送 ready。初始距离已达标时发送计数 0。该通知由现有通信任务发送。USART1_BINARY_FEEDBACK_ENABLED 默认设为 0，串口 1 不再周期发送二进制底盘反馈，避免文本显示乱码；串口 3 的底盘反馈继续发送。需要恢复串口 1 的二进制反馈时，可在 HARDWARE/usartx.c 将该宏设为 1。方向可通过 STEPPER_FORWARD 修改，阈值通过 STEPPER_TARGET_MM 修改，最大脉冲数通过 STEPPER_MAX_PULSES 修改。其他任务不得同时控制该电机。
+
+~~~c
+#include "stepper_task.h"
+
+StepperTask_Data data;
+StepperTask_GetData(&data);
+/* data.pulses：累计 STEP 脉冲，包含细分，不是编码器实测步数。
+   data.state：WAITING_DISTANCE / MOVING / TARGET_REACHED / SENSOR_STOP /
+               LIMIT_REACHED / RETURNING / RETURNED / RETURN_STOP，
+   对应枚举名称均带 STEPPER_ 前缀。停止后保留最终计数。 */
+~~~
+
+如电机每圈 200 整步、16 细分，则整步等效数为 pulses/16，圈数为 pulses/3200；行程还需结合传动机构换算。u32 计数达到 2^32 会回绕。旧的 USER/stepper_test.c、.h 和独立测试模式已移除。
 
 ### A4988 接口定义与接线
 
@@ -288,7 +313,7 @@ status = VL53L0X_StopContinuous();
 
 任务独占传感器总线，使用 100ms 测量预算的单次测距，每次测量前延时 50ms。通信错误或超时后间隔 1 秒重新初始化。无效测量不作为有效距离发布；超过 500ms 未更新的数据快照返回超时。
 
-OLED 默认显示测距页，保留距离（mm）和基本状态，删除 Raw、SPAD、信号率和初始化阶段诊断。显示函数由现有 show_task 统一调用和刷新；长按 PE0 用户键约 0.6 秒循环切换三页。测距任务不直接操作 OLED 总线。
+OLED 测距页新增 Steps 累计 STEP 脉冲数，运动时刷新，停止后保留最终计数（包含细分）。OLED 默认显示测距页，保留距离（mm）和基本状态，删除 Raw、SPAD、信号率和初始化阶段诊断。显示函数由现有 show_task 统一调用和刷新；长按 PE0 用户键约 0.6 秒循环切换三页。测距任务不直接操作 OLED 总线。
 
 头文件提供任务入口 distance_task、任务优先级和栈大小，以及数据读取和显示接口。测距轮询和重试参数封装在 .c 文件中。应用读取方式：
 
@@ -381,3 +406,7 @@ Keil 工程：[USER/WHEELTEC.uvprojx](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.
 6. 步进使用逻辑分析仪检查脉冲数量、加减速和停止电平；测距尚需实物验证。
 
 首次动态测试使用低速、短时间指令，在空旷平地进行，并安排人员随时断电。每次测试结束连续发送零速度帧；调参期间避免多个控制来源同时生效。
+
+串口 1 文本命令：发送 1 开始左路负方向定位至距离 ≤130 mm；定位完成后发送 2，左路以正脉冲反向返回相同的累计 STEP 脉冲数。运动中发送 2 不排队，故障停车不允许返回；达到 70000 个 STEP 脉冲上限时自动反向返回，不等待发送 2。返回后保持停止，复位可开始新一轮。返回依赖脉冲计数，不用测距阈值停止，机械失步时不保证物理位置完全相同。返回完成后 OLED Steps 保留返回总脉冲数。
+
+前进行程上限：STEPPER_MAX_PULSES=70000，由定时器中断限制，最多输出 70000 个 STEP 脉冲（含细分）；与距离 ≤130 mm 条件先到先停。达到步数上限置 STEPPER_LIMIT_REACHED，不发送 position ready（未确认距离到位），随后自动按实际前进脉冲数返回。

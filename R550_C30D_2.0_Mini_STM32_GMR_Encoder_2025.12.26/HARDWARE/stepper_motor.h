@@ -25,6 +25,15 @@ u8 StepperMotor_SetSpeed(u8 motor, u16 arr);
    Do not call concurrently for the same motor. */
 u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses);
 
+/* Nonblocking motion; forward=1 sets DIR high, 0 sets DIR low.
+   Starts a new pulse count. Disable first to obtain the final count.
+   Only one motion caller per motor. Counts commanded STEP edges, not
+   encoder-confirmed physical steps. The u32 count wraps at 2^32. */
+/* Nonblocking signed pulse move, stopped at the count by timer ISR. */
+u8 StepperMotor_StartMove(u8 motor, s32 signed_pulses);
+u8 StepperMotor_StartContinuous(u8 motor, u8 forward);
+u32 StepperMotor_GetCompletedPulses(u8 motor);
+
 /* Internal timer ISR dispatch. Must not call FreeRTOS APIs. */
 void StepperMotor_UpdateIRQ(u8 motor);
 

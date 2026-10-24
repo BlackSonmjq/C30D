@@ -1,4 +1,5 @@
 #include "distance_task.h"
+#include "stepper_task.h"
 #include "oled.h"
 #include "stm32f4xx_gpio.h"
 #include "stm32f4xx_rcc.h"
@@ -79,7 +80,9 @@ void distance_task(void *pvParameters)
 void DistanceTask_DrawOLED(void)
 {
     DistanceTask_Data data;
+    StepperTask_Data stepper;
     DistanceTask_GetData(&data);
+    StepperTask_GetData(&stepper);
     OLED_ShowString(0, 0, "Laser Distance");
     if (data.valid) {
         OLED_ShowString16(0, 20, "Range:");
@@ -88,6 +91,9 @@ void DistanceTask_DrawOLED(void)
     } else {
         OLED_ShowString(0, 20, "Range: ----- mm");
     }
+    /* 10 decimal digits cover the full u32 pulse count within 128 pixels. */
+    OLED_ShowString(0, 36, "Steps:");
+    OLED_ShowNumber(48, 36, stepper.pulses, 10, 12);
     switch (data.status) {
         case VL53L0X_OK: OLED_ShowString(0, 50, "OK"); break;
         case VL53L0X_NOT_READY: OLED_ShowString(0, 50, "INIT / WAIT"); break;
