@@ -110,7 +110,7 @@ void StepperMotor_Disable(u8 motor)
     __disable_irq();
     TIM_ITConfig(timer, TIM_IT_Update, DISABLE);
     TIM_Cmd(timer, DISABLE);
-    /* Count the last rising edge, including a pulse stopped before update. */
+    /* 计入最后一个已输出的上升沿，包括尚未触发更新中断就被停止的脉冲。 */
     if (stepper_running[motor - 1u] &&
         (TIM_GetFlagStatus(timer, TIM_FLAG_Update) != RESET ||
          GPIO_ReadInputDataBit((motor == A4988_MOTOR_Left) ? GPIOB : GPIOC,
@@ -240,7 +240,7 @@ static u8 StepperMotor_Start(u8 motor, s32 signed_pulses, u8 continuous)
     return 1;
 }
 
-/* Nonblocking bounded move; timer ISR enforces the pulse budget. */
+/* 非阻塞定长运动，由定时器中断限制脉冲总数，任务调度延迟不会多走脉冲。 */
 u8 StepperMotor_StartMove(u8 motor, s32 signed_pulses)
 {
     return StepperMotor_Start(motor, signed_pulses, 0);
@@ -255,6 +255,21 @@ u32 StepperMotor_GetCompletedPulses(u8 motor)
 {
     if (StepperMotor_Timer(motor) == 0) return 0;
     return stepper_completed[motor - 1u];
+}
+
+/* 状态机用此接口区分运行中、到数停止及异常提前停止。 */
+u8 StepperMotor_IsRunning(u8 motor)
+{
+    if (StepperMotor_Timer(motor) == 0) return 0;
+    return stepper_running[motor - 1u];
+}
+
+/* 先关闭定时器及更新中断，再清零计数，避免下一轮使用上轮返程计数。 */
+void StepperMotor_ResetCompletedPulses(u8 motor)
+{
+    if (StepperMotor_Timer(motor) == 0) return;
+    StepperMotor_Disable(motor);
+    stepper_completed[motor - 1u] = 0;
 }
 
 u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)

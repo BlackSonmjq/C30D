@@ -19,6 +19,7 @@ All rights reserved
 
 #include "system.h"
 #include "distance_task.h"
+#include "pushrod.h"
 
 //Robot software fails to flag bits
 //����������ʧ�ܱ�־λ
@@ -120,6 +121,7 @@ void systemInit(void)
     // This prevents the STEP inputs from floating during startup.
     A4988_Init();
     DistanceTask_InitShutdownPins();
+    Pushrod_Init(); /* 串口启用前先将四路推杆输出拉低，防止上电误动作。 */
 
 	//Delay function initialization
 	//��ʱ������ʼ��

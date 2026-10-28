@@ -27,8 +27,6 @@ Output  : none
 void data_task(void *pvParameters)
 {
 	 u32 lastWakeTime = getSysTickCnt();
-     u8 stepper_ready_sent = 0;
-     StepperTask_Data stepper_data;
 	
    while(1)
     {	
@@ -47,15 +45,7 @@ void data_task(void *pvParameters)
 				USART5_SEND();		 //Serial port 5 sends data //串口5发送数据
 				CAN_SEND();        //CAN send data //CAN发送数据	
 			}
-            /* USART1 text completion notification, once per boot. */
-            if (!stepper_ready_sent) {
-                StepperTask_GetData(&stepper_data);
-                if (stepper_data.state == STEPPER_TARGET_REACHED) {
-                    any_printf(USART1, "stepper position ready %lu\r\n",
-                               (unsigned long)stepper_data.pulses);
-                    stepper_ready_sent = 1;
-                }
-            }
+
 		}
 }
 /**************************************************************************
@@ -541,10 +531,10 @@ int USART1_IRQHandler(void)
 		int check=0,error=1,i;
 		
 		Usart_Receive = USART_ReceiveData(USART1); //Read the data //读取数据
-        /* Recognize text only outside an existing binary control frame.
-           Accept before the chassis startup delay; the task waits for range. */
-        if (Count == 0 && (Usart_Receive == '1' || Usart_Receive == '2')) {
-            DistanceTask_SelectLaserFromISR((uint8_t)(Usart_Receive - '0'));
+        /* 只在二进制控制帧之外识别 ASCII 芒果编号 1～4，避免误解析帧内数据。
+         * 此入口不受底盘启动延时限制；中断只提交请求，忙碌时拒绝且不排队。 */
+        if (Count == 0 && (Usart_Receive >= '1' && Usart_Receive <= '4')) {
+            StepperTask_RequestMangoFromISR((uint8_t)(Usart_Receive - '0'));
             return 0;
         }
 		if(SysVal.Time_count<CONTROL_DELAY)
