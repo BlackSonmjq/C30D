@@ -6,6 +6,7 @@
 
 ## 目录
 
+- [双路激光与串口命令](#双路激光与串口命令)
 - [函数速查](#函数速查)
 - [当前启动行为](#当前启动行为)
 - [引脚与资源分配](#引脚与资源分配)
@@ -15,6 +16,22 @@
 - [IMU 航向控制](#imu-航向控制)
 - [串口协议](#串口协议)
 - [编译与上电检查](#编译与上电检查)
+
+## 双路激光与串口命令
+
+当前串口 1 使用激光选择命令，替换此前步进启动、返回和推杆启动命令。串口助手设置 115200、8N1，使用文本发送，可附带 CRLF。
+
+| 输入 | PA2 / 激光 1 XSHUT | PA3 / 激光 2 XSHUT | OLED 标题 |
+| --- | --- | --- | --- |
+| 上电，未发送命令 | 低，关闭 | 低，关闭 | Lasers OFF |
+| 文本 1（ASCII 0x31） | 高，使能 | 低，关闭 | Laser 1 PA2 |
+| 文本 2（ASCII 0x32） | 低，关闭 | 高，使能 | Laser 2 PA3 |
+
+两路共用 PA8=SCL、PC9=SDA 和默认地址 0x29，XSHUT 必须分别接 PA2、PA3。同一时刻只使能一路；切换时先关闭两路、再启用选中一路，等待启动并重新初始化驱动。切换后清除旧距离，仅发布当前传感器的新有效数据。初始化失败后重试，重复选择当前通道不会反复复位传感器。OLED 同时保留距离、Steps 和基本测距状态。
+
+DistanceTask_InitShutdownPins() 在板级初始化早期将 PA2/PA3 配置为低电平推挽输出；DistanceTask_SelectLaserFromISR(laser_id) 只锁存 1/2 选择，测距任务独占 I²C 并完成切换；DistanceTask_Data.laser_id 为实际启用通道（0=全关、1=PA2、2=PA3）。
+
+下文步进和推杆接口保留供应用调用；当前串口字符 1/2 不再触发步进，字符 3 不再启动推杆，因此上电步进与推杆保持等待。历史定位算法参数仍为距离 130 mm、70000 脉冲上限。
 
 ## 函数速查
 
@@ -94,7 +111,7 @@ Pushrod_Result：PUSHROD_OK 表示成功；PUSHROD_INVALID_ARGUMENT 表示编号
 | DistanceTask_GetData(data) | data 指向 DistanceTask_Data，读取线程安全快照；有效数据达到 500 ms 未更新时标记超时 | void，通过 data 输出 |
 | DistanceTask_DrawOLED() | 绘制距离与状态到帧缓冲；由 show_task 统一调用和刷新 | void |
 
-DistanceTask_Data 包含 distance_mm、valid、status、update_tick。必须先检查 valid；无效或过期时距离为 0，不能当作有效读数。
+DistanceTask_Data 包含 distance_mm、valid、status、update_tick、laser_id。必须先检查 valid；无效或过期时距离为 0，不能当作有效读数。
 
 ### IMU 航向控制
 
@@ -120,19 +137,19 @@ DistanceTask_Data 包含 distance_mm、valid、status、update_tick。必须先�
 | 函数 | 默认行为 | 源码 |
 | --- | --- | --- |
 | stepper_Task(void *pvParameters) | 左路前进至距离 ≤130 mm；达到 70000 脉冲时自动回退 | [stepper_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c) |
-| pushrod_task(void *pvParameters) | 1 号推杆周期启动、停止 | [pushrod_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/pushrod_task.c) |
+| pushrod_task(void *pvParameters) | 等待应用请求；当前串口未绑定推杆命令 | [pushrod_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/pushrod_task.c) |
 
 ## 当前启动行为
 
 [USER/main.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/USER/main.c) 完成 systemInit() 后启动 FreeRTOS，创建底盘控制或检查任务、对应硬件版本的 IMU 任务、显示、LED、PS2、通信、推杆、步进和测距任务。当前源码没有 A4988_TEST_MODE 独立测试开关。
 
-- 步进任务等待串口 1 文本字符 1（ASCII 0x31）触发，再等待有效测距后让左路电机沿负脉冲方向连续前进；距离 ≤130 mm 时停止并等待返回命令，达到最大 70000 个 STEP 脉冲时停止并自动按实际脉冲数回退，具体参数见下文。
-- 推杆任务自动让 1 号推杆交替启动和停止。
-- 测距任务将 PA3 拉高，等待 10 ms 后初始化传感器并开始测距。
+- 步进任务保留历史定位算法，当前串口不触发该任务，电机保持停止。
+- 推杆任务上电保持 PC0～PC3 低电平，当前串口未绑定推杆启动命令。
+- 上电 PA2/PA3 全部拉低，收到文本 1/2 后测距任务才启用对应激光并开始测距。
 - IMU 上电约 10 秒采集静止样本校准；蜂鸣器已禁用。
 - OLED 测距页新增 Steps 累计 STEP 脉冲数，运动时刷新，停止后保留最终计数（包含细分）。OLED 默认显示测距页，长按 PE0 用户键约 0.6 秒循环切换三页。
 
-上电前须确认步进电机与推杆的自动动作符合预期；如需改变启动行为，修改对应任务并重新编译烧录。
+上电前须确认步进电机与推杆的命令动作符合预期；如需改变启动行为，修改对应任务并重新编译烧录。
 
 ## 引脚与资源分配
 
@@ -141,7 +158,7 @@ DistanceTask_Data 包含 distance_mm、valid、status、update_tick。必须先�
 | A4988 Left | DIR=PB14，STEP=PB15/TIM12_CH2 | EN 外部控制 |
 | A4988 Right | DIR=PC7，STEP=PC8/TIM8_CH3 | EN 外部控制 |
 | 推杆 1～4 | PC0～PC3 | 高电平启动，低电平停止 |
-| VL53L0X | SCL=PA8，SDA=PC9，XSHUT=PA3 | 独立软件 I²C |
+| 两路 VL53L0X | SCL=PA8，SDA=PC9，激光 1 XSHUT=PA2，激光 2 XSHUT=PA3 | 独立软件 I²C，互斥使能 |
 | 原 IMU 总线 | PB10/PB11 | 与测距总线分离 |
 | 蜂鸣器 | 原 PA8 | 已禁用，须断开原蜂鸣器及驱动电路 |
 
@@ -162,9 +179,9 @@ StepperMotor_Disable(A4988_MOTOR_Left);          // 停止 STEP 脉冲并拉低 
 
 `StepperMotor_SetSpeed(motor, arr)` 可分别调整两路目标转速；参数仍是 ARR 值，1 MHz 计数时目标脉冲频率约为 `1000000 / (arr + 1)` Hz，默认 `4999`。已移除软件最高、最低速度限制，参数仍受 16 位 ARR 范围约束；有效 STEP 脉冲需要非零 ARR。`arr=999` 对应约 1 kHz，`arr=99` 对应约 10 kHz，实际频率还受单脉冲的软件重启时间影响。运行中改值会从后续脉冲逐步生效。`StepperMotor_MovePulses()` 为阻塞式函数：正数和负数分别选择两个 DIR 电平，`0` 不运动；返回完成的脉冲周期数。每段最多用前后各 200 个脉冲加减速，默认从约 50 脉冲/秒加速到约 200 脉冲/秒，再减速；目标速度低于 50 脉冲/秒时直接以目标周期启动；到达目标会自动停止脉冲。**停止脉冲不等于 A4988 真正失能**：外部 EN 若仍有效，电机可能保持力矩。脉冲数也不等于毫米，实际行程取决于电机整步数、细分档位和传动机构。
 
-当前任务见 [BALANCE/stepper_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c)：上电先等待串口 1 文本字符 1（ASCII 0x31），收到后等待有效测距，距离大于 130 mm 时让左路连续前进，距离小于等于 130 mm 时停止。左路负脉冲方向为前进，DIR 低（STEPPER_FORWARD=0），ARR=99（目标约 10000 脉冲/秒），每 10 ms 检查一次测距快照；最多前进 70000 个 STEP 脉冲，达到上限后自动停止并反向返回已完成的实际脉冲数。传感器本身约 100 ms 测量预算加 50 ms 轮询间隔，实际停止位置会受采样延迟和机械惯性影响，不能保证恰好 130 mm。
+当前任务见 [BALANCE/stepper_task.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c)：历史逻辑等待应用调用 StepperTask_RequestStartFromISR() 后等待有效测距（当前串口 1/2 已改作激光选择），距离大于 130 mm 时让左路连续前进，距离小于等于 130 mm 时停止。左路负脉冲方向为前进，DIR 低（STEPPER_FORWARD=0），ARR=99（目标约 10000 脉冲/秒），每 10 ms 检查一次测距快照；最多前进 70000 个 STEP 脉冲，达到上限后自动停止并反向返回已完成的实际脉冲数。传感器本身约 100 ms 测量预算加 50 ms 轮询间隔，实际停止位置会受采样延迟和机械惯性影响，不能保证恰好 130 mm。
 
-初始距离已 ≤130 mm 时不运动；运动中测距无效或过期立即停止。达到目标距离后保持停止，等待串口 1 文本字符 2 触发按实际前进脉冲数返回；达到 70000 脉冲上限时自动返回，不等待字符 2。返回完成后进入 RETURNED，返回过程中异常停止则进入 RETURN_STOP；运动中及完成后重复发送 1 不重新启动。串口助手不要勾选十六进制发送（十六进制方式须发送 31/32，不能发 01/02），可附带 CRLF。到达目标后，通信任务在 USART1（115200，PA9=TX、PA10=RX）发送一次 ASCII 行：stepper position ready <累计脉冲数>，末尾为 CRLF；例如 stepper position ready 12345。自动回退完成或故障停车不发送 ready。初始距离已达标时发送计数 0。该通知由现有通信任务发送。USART1_BINARY_FEEDBACK_ENABLED 默认设为 0，串口 1 不再周期发送二进制底盘反馈，避免文本显示乱码；串口 3 的底盘反馈继续发送。需要恢复串口 1 的二进制反馈时，可在 HARDWARE/usartx.c 将该宏设为 1。方向可通过 STEPPER_FORWARD 修改，阈值通过 STEPPER_TARGET_MM 修改，最大脉冲数通过 STEPPER_MAX_PULSES 修改。其他任务不得同时控制该电机。
+初始距离已 ≤130 mm 时不运动；运动中测距无效或过期立即停止。达到目标距离后保持停止，等待应用请求返回后按实际前进脉冲数返回（当前文本 2 仅切换激光）；达到 70000 脉冲上限时自动返回，不等待字符 2。返回完成后进入 RETURNED，返回过程中异常停止则进入 RETURN_STOP；运动中及完成后重复发送 1 不重新启动。串口助手不要勾选十六进制发送（十六进制方式须发送 31/32，不能发 01/02），可附带 CRLF。到达目标后，通信任务在 USART1（115200，PA9=TX、PA10=RX）发送一次 ASCII 行：stepper position ready <累计脉冲数>，末尾为 CRLF；例如 stepper position ready 12345。自动回退完成或故障停车不发送 ready。初始距离已达标时发送计数 0。该通知由现有通信任务发送。USART1_BINARY_FEEDBACK_ENABLED 默认设为 0，串口 1 不再周期发送二进制底盘反馈，避免文本显示乱码；串口 3 的底盘反馈继续发送。需要恢复串口 1 的二进制反馈时，可在 HARDWARE/usartx.c 将该宏设为 1。方向可通过 STEPPER_FORWARD 修改，阈值通过 STEPPER_TARGET_MM 修改，最大脉冲数通过 STEPPER_MAX_PULSES 修改。其他任务不得同时控制该电机。
 
 ~~~c
 #include "stepper_task.h"
@@ -229,7 +246,7 @@ Pushrod_Result result = Pushrod_Start(1); // PC0 输出高电平
 Pushrod_Stop(1);                         // PC0 输出低电平
 ~~~
 
-接口返回 PUSHROD_OK、PUSHROD_INVALID_ARGUMENT 或 PUSHROD_NOT_INITIALIZED。当前任务初始化后循环启动 1 号推杆、等待 10000 tick、停止、再等待 10000 tick；实际时长取决于 FreeRTOS tick 频率。
+接口返回 PUSHROD_OK、PUSHROD_INVALID_ARGUMENT 或 PUSHROD_NOT_INITIALIZED。当前任务初始化后保持 PC0～PC3 低电平。保留的 PushrodTask_RequestStartFromISR() 只在 STEPPER_TARGET_REACHED 时接受启动请求；当前串口接收已移除字符 3 的推杆触发。任务每 10 ms 检查请求并再次确认到位，调用 Pushrod_Stop(1) 将 PC0 保持低电平，PC1～PC3 不变；不再自动循环或延时拉低。未到位、返回中、故障或仅达到步数上限时收到 3 会被忽略；请求处理前已开始返回也不执行。高电平由 Pushrod_Stop(1) 或复位清除，激光选择命令不会操作 PC0。
 
 
 ## VL53L0X 激光测距
@@ -244,7 +261,8 @@ Pushrod_Stop(1);                         // PC0 输出低电平
 | SDA | PC9 |
 | GND | GND |
 | VCC | 按模块规格供电，优先使用 3.3V |
-| XSHUT | PA3，上电后由测距任务拉高，默认开启 |
+| 激光 1 XSHUT | PA2，上电低，文本 1 使能 |
+| 激光 2 XSHUT | PA3，上电低，文本 2 使能 |
 | GPIO1 | 不连接，驱动轮询结果就绪寄存器 |
 
 SCL/SDA 需要外部上拉或模块自带上拉；GPIO 内部弱上拉不能替代 I²C 总线上拉。确认信号电平适合 STM32 与模块，不能将总线上拉至 5V。裸芯片的 AVDD 范围为 2.6～3.5V，2V8 I/O 模式的高电平应与 AVDD 匹配。
@@ -300,16 +318,16 @@ status = VL53L0X_StopContinuous();
 
 历史验证记录：测距驱动加入时曾使用 Keil ARMCC 5.06 编译、链接通过；尚无传感器硬件测距或逻辑分析仪时序验证记录。本次仅整合文档，未重新编译固件。
 
-当前驱动直接从 NVM 读取出厂 SPAD 信息，保留配置回读校验和错误处理。临时初始化阶段、SPAD 数量和光信号率诊断接口已移除。当前 XSHUT 接 PA3，由测距任务输出高电平释放；早期 XSHUT 不外接的接线说明已不适用。默认任务使用单次测距；连续接口仅供底层独立使用，勿与测距任务并发调用。
+当前驱动直接从 NVM 读取出厂 SPAD 信息，保留配置回读校验和错误处理。临时初始化阶段、SPAD 数量和光信号率诊断接口已移除。两路 XSHUT 分别接 PA2、PA3，由测距任务互斥输出高电平释放；早期 XSHUT 不外接的接线说明已不适用。默认任务使用单次测距；连续接口仅供底层独立使用，勿与测距任务并发调用。
 
-### 默认开启
+### 命令使能
 
-测距任务启动后立即将 PA3 配置为推挽高电平，释放 VL53L0X 的 XSHUT，等待 10 ms 后初始化并开始测距。初始化失败后间隔 1 秒重试，不需要用户按键。
+PA2/PA3 上电都为低电平。收到串口 1 的文本 1 或 2 后，测距任务先将两路拉低，再拉高选中 XSHUT，等待 10 ms 后初始化并开始测距。初始化失败约间隔 1 秒重试，切换请求可中断重试等待。
 
 
 ### 测距任务与 OLED
 
-`distance_task.c` / `distance_task.h` 已加入 Keil 工程，由 `start_task` 直接调用 `xTaskCreate(distance_task, ...)` 创建。使用 PA8=SCL、PC9=SDA；测距任务启动后默认将 PA3 的 XSHUT 拉高并开启传感器。
+`distance_task.c` / `distance_task.h` 已加入 Keil 工程，由 `start_task` 直接调用 `xTaskCreate(distance_task, ...)` 创建。使用 PA8=SCL、PC9=SDA；测距任务启动后等待文本 1/2，分别选择 PA2/PA3 控制的传感器。
 
 任务独占传感器总线，使用 100ms 测量预算的单次测距，每次测量前延时 50ms。通信错误或超时后间隔 1 秒重新初始化。无效测量不作为有效距离发布；超过 500ms 未更新的数据快照返回超时。
 
@@ -399,7 +417,7 @@ PA8 已用于测距 SCL，BUZZER_ENABLED=0；当前无蜂鸣提示，不能以�
 Keil 工程：[USER/WHEELTEC.uvprojx](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/USER/WHEELTEC.uvprojx)，历史使用 ARMCC 5.06 编译。烧录文件输出路径为 OBJ/WHEELTEC.hex；修改源码后须重新编译。本次文档整合未执行编译或硬件测试，不能据历史编译记录判断当前源码或现有 HEX 的状态。
 
 1. 确认步进、推杆的启动动作，空载或架空验证，检查供电、共地、限流、EN 和细分设置。
-2. 确认 PA8 的原蜂鸣器电路已断开，测距 SCL/SDA 有合适的上拉，XSHUT 接 PA3。
+2. 确认 PA8 的原蜂鸣器电路已断开，测距 SCL/SDA 有合适的上拉，两路 XSHUT 分别接 PA2、PA3。
 3. 串口 ISP 烧录后将 BOOT0/下载开关拨回 0/RUN，退出烧录软件，再断电重启。
 4. 车辆放平，上电后保持静止约 10 秒，等待 IMU 校准。当前没有蜂鸣提示。
 5. 检查 OLED 测距状态及串口 24 字节反馈帧的帧头、帧尾和异或校验；无反馈时先排查供电、运行模式及端口。
@@ -407,6 +425,8 @@ Keil 工程：[USER/WHEELTEC.uvprojx](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.
 
 首次动态测试使用低速、短时间指令，在空旷平地进行，并安排人员随时断电。每次测试结束连续发送零速度帧；调参期间避免多个控制来源同时生效。
 
-串口 1 文本命令：发送 1 开始左路负方向定位至距离 ≤130 mm；定位完成后发送 2，左路以正脉冲反向返回相同的累计 STEP 脉冲数。运动中发送 2 不排队，故障停车不允许返回；达到 70000 个 STEP 脉冲上限时自动反向返回，不等待发送 2。返回后保持停止，复位可开始新一轮。返回依赖脉冲计数，不用测距阈值停止，机械失步时不保证物理位置完全相同。返回完成后 OLED Steps 保留返回总脉冲数。
+串口 1 当前命令以本文“双路激光与串口命令”为准；原步进启动/返回入口保留但未绑定字符命令。
 
 前进行程上限：STEPPER_MAX_PULSES=70000，由定时器中断限制，最多输出 70000 个 STEP 脉冲（含细分）；与距离 ≤130 mm 条件先到先停。达到步数上限置 STEPPER_LIMIT_REACHED，不发送 position ready（未确认距离到位），随后自动按实际前进脉冲数返回。
+
+推杆底层与任务接口保留；当前串口字符 3 不再调用推杆请求。

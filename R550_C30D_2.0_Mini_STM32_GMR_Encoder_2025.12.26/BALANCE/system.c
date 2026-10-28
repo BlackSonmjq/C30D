@@ -18,6 +18,7 @@ All rights reserved
 ***********************************************/
 
 #include "system.h"
+#include "distance_task.h"
 
 //Robot software fails to flag bits
 //����������ʧ�ܱ�־λ
@@ -118,6 +119,7 @@ void systemInit(void)
     // Configure A4988 DIR/STEP pins low before other peripherals are initialized.
     // This prevents the STEP inputs from floating during startup.
     A4988_Init();
+    DistanceTask_InitShutdownPins();
 
 	//Delay function initialization
 	//��ʱ������ʼ��

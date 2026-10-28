@@ -28,6 +28,11 @@ void StepperTask_RequestReturnFromISR(void)
         return_requested = 1;
 }
 
+u8 StepperTask_IsPositionReadyFromISR(void)
+{
+    return motion.state == STEPPER_TARGET_REACHED;
+}
+
 void StepperTask_GetData(StepperTask_Data *data)
 {
     if (data == NULL) return;

@@ -1,5 +1,6 @@
 #include "usartx.h"
 #include "stepper_task.h"
+#include "distance_task.h"
 #include "usart.h"
 
 /* Keep USART1 text readable; set to 1 only for binary host telemetry. */
@@ -543,8 +544,7 @@ int USART1_IRQHandler(void)
         /* Recognize text only outside an existing binary control frame.
            Accept before the chassis startup delay; the task waits for range. */
         if (Count == 0 && (Usart_Receive == '1' || Usart_Receive == '2')) {
-            if (Usart_Receive == '1') StepperTask_RequestStartFromISR();
-            else StepperTask_RequestReturnFromISR();
+            DistanceTask_SelectLaserFromISR((uint8_t)(Usart_Receive - '0'));
             return 0;
         }
 		if(SysVal.Time_count<CONTROL_DELAY)

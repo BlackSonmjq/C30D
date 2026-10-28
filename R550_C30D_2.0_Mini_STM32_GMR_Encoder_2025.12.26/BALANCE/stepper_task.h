@@ -28,6 +28,8 @@ void StepperTask_GetData(StepperTask_Data *data);
 /* USART1 ISR only: latch ASCII start command, no FreeRTOS API calls. */
 void StepperTask_RequestStartFromISR(void);
 void StepperTask_RequestReturnFromISR(void);
+/* ISR-safe status check; pulse-limit/fault stops are not position ready. */
+u8 StepperTask_IsPositionReadyFromISR(void);
 void stepper_Task(void *pvParameters);
 
 #endif
