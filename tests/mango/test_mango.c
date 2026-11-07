@@ -15,6 +15,7 @@ static void distance_delay(TickType_t ticks);
 static u8 in_distance, stop_return;
 static jmp_buf job_exit, actuator_yield, distance_exit;
 static TickType_t tick, high_at, last_high_duration;
+static uint8_t timed_done_id;
 static unsigned int checks, completed_jobs, hits, starts, case_id, stop_partial_edge;
 static u8 in_actuator, sensor, active_motor, output_id, forced_invalid, initial_close;
 static u8 inject_busy, inject_pulse_limit, fail_return, fail_strike, freeze_motion, jump_clock;
@@ -22,6 +23,8 @@ static u32 count[3], target[3];
 static u8 running[3];
 static s32 last_move;
 static Mango_Result expected_result;
+/* Hardware direction: left approaches low, right approaches high. */
+static int outward(s32 pulses) { return active_motor == 1 ? pulses < 0 : pulses > 0; }
 
 #define CHECK(expr) do { ++checks; if (!(expr)) { \
     printf("FAIL case %u line %u: %s\n", case_id, (unsigned int)__LINE__, #expr); exit(1); } } while (0)
@@ -32,7 +35,7 @@ u8 StepperMotor_SetSpeed(u8 motor, u16 arr) { CHECK(arr == 199); return motor <=
 u32 StepperMotor_GetCompletedPulses(u8 motor) { return count[motor]; }
 u8 StepperMotor_IsRunning(u8 motor) { return running[motor]; }
 void StepperMotor_Disable(u8 motor) {
-    if (running[motor] && stop_partial_edge && last_move < 0) {
+    if (running[motor] && stop_partial_edge && outward(last_move)) {
         ++count[motor]; /* Edge emitted after the last polling snapshot. */
         stop_partial_edge = 0;
     }
@@ -42,9 +45,9 @@ void StepperMotor_ResetCompletedPulses(u8 motor) { StepperMotor_Disable(motor); 
 u8 StepperMotor_StartMove(u8 motor, s32 pulses) {
     CHECK(motor == active_motor);
     CHECK(output_id == 0); /* No motion while a pushrod output is high. */
-    if (fail_return && pulses > 0) return 0;
-    if (pulses < 0) CHECK((u32)-pulses == MANGO_MAX_PULSES);
-    else CHECK((u32)pulses == count[motor]);
+    if (fail_return && !outward(pulses)) return 0;
+    if (outward(pulses)) CHECK((u32)(pulses < 0 ? -pulses : pulses) == MANGO_MAX_PULSES);
+    else CHECK((u32)(pulses < 0 ? -pulses : pulses) == count[motor]);
     last_move = pulses;
     count[motor] = 0;
     target[motor] = pulses < 0 ? (u32)-pulses : (u32)pulses;
@@ -58,20 +61,23 @@ void DistanceTask_GetData(DistanceTask_Data *data) {
     data->laser_id = sensor;
     data->valid = sensor && !forced_invalid;
     data->status = data->valid ? VL53L0X_OK : VL53L0X_NOT_READY;
-    data->distance_mm = initial_close || (last_move < 0 && count[active_motor] >= 37) ? 150 : 151;
+    data->distance_mm = initial_close || (outward(last_move) && count[active_motor] >= 37) ? 150 : 151;
     if (inject_pulse_limit) data->distance_mm = 151;
 }
-Pushrod_Result Pushrod_Start(uint8_t id) {
+Pushrod_Result Pushrod_StartTimed(uint8_t id, uint16_t duration_ms) {
     CHECK(id == motion.mango_id);
     CHECK(!running[active_motor]);
     CHECK(sensor == id);
     if (fail_strike) return PUSHROD_NOT_INITIALIZED;
+    CHECK(duration_ms == 5000);
     CHECK(output_id == 0);
     output_id = id;
     high_at = tick;
+    timed_done_id = 0;
     ++hits;
     return PUSHROD_OK;
 }
+uint8_t Pushrod_TimedDone(uint8_t id) { return id && id == timed_done_id; }
 Pushrod_Result Pushrod_Stop(uint8_t id) {
     if (output_id == id) {
         last_high_duration = tick - high_at;
@@ -79,6 +85,7 @@ Pushrod_Result Pushrod_Stop(uint8_t id) {
         CHECK(last_high_duration <= MANGO_STRIKE_MS + 10);
         output_id = 0;
     }
+    if(timed_done_id == id) timed_done_id = 0;
     return PUSHROD_OK;
 }
 void vTaskDelay(TickType_t ticks) {
@@ -87,6 +94,12 @@ void vTaskDelay(TickType_t ticks) {
     if (in_actuator) longjmp(actuator_yield, 1);
     CHECK(ticks == 10);
     tick += ticks;
+    /* Timer IRQ stops the physical output even before the task is resumed. */
+    if(output_id && (TickType_t)(tick - high_at) >= MANGO_STRIKE_MS) {
+        timed_done_id = output_id;
+        output_id = 0;
+        last_high_duration = MANGO_STRIKE_MS;
+    }
     if (jump_clock && motion.state == STEPPER_MOVING) {
         tick += MANGO_MOTION_TIMEOUT_MS;
         jump_clock = 0;
@@ -99,7 +112,7 @@ void vTaskDelay(TickType_t ticks) {
     if (motion.state == STEPPER_MOVING && expected_result == MANGO_SENSOR_LOST)
         forced_invalid = 1;
     if (running[active_motor] && !freeze_motion) {
-        delta = inject_pulse_limit && last_move < 0 ? MANGO_MAX_PULSES : 7;
+        delta = inject_pulse_limit && outward(last_move) ? MANGO_MAX_PULSES : 7;
         if (delta > target[active_motor] - count[active_motor]) delta = target[active_motor] - count[active_motor];
         count[active_motor] += delta;
         if (count[active_motor] == target[active_motor]) running[active_motor] = 0;
@@ -117,6 +130,7 @@ void vTaskDelay(TickType_t ticks) {
     in_actuator = 0;
     if (motion.state == STEPPER_FAULT) {
         CHECK(expected_result == MANGO_RETURN_FAILED);
+        CHECK(StepperTask_IsBusy());
         CHECK(!StepperTask_RequestMangoFromISR(1));
         CHECK(!output_id && !running[active_motor] && !sensor);
         longjmp(job_exit, 1);
@@ -125,7 +139,7 @@ void vTaskDelay(TickType_t ticks) {
         CHECK(motion.result == expected_result);
         CHECK(motion.pulses == motion.outward_pulses);
         CHECK(!output_id && !running[active_motor] && !sensor);
-        CHECK(!job_busy);
+        CHECK(!job_busy && !StepperTask_IsBusy());
         ++completed_jobs;
         longjmp(job_exit, 1);
     }
@@ -135,6 +149,7 @@ static void run_job(u8 id, Mango_Result result) {
     active_motor = id <= 2 ? 1 : 2;
     expected_result = result;
     CHECK(StepperTask_RequestMangoFromISR(id));
+    CHECK(StepperTask_IsBusy());
     CHECK(!StepperTask_RequestMangoFromISR(id)); /* Reserve even before task starts. */
     if (!setjmp(job_exit)) stepper_Task(NULL);
     CHECK(motion.motor == active_motor && motion.mango_id == id);
@@ -149,6 +164,7 @@ static void reset(void) {
     forced_invalid = initial_close = inject_busy = inject_pulse_limit = 0;
     fail_return = fail_strike = freeze_motion = jump_clock = output_id = sensor = 0;
     last_high_duration = 0;
+    timed_done_id = 0;
     ++case_id;
 }
 int main(void) {

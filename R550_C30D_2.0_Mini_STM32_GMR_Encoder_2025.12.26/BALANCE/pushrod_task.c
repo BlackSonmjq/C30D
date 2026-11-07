@@ -2,7 +2,6 @@
 
 static PushrodTask_Data actuator = {0, PUSHROD_TASK_IDLE};
 static uint8_t start_pending = 0; /* 请求锁存，GPIO 操作和计时由推杆任务执行。 */
-static TickType_t started_at;    /* 实际拉高输出时的系统节拍。 */
 
 uint8_t PushrodTask_Start(uint8_t id)
 {
@@ -47,17 +46,14 @@ void pushrod_task(void *pvParameters)
         taskENTER_CRITICAL();
         if (start_pending) {
             start_pending = 0;
-            /* 从输出实际拉高的时刻计时，不把任务调度等待算入 5 秒。 */
-            if (Pushrod_Start(actuator.id) == PUSHROD_OK)
-                started_at = xTaskGetTickCount();
-            else
+            /* TIM6 到时直接关闭输出，不依赖本任务下一次获得调度。 */
+            if (Pushrod_StartTimed(actuator.id, MANGO_STRIKE_MS) != PUSHROD_OK)
                 actuator.state = PUSHROD_TASK_ERROR;
         }
         if (actuator.state == PUSHROD_TASK_RUNNING &&
-            (TickType_t)(xTaskGetTickCount() - started_at) >= pdMS_TO_TICKS(MANGO_STRIKE_MS)) {
-            /* 确认输出实际拉低后才发布 DONE，协调任务据此开始返程。 */
-            actuator.state = (Pushrod_Stop(actuator.id) == PUSHROD_OK) ?
-                PUSHROD_TASK_DONE : PUSHROD_TASK_ERROR;
+            Pushrod_TimedDone(actuator.id)) {
+            /* 中断已确认输出拉低；任务只发布完成状态。 */
+            actuator.state = PUSHROD_TASK_DONE;
         }
         taskEXIT_CRITICAL();
         vTaskDelay(pdMS_TO_TICKS(10U));

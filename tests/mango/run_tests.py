@@ -8,6 +8,7 @@ from pathlib import Path
 import os
 import struct
 import subprocess
+import sys
 
 from elftools.elf.elffile import ELFFile
 from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_INTR
@@ -17,9 +18,10 @@ ROOT = Path(__file__).resolve().parents[2]
 BUILD = ROOT / "tests/mango/.build"
 BIN = Path(os.environ.get("ARMCC_BIN", "D:/Keil_v5/ARM/ARMCC/bin"))
 BUILD.mkdir(exist_ok=True)
+SOURCE = sys.argv[1] if len(sys.argv) > 1 else "tests/mango/test_mango.c"
 subprocess.run([
     str(BIN / "armcc.exe"), "--cpu", "Cortex-M4", "--c99", "-O0", "-g",
-    "-Itests/mango/stubs", "-c", "tests/mango/test_mango.c",
+    "-I" + str(Path(SOURCE).parent), "-Itests/mango/stubs", "-c", SOURCE,
     "-o", str(BUILD / "test_mango.o"),
 ], cwd=ROOT, check=True)
 subprocess.run([

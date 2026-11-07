@@ -51,6 +51,8 @@ typedef struct {
 
 /* 任务上下文读取一致的状态快照，供显示等任务使用。 */
 void StepperTask_GetData(StepperTask_Data *data);
+/* Read-only single-byte snapshot; does not inhibit chassis motion. */
+u8 StepperTask_IsBusy(void);
 /* 串口 1 中断提交 1～4 号任务：只锁存请求，不调用 FreeRTOS。
  * 接受返回 1；编号无效或忙碌返回 0。忙碌请求不排队、不切换当前目标。 */
 u8 StepperTask_RequestMangoFromISR(u8 mango_id);

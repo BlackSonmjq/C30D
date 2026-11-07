@@ -1,5 +1,6 @@
 #include "balance.h"
 #include "heading_control.h"
+#include "stepper_task.h"
 
 //int Time_count=0; //Time variable //计时变量
 
@@ -283,6 +284,7 @@ void Balance_task(void *pvParameters)
 	u32 lastWakeTime = getSysTickCnt();
 	float chassis_vz;
 	u8 heading_control_active;
+	u8 chassis_allowed, actuator_parked;
 	static u8 imu_ready_beeped = 0;
 
     while(1)
@@ -313,8 +315,19 @@ void Balance_task(void *pvParameters)
 		if( Allow_Recharge==1 )
 			if( Get_Charging_HardWare==0 ) Allow_Recharge=0,Find_Charging_HardWare();
 
+
+        /* Hold heading normally, including idle after startup calibration.
+         * Ignore parked upper-actuator vibration; never block chassis commands.
+         * Explicit turns establish a new heading reference afterward. */
+        chassis_allowed = (Voltage >= 10) && EN && !Flag_Stop;
+        actuator_parked = StepperTask_IsBusy() &&
+            (Move_X == 0.0f) && (Move_Y == 0.0f) && (Move_Z == 0.0f);
+
 		heading_control_active =
 			(HEADING_CONTROL_ENABLE != 0) &&
+            chassis_allowed &&
+            !actuator_parked &&
+            (Move_Z == 0.0f) &&
 			(SysVal.Time_count >= CONTROL_DELAY) &&
 			(Allow_Recharge == 0) &&
 			(Car_Mode != Akm_Car) &&

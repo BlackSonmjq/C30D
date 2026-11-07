@@ -28,6 +28,12 @@ u8 StepperTask_RequestMangoFromISR(u8 mango_id)
     return 1;
 }
 
+/* Includes accepted ISR requests, cleanup and latched return faults. */
+u8 StepperTask_IsBusy(void)
+{
+    return job_busy;
+}
+
 void StepperTask_GetData(StepperTask_Data *data)
 {
     if (data == NULL) return;
