@@ -8,7 +8,7 @@
 
 /* 左右机构均以 DIR 低电平靠近芒果、高电平返程，可分别调整方向。 */
 #define MANGO_LEFT_FORWARD_HIGH  0U
-#define MANGO_RIGHT_FORWARD_HIGH 0U
+#define MANGO_RIGHT_FORWARD_HIGH 1U
 /* 定时器计数频率 1 MHz：ARR=199 对应目标巡航频率 5000 脉冲/秒。
  * 前进、返程共用对应电机的速度配置，底层保留加减速。 */
 #define MANGO_LEFT_SPEED_ARR     199U

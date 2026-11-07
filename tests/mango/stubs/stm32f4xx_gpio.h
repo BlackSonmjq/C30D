@@ -3,6 +3,9 @@
 #define GPIO_Pin_3 (1U << 3)
 #define GPIO_Pin_6 (1U << 6)
 #define GPIO_Pin_7 (1U << 7)
+typedef void GPIO_TypeDef;
+#define GPIO_Pin_10 (1U << 10)
+#define GPIOC ((void *)3)
 #define GPIOA ((void *)1)
 #define GPIO_Mode_OUT 1U
 #define GPIO_OType_PP 0U

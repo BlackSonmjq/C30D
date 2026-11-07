@@ -190,7 +190,7 @@ TIM8/TIM12 已用于步进，不能同时用于原舵机或遥控输入；PC9 �
 
 独立库为 [`HARDWARE/stepper_motor.h`](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/stepper_motor.h) 和 [`HARDWARE/stepper_motor.c`](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/stepper_motor.c)；底层 DIR/STEP 引脚定义见 [`HARDWARE/a4988.h`](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/a4988.h)。左路 DIR=PB14、STEP=PB15/TIM12_CH2，右路 DIR=PC7、STEP=PC8/TIM8_CH3。两路 EN 均由外部接线控制，PC6、PC9 不参与步进驱动。TIM12 和 TIM8 已被 STEP 输出占用，不能同时用作原舵机或遥控输入。
 
-```c
+```
 StepperMotor_Init();                              // 上电初始化一次；测试程序已调用
 StepperMotor_SetSpeed(A4988_MOTOR_Left, 4999);    // 目标约 200 脉冲/秒（参数仍为 ARR）
 StepperMotor_MovePulses(A4988_MOTOR_Left, 800);  // DIR 高，走 800 个脉冲

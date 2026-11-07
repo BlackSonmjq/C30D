@@ -190,13 +190,14 @@ int main(void) {
 static uint16_t gpio_levels;
 static u8 initialized_laser, measured_laser, gpio_ready;
 static unsigned int range_reads, distance_loops;
-static const uint16_t expected_shut[4] = {1U << 2, 1U << 3, 1U << 6, 1U << 7};
+static const uint16_t expected_shut[4] = {1U << 2, 1U << 3, 1U << 6, 1U << 10};
 void GPIO_ResetBits(void *port, uint16_t mask) {
-    CHECK(port == GPIOA && mask == LASER_SHUT_PINS);
+    CHECK((port == GPIOA && mask == LASER_SHUT_PINS) ||
+          (port == GPIOC && mask == LASER_SHUT_PC_PINS));
     gpio_levels &= ~mask;
 }
 void GPIO_SetBits(void *port, uint16_t mask) {
-    CHECK(port == GPIOA && gpio_ready);
+    CHECK(port == (requested_laser == 4 ? GPIOC : GPIOA) && gpio_ready);
     CHECK(gpio_levels == 0); /* Every selection must first shut down ALL. */
     CHECK(requested_laser >= 1 && requested_laser <= 4);
     CHECK(mask == expected_shut[requested_laser - 1]);
@@ -204,12 +205,13 @@ void GPIO_SetBits(void *port, uint16_t mask) {
 }
 void GPIO_StructInit(GPIO_InitTypeDef *gpio) { memset(gpio, 0, sizeof(*gpio)); }
 void GPIO_Init(void *port, GPIO_InitTypeDef *gpio) {
-    CHECK(port == GPIOA && gpio->GPIO_Pin == LASER_SHUT_PINS);
+    CHECK((port == GPIOA && gpio->GPIO_Pin == LASER_SHUT_PINS) ||
+          (port == GPIOC && gpio->GPIO_Pin == LASER_SHUT_PC_PINS));
     CHECK(!gpio_levels && gpio->GPIO_Mode == GPIO_Mode_OUT && gpio->GPIO_PuPd == GPIO_PuPd_DOWN);
     gpio_ready = 1;
 }
 void RCC_AHB1PeriphClockCmd(unsigned int peripheral, unsigned int enabled) {
-    CHECK(peripheral == RCC_AHB1Periph_GPIOA && enabled == ENABLE);
+    CHECK(peripheral == (RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOC) && enabled == ENABLE);
 }
 VL53L0X_Status VL53L0X_Init(void) {
     CHECK(gpio_levels == expected_shut[requested_laser - 1]);

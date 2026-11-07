@@ -39,7 +39,8 @@ void TIM1_PWM_Init(u16 arr,u16 psc)
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;	//速度100MHz
 	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;      //推挽复用输出
 	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;        //上拉
-	GPIO_Init(GPIOE,&GPIO_InitStructure);              //初始化PC口
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
+    GPIO_Init(GPIOE,&GPIO_InitStructure);              //初始化PC口
 	
 	//Sets the value of the auto-reload register cycle for the next update event load activity
 	//设置在下一个更新事件装入活动的自动重装载寄存器周期的值	 
@@ -59,7 +60,10 @@ void TIM1_PWM_Init(u16 arr,u16 psc)
 
   //Select Timer mode :TIM Pulse Width Modulation mode 1
   //选择定时器模式:TIM脉冲宽度调制模式1
- 	TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; 
+ 	TIM_OCStructInit(&TIM_OCInitStructure);
+    /* Both bridge inputs start high (CCR > ARR), so no drive is applied. */
+    TIM_OCInitStructure.TIM_Pulse = (uint32_t)arr + 1U;
+    TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1; 
 	//Compare output enablement
 	//比较输出使能
 	TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable; 
@@ -90,7 +94,10 @@ void TIM1_PWM_Init(u16 arr,u16 psc)
 	
 	//Enable TIM8
 	//使能TIM8
-	TIM_Cmd(TIM1, ENABLE);  
+	TIM_Cmd(TIM1, ENABLE);
+    /* Connect pins only after valid, matching PWM levels are established. */
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+    GPIO_Init(GPIOE,&GPIO_InitStructure);  
 }
 
 void TIM9_PWM_Init(u16 arr,u16 psc)
@@ -110,7 +117,8 @@ GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;        //复用功能
 GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;	//速度100MHz
 GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;      //推挽复用输出
 GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;        //上拉
-GPIO_Init(GPIOE,&GPIO_InitStructure);              //初始化PF9
+GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
+    GPIO_Init(GPIOE,&GPIO_InitStructure);              //初始化PF9
 
 TIM_TimeBaseInitStructure.TIM_Period = arr;/*自动重装载*/
 TIM_TimeBaseInitStructure.TIM_Prescaler = psc;/*预分频*/
@@ -118,7 +126,10 @@ TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1;/*时钟分频*/
 TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up;/*向上计数*/
 TIM_TimeBaseInit(TIM9,&TIM_TimeBaseInitStructure);/*初始化*/
 
-TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;/*PWM模式*/
+TIM_OCStructInit(&TIM_OCInitStructure);
+    /* Both bridge inputs start high (CCR > ARR), so no drive is applied. */
+    TIM_OCInitStructure.TIM_Pulse = (uint32_t)arr + 1U;
+    TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;/*PWM模式*/
 TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;/*输出*/
 TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;/*比较极性高*/
 TIM_OC1Init(TIM9,&TIM_OCInitStructure);
@@ -129,7 +140,10 @@ TIM_OC2PreloadConfig(TIM9,TIM_OCPreload_Enable);/*输出比较预装载使能*/
 
 TIM_ARRPreloadConfig(TIM9,ENABLE);/*自动重载预装载使能*/
 
-TIM_Cmd(TIM9,ENABLE);/*计数使能*/
+TIM_Cmd(TIM9,ENABLE);
+    /* Connect pins only after valid, matching PWM levels are established. */
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+    GPIO_Init(GPIOE,&GPIO_InitStructure);/*计数使能*/
 
 }
 
@@ -150,7 +164,8 @@ GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;/*推挽输出*/
 GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_8;/*PF7*/
 GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;/*上拉*/
 GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;/**/
-GPIO_Init(GPIOB,&GPIO_InitStructure);/*初始化IO*/
+GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
+    GPIO_Init(GPIOB,&GPIO_InitStructure);/*初始化IO*/
 
 TIM_TimeBaseInitStructure.TIM_Period = arr;/*自动重装载*/
 TIM_TimeBaseInitStructure.TIM_Prescaler = psc;/*预分频*/
@@ -158,7 +173,10 @@ TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1;/*时钟分频*/
 TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up;/*向上计数*/
 TIM_TimeBaseInit(TIM10,&TIM_TimeBaseInitStructure);/*初始化*/
 
-TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;/*PWM模式*/
+TIM_OCStructInit(&TIM_OCInitStructure);
+    /* Both bridge inputs start high (CCR > ARR), so no drive is applied. */
+    TIM_OCInitStructure.TIM_Pulse = (uint32_t)arr + 1U;
+    TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;/*PWM模式*/
 TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;/*输出*/
 TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;/*比较极性高*/
 TIM_OC1Init(TIM10,&TIM_OCInitStructure);
@@ -169,7 +187,10 @@ TIM_OC1PreloadConfig(TIM10,TIM_OCPreload_Enable);/*输出比较预装载使能*/
 
 TIM_ARRPreloadConfig(TIM10,ENABLE);/*自动重载预装载使能*/
 
-TIM_Cmd(TIM10,ENABLE);/*计数使能*/
+TIM_Cmd(TIM10,ENABLE);
+    /* Connect pins only after valid, matching PWM levels are established. */
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+    GPIO_Init(GPIOB,&GPIO_InitStructure);/*计数使能*/
 
 }
 
@@ -190,7 +211,8 @@ GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;/*推挽输出*/
 GPIO_InitStructure.GPIO_Pin   = GPIO_Pin_9;/*PF7*/
 GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;/*上拉*/
 GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;/**/
-GPIO_Init(GPIOB,&GPIO_InitStructure);/*初始化IO*/
+GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;
+    GPIO_Init(GPIOB,&GPIO_InitStructure);/*初始化IO*/
 
 TIM_TimeBaseInitStructure.TIM_Period = arr;/*自动重装载*/
 TIM_TimeBaseInitStructure.TIM_Prescaler = psc;/*预分频*/
@@ -198,7 +220,10 @@ TIM_TimeBaseInitStructure.TIM_ClockDivision = TIM_CKD_DIV1;/*时钟分频*/
 TIM_TimeBaseInitStructure.TIM_CounterMode = TIM_CounterMode_Up;/*向上计数*/
 TIM_TimeBaseInit(TIM11,&TIM_TimeBaseInitStructure);/*初始化*/
 
-TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;/*PWM模式*/
+TIM_OCStructInit(&TIM_OCInitStructure);
+    /* Both bridge inputs start high (CCR > ARR), so no drive is applied. */
+    TIM_OCInitStructure.TIM_Pulse = (uint32_t)arr + 1U;
+    TIM_OCInitStructure.TIM_OCMode = TIM_OCMode_PWM1;/*PWM模式*/
 TIM_OCInitStructure.TIM_OutputState = TIM_OutputState_Enable;/*输出*/
 TIM_OCInitStructure.TIM_OCPolarity = TIM_OCPolarity_High;/*比较极性高*/
 TIM_OC1Init(TIM11,&TIM_OCInitStructure);
@@ -209,7 +234,10 @@ TIM_CtrlPWMOutputs(TIM11,ENABLE);
 
 TIM_ARRPreloadConfig(TIM11,ENABLE);/*自动重载预装载使能*/
 
-TIM_Cmd(TIM11,ENABLE);/*计数使能*/
+TIM_Cmd(TIM11,ENABLE);
+    /* Connect pins only after valid, matching PWM levels are established. */
+    GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+    GPIO_Init(GPIOB,&GPIO_InitStructure);/*计数使能*/
 
 }
 
