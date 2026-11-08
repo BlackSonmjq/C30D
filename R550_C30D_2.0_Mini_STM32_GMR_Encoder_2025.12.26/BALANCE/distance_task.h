@@ -14,7 +14,7 @@ typedef struct {
     uint8_t valid;        /* 有效性包含通信状态、通道匹配和数据时效。 */
     VL53L0X_Status status;
     TickType_t update_tick; /* 最近一次发布数据的系统节拍。 */
-    uint8_t laser_id; /* 0=全关；1/2/3/4 分别对应 PA2/PA3/PA6/PC10。 */
+    uint8_t laser_id; /* 0=全关；1/2/3/4 分别对应 PA2/PA3/PA6/PA7。 */
 } DistanceTask_Data;
 
 void distance_task(void *pvParameters);

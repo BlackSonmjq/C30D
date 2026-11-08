@@ -20,6 +20,7 @@ All rights reserved
 #include "system.h"
 #include "distance_task.h"
 #include "pushrod.h"
+#include "servo.h"
 
 //Robot software fails to flag bits
 //����������ʧ�ܱ�־λ
@@ -207,6 +208,7 @@ void systemInit(void)
     //Initialize the hardware interface connected to the user's key
     //��ʼ�����û��������ӵ�Ӳ���ӿ�
     KEY_Init();
+    Servo_Init(); /* UART4 PC10; transport only, no servo movement. */
 		if(KEY==0)			Check=1;
 		else if(KEY==1)	Check=0;
 
