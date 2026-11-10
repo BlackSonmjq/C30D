@@ -11,6 +11,9 @@ extern u8  USART_RX_BUF[USART_REC_LEN]; //½ÓÊÕ»º³å,×î´óUSART_REC_LEN¸ö×Ö½Ú.Ä©×Ö½
 extern u16 USART_RX_STA;         		//½ÓÊÕ×´Ì¬±ê¼Ç	
 //Èç¹ûÏë´®¿ÚÖĞ¶Ï½ÓÊÕ£¬Çë²»Òª×¢ÊÍÒÔÏÂºê¶¨Òå
 void uart_init(u32 bound);
+int USART_WriteByte(USART_TypeDef *port, uint8_t byte);
+extern volatile uint32_t usart_tx_timeout_count;
+extern volatile uint32_t usart_tx_disabled_count;
 void any_printf(USART_TypeDef* USARTx,char *format,...);
 
 #endif

@@ -4,6 +4,7 @@
 #include "system.h"
 #define Battery_Ch    8 //Battery voltage, ADC channel 8 //电池电压，ADC通道8
 #define Potentiometer 9  //Potentiometer, ADC channel 9 //电位器，ADC通道9
+#define ADC_READ_ERROR 0xFFFFU
 void Adc_Init(void);
 void  Adc_POWER_Init(void);
 u16 Get_Adc(u8 ch);

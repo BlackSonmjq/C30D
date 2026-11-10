@@ -67,7 +67,7 @@ static void USBH_UserProcess(USBH_HandleTypeDef *phost, uint8_t id);
   */
 void MX_USB_HOST_Init(void)
 {
-	//ÊÖ±úÄ¬ÈÏ½Ó¿Ú
+	//ï¿½Ö±ï¿½Ä¬ï¿½Ï½Ó¿ï¿½
 	GamePadInterface = &GamePadDefalut;
 
 	extern USBH_ClassTypeDef  GamePad_HID_Class;
@@ -77,11 +77,11 @@ void MX_USB_HOST_Init(void)
 	{
 		Error_Handler();
 	}
-	if (USBH_RegisterClass(&hUsbHostFS, &GamePad_HID_Class) != USBH_OK) //×¢²áps2 hidÀà
+	if (USBH_RegisterClass(&hUsbHostFS, &GamePad_HID_Class) != USBH_OK) //×¢ï¿½ï¿½ps2 hidï¿½ï¿½
 	{
 		Error_Handler();
 	}
-	if (USBH_RegisterClass(&hUsbHostFS, &GamePad_NonStdHID_Class) != USBH_OK) //×¢²áÎÞÏßÊÖ±úps2 hidÀà
+	if (USBH_RegisterClass(&hUsbHostFS, &GamePad_NonStdHID_Class) != USBH_OK) //×¢ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö±ï¿½ps2 hidï¿½ï¿½
 	{
 		Error_Handler();
 	}
@@ -125,14 +125,14 @@ static void USBH_UserProcess  (USBH_HandleTypeDef *phost, uint8_t id)
 
 extern USBH_StatusTypeDef USBH_HID_PS2_Decode(USBH_HandleTypeDef *phost);
 
-//usbÊý¾Ý¶ÁÈ¡ºó,×îÖÕ½øÈë´Ë»Øµ÷º¯Êý.Êý¾Ý½âÂëÔÚ´Ëº¯Êý½øÐÐ(ÈÎÎñ»·¾³)
+//usbï¿½ï¿½ï¿½Ý¶ï¿½È¡ï¿½ï¿½,ï¿½ï¿½ï¿½Õ½ï¿½ï¿½ï¿½Ë»Øµï¿½ï¿½ï¿½ï¿½ï¿½.ï¿½ï¿½ï¿½Ý½ï¿½ï¿½ï¿½ï¿½Ú´Ëºï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½(ï¿½ï¿½ï¿½ñ»·¾ï¿½)
 void USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
 {
-	//ÓÎÏ·ÊÖ±úÊý¾Ý½âÂë
+	//ï¿½ï¿½Ï·ï¿½Ö±ï¿½ï¿½ï¿½ï¿½Ý½ï¿½ï¿½ï¿½
 	USBH_HID_PS2_Decode(phost);
 	
-	//ÓÎÏ·ÊÖ±úÄ£Ê½Æô¶¯
-	if( GamePadInterface->StartFlag == 1 && PS2_ON_Flag==0 && SysVal.Time_count>=CONTROL_DELAY && GamePadInterface->LY > 150 )
+	//ï¿½ï¿½Ï·ï¿½Ö±ï¿½Ä£Ê½ï¿½ï¿½ï¿½ï¿½
+	if( GamePadInterface->StartFlag == 1 && PS2_ON_Flag==0 && SysVal.Time_count>=CONTROL_DELAY )
 	{
 		PS2_ON_Flag=1,Remote_ON_Flag=0,APP_ON_Flag=0,CAN_ON_Flag=0,Usart1_ON_Flag=0,Usart5_ON_Flag=0; 
 	}
@@ -146,4 +146,3 @@ void USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
 /**
   * @}
   */
-

@@ -18,6 +18,7 @@ All rights reserved
 ***********************************************/
 
 #include "system.h"
+#include "can_test.h"
 #include "distance_task.h"
 #include "pushrod.h"
 #include "servo.h"
@@ -112,8 +113,28 @@ int POT_val;
 //�����תֵ
 int Full_rotation = 16799;
 
+/* Reserve PA13/PA14 for an external SWD probe throughout normal startup. */
+static void SWD_Init(void)
+{
+    GPIO_InitTypeDef gpio;
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
+    GPIO_StructInit(&gpio);
+    GPIO_PinAFConfig(GPIOA, GPIO_PinSource13, GPIO_AF_SWJ);
+    GPIO_PinAFConfig(GPIOA, GPIO_PinSource14, GPIO_AF_SWJ);
+    gpio.GPIO_Mode = GPIO_Mode_AF;
+    gpio.GPIO_OType = GPIO_OType_PP;
+    gpio.GPIO_Speed = GPIO_Speed_100MHz;
+    gpio.GPIO_Pin = GPIO_Pin_13; /* SWDIO: idle pull-up. */
+    gpio.GPIO_PuPd = GPIO_PuPd_UP;
+    GPIO_Init(GPIOA, &gpio);
+    gpio.GPIO_Pin = GPIO_Pin_14; /* SWCLK: idle pull-down. */
+    gpio.GPIO_PuPd = GPIO_PuPd_DOWN;
+    GPIO_Init(GPIOA, &gpio);
+}
+
 void systemInit(void)
 {
+    SWD_Init();
 	//Interrupt priority group setti  ng
 	//�ж����ȼ���������
     NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4);
@@ -126,17 +147,27 @@ void systemInit(void)
 
 	//Delay function initialization
 	//��ʱ������ʼ��
+    uart1_init(115200);
+    any_printf(USART1, "C30D USART1 READY\r\n");
     delay_init(168);
+    any_printf(USART1, "boot: delay ready\r\n");
 	//IIC initialization for IMU
     //IIC��ʼ��������IMU
     I2C_GPIOInit();
+    any_printf(USART1, "boot: I2C ready\r\n");
 	//ϵͳ�������������ʼ��
 	SYS_VAL_t_Init(&SysVal);
 	
     //Serial port 1 initialization, communication baud rate 115200,
     //can be used to communicate with ROS terminal
     //����1��ʼ����ͨ�Ų�����115200����������ROS��ͨ��
-    uart1_init(115200);
+    any_printf(USART1, "boot: detecting IMU\r\n");
+
+    OLED_Init();
+    OLED_ShowString(0, 0, "System boot...");
+    OLED_ShowString(0, 16, "Detecting IMU");
+    OLED_Refresh_Gram();
+    any_printf(USART1, "boot: OLED ready\r\n");
 
     //Serial port 2 initialization, communication baud rate 9600,
     //used to communicate with Bluetooth APP terminal
@@ -190,11 +221,18 @@ void systemInit(void)
 	}
 	else //�޷�ʶ���������,��λϵͳ
 	{
-		NVIC_SystemReset();
+		OLED_Clear();
+        OLED_ShowString(0, 0, "IMU NOT FOUND");
+        OLED_ShowString(0, 16, "Check PB10/PB11");
+        OLED_Refresh_Gram();
+        any_printf(USART1, "boot: IMU not found, restarting\r\n");
+        delay_ms(1000);
+        NVIC_SystemReset();
 	}         
 
     //Initialize the hardware interface connected to the buzzer
     //��ʼ������������ӵ�Ӳ���ӿ�
+    any_printf(USART1, "boot: IMU init done\r\n");
     Buzzer_Init();
 
     //Initialize the hardware interface connected to the enable switch
@@ -203,12 +241,12 @@ void systemInit(void)
 
     //Initialize the hardware interface connected to the OLED display
     //��ʼ����OLED��ʾ�����ӵ�Ӳ���ӿ�
-    OLED_Init();
+    /* OLED was initialized before IMU detection. */
 
     //Initialize the hardware interface connected to the user's key
     //��ʼ�����û��������ӵ�Ӳ���ӿ�
     KEY_Init();
-    Servo_Init(); /* UART4 PC10; transport only, no servo movement. */
+    Servo_Init(); /* UART4 stays idle until an explicit servo command. */
 		if(KEY==0)			Check=1;
 		else if(KEY==1)	Check=0;
 
@@ -223,12 +261,16 @@ void systemInit(void)
 	//CANͨ�Žӿڳ�ʼ��
 	//�����ʼ��㷽ʽ��42M/[(����1+����2+����3)*����4]
 	//ʾ����42M/[(1+7+6)*3] = 1M ��ֻ��ǰ4�������йأ�
+    CAN_Test_Init();
     CAN1_Mode_Init(1,7,6,3,0);
+    any_printf(USART1, "boot: CAN init returned\r\n");
 
     //According to the tap position of the potentiometer, determine which type of car needs to be matched,
     //and then initialize the corresponding parameters
     //���ݵ�λ���ĵ�λ�ж���Ҫ���������һ���ͺŵ�С����Ȼ����ж�Ӧ�Ĳ�����ʼ��
+    any_printf(USART1, "boot: selecting robot (ADC1)\r\n");
     Robot_Select();
+    any_printf(USART1, "boot: robot selected\r\n");
 
     //Encoder A is initialized to read the real time speed of motor C
     //������A��ʼ�������ڶ�ȡ���C��ʵʱ�ٶ�
@@ -242,10 +284,12 @@ void systemInit(void)
     //Encoder D is initialized to read the real time speed of motor A
     //������D��ʼ�������ڶ�ȡ���A��ʵʱ�ٶ�
     Encoder_Init_TIM5();
+    any_printf(USART1, "boot: encoders ready\r\n");
 
     // PB14/PB15/PC7/PC8 are reserved for two A4988 drivers.
     // EN pins are external; neither STEP pin pulses automatically.
     StepperMotor_Init();
+    any_printf(USART1, "boot: steppers ready\r\n");
 
     //Initialize motor speed control and, for controlling motor speed, PWM frequency 10kHz
     //��ʼ������ٶȿ����Լ������ڿ��Ƶ���ٶȣ�PWMƵ��10KHZ
@@ -254,16 +298,21 @@ void systemInit(void)
     TIM9_PWM_Init(16799,0);
     TIM10_PWM_Init(16799,0);
     TIM11_PWM_Init(16799,0);
+    any_printf(USART1, "boot: PWM ready\r\n");
 
     //�ɼ�1�ε�ص�ѹ��Ϊ��ѹƽ���˲��ĳ�ʼ���ο�ֵ
     base_vol = Get_battery_volt();
+    any_printf(USART1, "boot: battery read done\r\n");
 
     //�����Ƿ�����Զ��س�װ��
     delay_ms(100);
+    any_printf(USART1, "boot: startup delay done\r\n");
     Find_Charging_HardWare();
+    any_printf(USART1, "boot: charger probe done\r\n");
 	
 	//��ȡFlash����
 	FlashParam_Read();
+    any_printf(USART1, "boot: hardware init done\r\n");
 }
 
 void Find_Charging_HardWare(void)

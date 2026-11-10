@@ -13,6 +13,13 @@
 #define SERVO_MOVE_MS           1500U
 #define SERVO_FRAME_CAPACITY    64U
 
+/* RX interrupts are armed after a successful send or an explicit RX probe.
+ * Set to 0 to disable reply reception for hardware diagnosis.
+ */
+#ifndef SERVO_RX_IRQ_ENABLED
+#define SERVO_RX_IRQ_ENABLED    1
+#endif
+
 typedef enum {
     SERVO_OK = 0,
     SERVO_INVALID_ARGUMENT,
@@ -20,8 +27,27 @@ typedef enum {
     SERVO_BUSY,
     SERVO_TX_TIMEOUT,
     SERVO_NO_FRAME,
-    SERVO_BUFFER_TOO_SMALL
+    SERVO_BUFFER_TOO_SMALL,
+    SERVO_RX_DISABLED
 } Servo_Result;
+
+typedef struct {
+    uint32_t irq_count;
+    uint32_t byte_count;
+    uint32_t error_count;
+    uint32_t error_flags;
+    uint32_t last_status;
+    uint8_t receiving;
+    uint8_t pc10_high;
+} Servo_Diagnostics;
+
+/* Receive-only diagnosis: transmits no bytes and resets diagnostic counters.
+ * Returns BUSY during a send, receive or while a reply is unread.
+ * Caller must end the probe with ClearRx, including after RX stops on error.
+ * All sends return BUSY until then. GetDiagnostics takes an atomic snapshot.
+ */
+Servo_Result Servo_StartRxProbe(void);
+void Servo_GetDiagnostics(Servo_Diagnostics *data);
 
 /* Configure transport only: does not change IDs/modes or move any servo.
  * Call once at startup. Send APIs are task-context only and non-reentrant:
@@ -45,7 +71,9 @@ Servo_Result Servo_ReadPosition(uint8_t id);
 
 /* Single-frame mailbox, including terminating NUL. Supports #OK! and #id...!.
  * On BUFFER_TOO_SMALL the frame is retained and *length gives required bytes
- * excluding NUL. Later complete frames are dropped until this one is consumed.
+ * excluding NUL. RX stops on a complete frame, UART error or byte budget limit.
+ * Consume/clear the previous reply before sending the next command.
+ * On application reply timeout call ClearRx to cancel reception.
  * No motion-complete inference is made from a reply.
  */
 Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length);

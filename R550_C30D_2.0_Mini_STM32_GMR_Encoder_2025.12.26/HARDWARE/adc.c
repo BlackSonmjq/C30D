@@ -16,6 +16,8 @@ void  Adc_Init(void)
 		GPIO_InitTypeDef       GPIO_InitStructure;
 		ADC_CommonInitTypeDef ADC_CommonInitStructure;
 		ADC_InitTypeDef       ADC_InitStructure;
+        ADC_StructInit(&ADC_InitStructure);
+        ADC_CommonStructInit(&ADC_CommonInitStructure);
 
 		RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);//使能GPIOA时钟
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE); //使能ADC1时钟
@@ -51,6 +53,8 @@ void  Adc_POWER_Init(void)
 		GPIO_InitTypeDef       GPIO_InitStructure;
 		ADC_CommonInitTypeDef ADC_CommonInitStructure;
 		ADC_InitTypeDef       ADC_InitStructure;
+        ADC_StructInit(&ADC_InitStructure);
+        ADC_CommonStructInit(&ADC_CommonInitStructure);
 
 		RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);//使能GPIOA时钟
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC2, ENABLE); //使能ADC1时钟
@@ -61,8 +65,8 @@ void  Adc_POWER_Init(void)
 		GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL ;//不带上下拉
 		GPIO_Init(GPIOB, &GPIO_InitStructure);//初始化  
 
-		RCC_APB2PeriphResetCmd(RCC_APB2Periph_ADC2,ENABLE);	  //ADC2复位
-		RCC_APB2PeriphResetCmd(RCC_APB2Periph_ADC2,DISABLE);	//复位结束	 
+
+
 
 		ADC_CommonInitStructure.ADC_Mode = ADC_Mode_Independent;//独立模式
 		ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;//两个采样阶段之间的延迟5个时钟
@@ -89,6 +93,7 @@ Output  : AD conversion results
 **************************************************************************/
 u16 Get_Adc(u8 ch)   
 {
+    uint32_t remaining = 1000000UL;
 	//Sets the specified ADC rule group channel, one sequence, and sampling time
 	//设置指定ADC的规则组通道，一个序列，采样时间
 	
@@ -99,7 +104,9 @@ u16 Get_Adc(u8 ch)
 	ADC_SoftwareStartConv(ADC1);
 	//Wait for the conversion to finish
   //等待转换结束	
-	while(!ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC ));
+	while(!ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC)) {
+        if (--remaining == 0U) return ADC_READ_ERROR;
+    }
 	//Returns the result of the last ADC1 rule group conversion
 	//返回最近一次ADC1规则组的转换结果
 	return ADC_GetConversionValue(ADC1);	
@@ -107,6 +114,7 @@ u16 Get_Adc(u8 ch)
 
 u16 Get_Adc2(u8 ch)   
 {
+    uint32_t remaining = 1000000UL;
 	//Sets the specified ADC rule group channel, one sequence, and sampling time
 	//设置指定ADC的规则组通道，一个序列，采样时间
 	
@@ -117,7 +125,9 @@ u16 Get_Adc2(u8 ch)
 	ADC_SoftwareStartConv(ADC2);
 	//Wait for the conversion to finish
   //等待转换结束	
-	while(!ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC ));
+	while(!ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC)) {
+        if (--remaining == 0U) return ADC_READ_ERROR;
+    }
 	//Returns the result of the last ADC2 rule group conversion
 	//返回最近一次ADC1规则组的转换结果
 	return ADC_GetConversionValue(ADC2);	
@@ -135,9 +145,13 @@ u16 Get_adc_Average(u8 chn, u8 times)
 {
   u32 temp_val=0;
 	u8 t;
+    u16 sample;
+    if (times == 0U) return ADC_READ_ERROR;
 	for(t=0;t<times;t++)
 	{
-		temp_val+=Get_Adc(chn);
+		sample = Get_Adc(chn);
+        if (sample == ADC_READ_ERROR) return ADC_READ_ERROR;
+        temp_val += sample;
 		delay_ms(5);
 	}
 	return temp_val/times;

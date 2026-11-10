@@ -5,6 +5,8 @@
 #include "sys.h"
 #include "system.h"
 
+#include "distance_protocol.h"
+
 #define DATA_STK_SIZE   512 
 #define DATA_TASK_PRIO  4
 
@@ -78,7 +80,15 @@ typedef struct _RECEIVE_DATA_
 void data_task(void *pvParameters);
 void data_transition(void);
 void USART1_SEND(void);
-void USART3_SEND(void);
+/* Task-context snapshot of the last verified four-channel distance frame. */
+void USART3_GetDistanceData(DistanceProtocol_Data *data);
+#define USART3_RAW_CAPTURE_SIZE 16U
+typedef struct {
+    uint32_t rx_bytes, uart_errors, error_flags, checksum_errors, tail_errors;
+    uint8_t check_mode, pd9_high, raw_length;
+    uint8_t raw[USART3_RAW_CAPTURE_SIZE];
+} USART3_DistanceDiagnostics;
+void USART3_GetDistanceDiagnostics(USART3_DistanceDiagnostics *data);
 void USART3_Return(void);
 void USART2_Return(void);
 void USART5_SEND(void);

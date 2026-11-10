@@ -11,3 +11,4 @@ typedef struct {uint32_t GPIO_Pin, GPIO_Mode, GPIO_OType, GPIO_PuPd, GPIO_Speed;
 void GPIO_StructInit(GPIO_InitTypeDef *gpio);
 void GPIO_Init(void *port, GPIO_InitTypeDef *gpio);
 void GPIO_PinAFConfig(void *port, uint16_t source, uint8_t af);
+uint8_t GPIO_ReadInputDataBit(void *port, uint16_t pin);

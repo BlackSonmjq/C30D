@@ -14,6 +14,11 @@
 #define SERVO_COMMAND_LIMIT 63U
 static uint8_t initialized;
 static volatile uint8_t sending;
+static volatile uint8_t receiving;
+static volatile uint8_t probing;
+static volatile uint32_t diag_irq_count, diag_byte_count, diag_error_count;
+static volatile uint32_t diag_error_flags, diag_last_status;
+static volatile uint16_t rx_budget;
 static volatile uint8_t rx_length, frame_length;
 static volatile char rx_buffer[SERVO_FRAME_CAPACITY];
 
@@ -22,10 +27,23 @@ static uint8_t valid_id(uint8_t id)
     return id >= 1U && id <= SERVO_COUNT;
 }
 
+/* Caller holds PRIMASK or is the UART4 ISR. Shut down the interrupt source
+ * as well as the receiver; malformed/noisy input must not keep the CPU busy.
+ */
+static void stop_rx(void)
+{
+    USART_ITConfig(UART4, USART_IT_RXNE, DISABLE);
+    UART4->CR1 &= ~USART_CR1_RE;
+    receiving = 0;
+    rx_budget = 0;
+}
+
 void Servo_ClearRx(void)
 {
     uint32_t mask = __get_PRIMASK();
     __disable_irq();
+    if (initialized) stop_rx();
+    probing = 0;
     rx_length = 0;
     frame_length = 0;
     __set_PRIMASK(mask);
@@ -36,9 +54,10 @@ void Servo_Init(void)
     GPIO_InitTypeDef gpio;
     USART_InitTypeDef uart;
     NVIC_InitTypeDef irq;
+    volatile uint32_t discard;
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
-    USART_Cmd(UART4, DISABLE);
+    USART_DeInit(UART4); /* Reset all interrupt enables, including stale TX/TC. */
     GPIO_StructInit(&gpio);
     gpio.GPIO_Pin = GPIO_Pin_10;
     gpio.GPIO_Mode = GPIO_Mode_AF;
@@ -52,16 +71,66 @@ void Servo_Init(void)
     uart.USART_Mode = USART_Mode_Rx;
     USART_Init(UART4, &uart);
     USART_HalfDuplexCmd(UART4, ENABLE);
+    stop_rx();
+    discard = UART4->SR;
+    discard = UART4->DR;
+    (void)discard;
+    NVIC_ClearPendingIRQ(UART4_IRQn);
     Servo_ClearRx();
     sending = 0;
     irq.NVIC_IRQChannel = UART4_IRQn;
     irq.NVIC_IRQChannelPreemptionPriority = 6;
     irq.NVIC_IRQChannelSubPriority = 0;
-    irq.NVIC_IRQChannelCmd = ENABLE;
+    irq.NVIC_IRQChannelCmd = SERVO_RX_IRQ_ENABLED ? ENABLE : DISABLE;
     NVIC_Init(&irq);
-    USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
+    USART_ITConfig(UART4, USART_IT_RXNE, DISABLE);
     USART_Cmd(UART4, ENABLE);
     initialized = 1;
+}
+
+Servo_Result Servo_StartRxProbe(void)
+{
+    uint32_t mask;
+    volatile uint32_t discard;
+    if (__get_IPSR() != 0U) return SERVO_INVALID_ARGUMENT;
+    if (!initialized) return SERVO_NOT_INITIALIZED;
+    if (!SERVO_RX_IRQ_ENABLED) return SERVO_RX_DISABLED;
+    mask = __get_PRIMASK();
+    __disable_irq();
+    if (sending || receiving || probing || frame_length != 0U) {
+        __set_PRIMASK(mask);
+        return SERVO_BUSY;
+    }
+    stop_rx();
+    discard = UART4->SR;
+    discard = UART4->DR;
+    (void)discard;
+    NVIC_ClearPendingIRQ(UART4_IRQn);
+    rx_length = 0;
+    diag_irq_count = diag_byte_count = diag_error_count = 0;
+    diag_error_flags = diag_last_status = 0;
+    probing = receiving = 1;
+    rx_budget = 2U * SERVO_FRAME_CAPACITY;
+    UART4->CR1 |= USART_CR1_RE;
+    USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
+    __set_PRIMASK(mask);
+    return SERVO_OK;
+}
+
+void Servo_GetDiagnostics(Servo_Diagnostics *data)
+{
+    uint32_t mask;
+    if (data == NULL) return;
+    mask = __get_PRIMASK();
+    __disable_irq();
+    data->irq_count = diag_irq_count;
+    data->byte_count = diag_byte_count;
+    data->error_count = diag_error_count;
+    data->error_flags = diag_error_flags;
+    data->last_status = diag_last_status;
+    data->receiving = receiving;
+    data->pc10_high = initialized ? GPIO_ReadInputDataBit(GPIOC, GPIO_Pin_10) : 0U;
+    __set_PRIMASK(mask);
 }
 
 static uint8_t wait_flag(uint16_t flag)
@@ -86,14 +155,13 @@ Servo_Result Servo_SendCommand(const char *command)
     if (!initialized) return SERVO_NOT_INITIALIZED;
     mask = __get_PRIMASK();
     __disable_irq();
-    if (sending) {
+    if (sending || probing) {
         __set_PRIMASK(mask);
         return SERVO_BUSY;
     }
     sending = 1;
     /* Switch atomically relative to UART IRQ. Discard any partial old reply. */
-    USART_ITConfig(UART4, USART_IT_RXNE, DISABLE);
-    UART4->CR1 &= ~USART_CR1_RE;
+    stop_rx();
     discard = UART4->SR;
     discard = UART4->DR;
     (void)discard;
@@ -110,7 +178,7 @@ Servo_Result Servo_SendCommand(const char *command)
     if (result == SERVO_OK && !wait_flag(USART_FLAG_TXE)) result = SERVO_TX_TIMEOUT;
     /* Protect the final byte and direction change against task preemption:
      * otherwise a fast reply can be lost while RE is still disabled.
-     * Normally about one byte (87 us); a UART fault uses the finite poll bound.
+     * Up to two bytes may still be in flight; a fault uses the finite poll bound.
      */
     mask = __get_PRIMASK();
     __disable_irq();
@@ -118,8 +186,12 @@ Servo_Result Servo_SendCommand(const char *command)
     /* TXE is not enough: the final stop bit must leave the shift register. */
     if (!wait_flag(USART_FLAG_TC)) result = SERVO_TX_TIMEOUT;
     UART4->CR1 &= ~USART_CR1_TE;
-    UART4->CR1 |= USART_CR1_RE;
-    USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
+    if (result == SERVO_OK && SERVO_RX_IRQ_ENABLED && frame_length == 0U) {
+        rx_budget = 2U * SERVO_FRAME_CAPACITY;
+        receiving = 1;
+        UART4->CR1 |= USART_CR1_RE;
+        USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
+    }
     sending = 0;
     __set_PRIMASK(mask);
     return result;
@@ -186,7 +258,17 @@ Servo_Result Servo_ReadPosition(uint8_t id)
 
 void Servo_RxByteHandler(uint8_t byte)
 {
-    if (frame_length != 0U) return;
+    if (!receiving) return;
+    if (frame_length != 0U || rx_budget == 0U) {
+        stop_rx();
+        return;
+    }
+    --rx_budget;
+    if (rx_budget == 0U) {
+        rx_length = 0;
+        stop_rx();
+        return;
+    }
     if (byte == '#') {
         rx_length = 0;
     } else if (rx_length == 0U) {
@@ -194,6 +276,7 @@ void Servo_RxByteHandler(uint8_t byte)
     }
     if (rx_length >= SERVO_FRAME_CAPACITY - 1U) {
         rx_length = 0;
+        stop_rx();
         return;
     }
     rx_buffer[rx_length++] = (char)byte;
@@ -201,6 +284,7 @@ void Servo_RxByteHandler(uint8_t byte)
         rx_buffer[rx_length] = '\0';
         frame_length = rx_length;
         rx_length = 0;
+        stop_rx();
     }
 }
 
@@ -228,9 +312,19 @@ Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length)
 void UART4_IRQHandler(void)
 {
     uint32_t status = UART4->SR;
+    ++diag_irq_count;
+    diag_last_status = status;
     if (status & (USART_SR_RXNE | USART_SR_ORE | USART_SR_FE | USART_SR_NE | USART_SR_PE)) {
         uint8_t byte = (uint8_t)UART4->DR; /* SR then DR clears receive errors. */
-        if (status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE | USART_SR_PE)) rx_length = 0;
-        else if (status & USART_SR_RXNE) Servo_RxByteHandler(byte);
+        if (status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE | USART_SR_PE)) {
+            ++diag_error_count;
+            diag_error_flags |= status & (USART_SR_ORE | USART_SR_FE | USART_SR_NE | USART_SR_PE);
+            rx_length = 0;
+            stop_rx();
+        }
+        else if (status & USART_SR_RXNE) {
+            ++diag_byte_count;
+            Servo_RxByteHandler(byte);
+        }
     }
 }

@@ -427,6 +427,11 @@
               <FilePath>..\HARDWARE\can.c</FilePath>
             </File>
             <File>
+              <FileName>can_test.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\HARDWARE\can_test.c</FilePath>
+            </File>
+            <File>
               <FileName>encoder.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\HARDWARE\encoder.c</FilePath>

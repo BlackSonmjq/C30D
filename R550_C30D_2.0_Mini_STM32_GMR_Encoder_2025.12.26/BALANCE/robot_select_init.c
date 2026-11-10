@@ -13,10 +13,20 @@ Output  : none
 **************************************************************************/
 void Robot_Select(void)
 {
+    u16 sample;
 	//The ADC value is variable in segments, depending on the number of car models. Currently there are 6 car models, CAR_NUMBER=6
   //ADC值分段变量，取决于小车型号数量，目前有8种小车型号，CAR_NUMBER=8
 	Divisor_Mode=2048/CAR_NUMBER+5;
-	Car_Mode=(int) ((Get_adc_Average(Potentiometer,10))/Divisor_Mode); //Collect the pin information of potentiometer //采集电位器引脚信息	
+	sample = Get_adc_Average(Potentiometer, 10);
+    if (sample == ADC_READ_ERROR) {
+        Flag_Stop = 1;
+        for (;;) {
+            any_printf(USART1, "boot: ADC1 timeout; startup stopped CR2=0x%08lX SR=0x%08lX\r\n",
+                       (unsigned long)ADC1->CR2, (unsigned long)ADC1->SR);
+            delay_ms(1000);
+        }
+    }
+    Car_Mode = (int)(sample / Divisor_Mode); //Collect the pin information of potentiometer //采集电位器引脚信息	
   if(Car_Mode>7)Car_Mode=7;
 
 	//Car_Mode=0;

@@ -24,39 +24,57 @@ void _sys_exit(int x)
 } 
 //重定义fputc函数 
 int fputc(int ch, FILE *f)
-{ 	
-	while((USART2->SR&0X40)==0);//循环发送,直到发送完毕   
-	USART2->DR = (u8) ch;      
-	return ch;
-	
-//	while((USART1->SR&0X40)==0);//循环发送,直到发送完毕   
-//	USART1->DR = (u8) ch;      
-//	return ch;
-
-//	while((USART3->SR&0X40)==0);//循环发送,直到发送完毕   
-//	USART3->DR = (u8) ch;      
-//	return ch;
-	
+{
+    (void)f;
+    return USART_WriteByte(USART1, (uint8_t)ch) ? ch : EOF;
 }
 
 //任意串口printf
 #include "stdarg.h"
-uint8_t Ux_TxBuff[256];     //串口x发送缓冲区
-void any_printf(USART_TypeDef* USARTx,char *format,...)
-{	
-	uint8_t i;                                           //用于for循环
-	
-	va_list listdata;                                     //建立一个va_list变量listdata
-	va_start(listdata,format);                            //向listdata加载...代表的不定长的参数
-	vsprintf((char *)Ux_TxBuff,format,listdata);          //格式化输出到缓冲区U0_TxBuff
-	va_end(listdata);                                     //释放listdata
+/* A finite poll budget works before the scheduler and with IRQs masked. */
+#define USART_TX_POLL_LIMIT 1000000UL
+volatile uint32_t usart_tx_timeout_count;
+volatile uint32_t usart_tx_disabled_count;
 
-	for(i=0;i<strlen((const char*)Ux_TxBuff);i++){        //根据U0_TxBuff缓冲区数据量，一个字节一个字节的循环发送
-		while((USARTx->SR&0x40)==0);
-		USARTx->DR = Ux_TxBuff[i];
-			
-	}
-	while((USARTx->SR&0x40)==0);	     //等到最后一个字节数据发送完毕，再退出函数
+static int USART_WaitFlag(USART_TypeDef *port, uint32_t flag)
+{
+    uint32_t remaining = USART_TX_POLL_LIMIT;
+    while ((port->SR & flag) == 0U) {
+        if (--remaining == 0U) {
+            ++usart_tx_timeout_count;
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int USART_WriteByte(USART_TypeDef *port, uint8_t byte)
+{
+    if ((port->CR1 & (USART_CR1_UE | USART_CR1_TE)) !=
+        (USART_CR1_UE | USART_CR1_TE)) {
+        ++usart_tx_disabled_count;
+        return 0;
+    }
+    /* TXE permits the first write even when TC was previously cleared. */
+    if (!USART_WaitFlag(port, USART_SR_TXE)) return 0;
+    port->DR = byte;
+    return USART_WaitFlag(port, USART_SR_TC);
+}
+
+void any_printf(USART_TypeDef *USARTx, char *format, ...)
+{
+    char buffer[256];
+    unsigned int i;
+    int length;
+    va_list args;
+    va_start(args, format);
+    length = vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+    if (length < 0) return;
+    if ((unsigned int)length >= sizeof(buffer)) length = sizeof(buffer) - 1U;
+    for (i = 0; i < (unsigned int)length; ++i) {
+        if (!USART_WriteByte(USARTx, (uint8_t)buffer[i])) return;
+    }
 }
 
 #endif
