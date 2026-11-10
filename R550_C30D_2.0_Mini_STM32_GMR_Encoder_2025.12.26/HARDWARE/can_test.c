@@ -13,7 +13,6 @@ volatile uint8_t g_can_test_online;
 volatile uint16_t g_can_distance_mm[4];
 static TickType_t last_rx_tick;
 static volatile uint8_t rx_pending;
-static TickType_t last_report_tick;
 
 void CAN_Test_Init(void)
 {
@@ -25,7 +24,6 @@ void CAN_Test_Init(void)
 	g_can_test_online = 0;
     { unsigned i; for (i = 0; i < 4; ++i) g_can_distance_mm[i] = 0; }
 	last_rx_tick = xTaskGetTickCount();
-	last_report_tick = last_rx_tick;
 }
 
 void CAN_Test_Parse(u8 ide, u8 rtr, u8 len, const u8 *data)
@@ -63,23 +61,6 @@ void CAN_Test_Process(void)
 
 	if((TickType_t)(now - last_rx_tick) >= pdMS_TO_TICKS(CAN_TEST_TIMEOUT_MS))
 		g_can_test_online = 0;
-	if((TickType_t)(now - last_report_tick) >= pdMS_TO_TICKS(1000U))
-	{
-		last_report_tick = now;
-        uint16_t distance[4];
-        uint32_t frames, errors, key, i;
-        key = __get_PRIMASK();
-        __disable_irq();
-        for (i = 0; i < 4; ++i) distance[i] = g_can_distance_mm[i];
-        frames = g_can_test_rx_count;
-        errors = g_can_test_error_count;
-        __set_PRIMASK(key);
-        any_printf(USART1, "CAN DIST d1=%u d2=%u d3=%u d4=%u mm RX=%lu ERROR=%lu ONLINE=%u\r\n",
-            (unsigned)distance[0], (unsigned)distance[1],
-            (unsigned)distance[2], (unsigned)distance[3],
-            (unsigned long)frames, (unsigned long)errors,
-            (unsigned)g_can_test_online);
-	}
 }
 
 void CAN_TestTask(void *pvParameters)

@@ -56,6 +56,8 @@ u8 StepperTask_IsBusy(void);
 /* 串口 1 中断提交 1～4 号任务：只锁存请求，不调用 FreeRTOS。
  * 接受返回 1；编号无效或忙碌返回 0。忙碌请求不排队、不切换当前目标。 */
 u8 StepperTask_RequestMangoFromISR(u8 mango_id);
+/* Select only a laser, no motor/pushrod action; rejected while picking is busy. */
+u8 StepperTask_RequestLaserFromISR(u8 laser_id);
 /* 独占两路步进控制，协调测距、靠近、击打、返程和收尾。 */
 void stepper_Task(void *pvParameters);
 

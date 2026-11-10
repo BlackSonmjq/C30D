@@ -14,7 +14,7 @@
 #define SERVO_COMMAND_LIMIT 63U
 static uint8_t initialized;
 static volatile uint8_t sending;
-static volatile uint8_t receiving;
+    static volatile uint8_t receiving;
 static volatile uint8_t probing;
 static volatile uint32_t diag_irq_count, diag_byte_count, diag_error_count;
 static volatile uint32_t diag_error_flags, diag_last_status;

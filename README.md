@@ -16,10 +16,13 @@ ZP10S 标准库串口接口已加入：四个 ID 为 1～4，UART4 单线信号�
 - [推杆控制](#推杆控制)
 - [VL53L0X 激光测距](#vl53l0x-激光测距)
 - [IMU 航向控制](#imu-航向控制)
+- [S21C 四向测距通信](#s21c-四向测距通信)
 - [串口协议](#串口协议)
 - [编译与上电检查](#编译与上电检查)
 
 ## 芒果击打联调与串口命令
+
+本节记录此前的本地激光联调方式。当前 S21C 测距配置通过 CAN 接收距离，USART1 接收入口仍启用原始字节转发，未接入本节的 `1`～`4` 击打命令；当前通信以 [S21C 四向测距通信](#s21c-四向测距通信)为准。
 
 串口 1 设置 **115200、8N1、文本发送**，发送一个字符 `1`～`4` 表示击打对应芒果，可附带 CRLF。不要发送二进制 `01`～`04`。当前实物接入的是激光 **1 和 3**，分别调试 left 和 right；2、4 的软件通道也已实现。
 
@@ -415,7 +418,108 @@ PA8 已用于测距 SCL，BUZZER_ENABLED=0；当前无蜂鸣提示，不能以�
 如需临时关闭底盘侧航向保持，将 `HEADING_CONTROL_ENABLE` 改为 `0` 并重新编译烧录。
 
 
+## S21C 四向测距通信
+
+S21C 使用 `S21C_EIDE/S21C_Source` 工程，C30D 使用 `C30D-develop-EIDE` 工程；C30D EIDE 配置直接引用本仓库源码。两板均需使用实际距离版本固件，旧计数测试帧也使用 `0x301`，不能与距离帧混用。
+
+### 接线与参数
+
+CANH 接 CANH、CANL 接 CANL，两板 GND 共地，总线两端各接 120 Ω 终端电阻。两节点断电后测量 CANH 与 CANL，正常约为 60 Ω。
+
+| 项目 | S21C → C30D CAN | S21C USART1 |
+| --- | --- | --- |
+| 通信参数 | 1 Mbps，标准数据帧 | 115200、8N1、无硬件流控 |
+| 标识 | 标准 ID `0x301`，DLC=8 | 帧头 `0x7B`，帧尾 `0x7D` |
+| 周期 | 100 ms（10 Hz） | 100 ms（10 Hz） |
+| 长度 | 8 字节数据 | 11 字节完整帧 |
+| 数值 | 四路无符号 16 位距离，单位 mm，高字节在前 | 同一份四路距离快照 |
+
+C30D CAN1 使用 PD1=TX、PD0=RX；S21C CAN1 使用 PA12=TX、PA11=RX，这些是 MCU 到收发器的信号，板间连接使用 CANH/CANL。S21C USART1 使用 PA9=TX、PA10=RX。C30D 板载 USB-C 经 CH9102F 接到 USART1，MCU 侧同样为 PA9=TX、PA10=RX。
+
+### 字节顺序与方向
+
+以下字节下标均从 0 开始。
+
+| 通道 | 名称 | 方位 | CAN 数据下标 | S21C 串口帧下标 |
+| --- | --- | --- | --- | --- |
+| D1 | Left | 左 | 0、1 | 1、2 |
+| D2 | Front | 前 | 2、3 | 3、4 |
+| D3 | Right | 右 | 4、5 | 5、6 |
+| D4 | Behind | 后 | 6、7 | 7、8 |
+
+每对字节依次为高字节和低字节。CAN 数据区无需添加帧头、帧尾或应用层异或校验，传输校验由 CAN 硬件完成。
+
+S21C 串口 1 完整帧：
+
+```text
+7B Left_H Left_L Front_H Front_L Right_H Right_L Behind_H Behind_L XOR 7D
+```
+
+`XOR` 为前 9 字节（帧头及 8 字节距离）逐字节异或。串口助手使用十六进制显示；按文本显示二进制帧时出现不可读字符属于正常现象。`CAN TX OK ...` 等文字若仍出现，属于额外调试日志，不属于测距帧，解析器应寻找帧头并校验完整帧。
+
+例如 Left=1000、Front=2000、Right=3000、Behind=4000 mm：
+
+```text
+CAN：ID=0x301，DLC=8
+03 E8 07 D0 0B B8 0F A0
+
+S21C USART1：
+7B 03 E8 07 D0 0B B8 0F A0 5B 7D
+```
+
+### 接收处理与串口观察
+
+C30D 当前的 USART1 每 500 ms 输出上层本地 VL53L0X 当前选中通道的快照，使用 115200、8N1、文本显示：
+
+```text
+UPPER VL53L0X laser=1 distance=120 mm valid=1 status=0 age_ms=35
+```
+
+`laser` 为本地选中通道 1～4，0 表示全部关闭；`valid=1` 时才使用距离，`status` 为 `VL53L0X_Status`（0=成功，1=I²C 错误，2=超时，3=器件 ID 错误，4=参数错误，5=状态错误，6=测距无效，7=尚未就绪，8=配置错误），`age_ms` 为最近发布状态后的时间。数据超过 500 ms 或通道切换时快照会失效，距离清零。
+
+USART1 使用文本发送 ASCII `1`～`4`，分别激活本地激光 1～4（XSHUT：PA2、PA3、PA6、PA7），可附带回车换行；不要发送二进制 `01`～`04`。接受后输出 `UPPER laser=1 selected`，随后每 500 ms 显示距离和状态。每次只启用一路，新选择替换旧选择；首次上电尚未选择时显示 `laser=0 valid=0`。这些命令只选择激光，不启动电机或推杆。
+
+串口中断只提交请求，由采摘协调任务统一应用选择，测距任务独占 I²C/XSHUT；串口输出只调用 `DistanceTask_GetData()` 读取快照。采摘忙碌或故障锁定时手动切换会返回 `UPPER laser busy`，不排队，原采摘流程保持。CAN 四向距离继续接收、解析和维护在线状态，但不再通过 USART1 周期打印。其他既有调试信息仍可能出现在串口。
+
+此前联调使用的 CAN 文本格式（当前已停止周期输出）：
+
+```text
+CAN DIST Left=1000 Front=2000 Right=3000 Behind=4000 mm RX=123 ERROR=0 ONLINE=1
+```
+
+`RX` 为接受的距离帧累计数，`ERROR` 为进入 `0x301` 解析分支但帧类型或长度不合要求的累计数，`ONLINE` 表示任务最近约 500 ms 内观察到过有效距离帧。断开 CAN 后保留最后距离，`ONLINE` 变为 0。
+
+代码位置：
+
+- S21C `HARDWARE/can_test.c`：`CAN_Test_Send()` 获取四路距离快照，打包 CAN 和串口帧；`CAN_Test_Process()` 控制 100 ms 发送周期。文件与函数保留旧名称，当前发送的是实际距离。
+- C30D [can.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/can.c)：`CAN1_Rx_Msg()` 读取 CAN 数据，接收中断将 `0x301` 分发给 `CAN_Test_Parse()`。
+- C30D [can_test.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/can_test.c)：校验帧类型和长度、合并高低字节、保存距离；任务中判断在线状态。CAN 接收中断不调用 FreeRTOS API。
+- C30D [usartx.c](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/usartx.c)：`data_task()` 每 500 ms 调用 `DistanceTask_GetData()`，通过 USART1 输出当前上层激光距离和状态。
+- C30D [can_test.h](R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/can_test.h)：方向枚举和 `g_can_distance_mm[]` 声明。
+
+CAN 数据合并方式：
+
+```c
+Left   = ((uint16_t)data[0] << 8) | data[1];
+Front  = ((uint16_t)data[2] << 8) | data[3];
+Right  = ((uint16_t)data[4] << 8) | data[5];
+Behind = ((uint16_t)data[6] << 8) | data[7];
+```
+
+当前协议不携带序号、各路有效标志或测量时间；未收到传感器数据时可能为 0，传感器断开后也可能保留旧值。`ONLINE=1` 仅表示 CAN 通信近期有数据，不保证每路读数有效，也无法据此统计丢帧。当前外部距离用于 CAN 接收与显示，尚未接入电机控制或替换本地 VL53L0X 测距任务。
+
+### 构建与烧录
+
+在各自 EIDE 工作区编译后分别烧录：
+
+- S21C：`S21C_EIDE/build/UART1/UART1.hex`。
+- C30D：`C30D-develop-EIDE/build/FreeRTOS/WHEELTEC.hex`。
+
+C30D 复位后应完成启动日志并持续输出上层 VL53L0X 快照；CAN 的 `g_can_test_rx_count` 正常每秒增加约 10，可通过调试器观察。启动停在 `boot: selecting robot (ADC1)` 时检查 ADC 初始化与采样；当前已补齐 ADC 默认初始化和采样超时。`README_CAN_TEST.md` 保留作为旧计数测试记录，当前测距协议以本节为准。
+
 ## 串口协议
+
+本节保留原底盘协议格式；当前 S21C 测距及 C30D 串口诊断输出见上节，原 USART1 二进制周期反馈已关闭。
 
 当前实车识别为 CH9102 `COM4`，波特率为 `115200`。Windows 端口号可能随电脑和 USB 接口变化，应以设备管理器中的 `USB-Enhanced-SERIAL CH9102` 为准。
 

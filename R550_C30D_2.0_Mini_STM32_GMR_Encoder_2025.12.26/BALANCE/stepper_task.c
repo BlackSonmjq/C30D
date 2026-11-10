@@ -12,8 +12,22 @@
  * 因此任务访问以下中断共享变量时，需用短暂的 PRIMASK 全局关中断保护。 */
 static volatile u8 job_busy = 0;
 static volatile u8 pending_mango = 0;
+static volatile u8 pending_laser = 0;
+static volatile u8 rejected_laser = 0;
 static volatile u8 rejected_command = 0;
 static StepperTask_Data motion = {0, STEPPER_WAITING_COMMAND, 0, 0, 0, MANGO_OK};
+
+/* Manual selection is applied by the same task that owns picking selection. */
+u8 StepperTask_RequestLaserFromISR(u8 laser_id)
+{
+    if (laser_id < 1U || laser_id > 4U) return 0;
+    if (job_busy) {
+        rejected_laser = 1;
+        return 0;
+    }
+    pending_laser = laser_id;
+    return 1;
+}
 
 u8 StepperTask_RequestMangoFromISR(u8 mango_id)
 {
@@ -123,7 +137,7 @@ void stepper_Task(void *pvParameters)
     StepperTask_Data job = {0, STEPPER_WAITING_COMMAND, 0, 0, 0, MANGO_OK};
     TickType_t phase_started = 0, now;
     u32 primask;
-    u8 selected, rejected;
+    u8 selected, rejected, laser, laser_busy;
     s32 signed_pulses;
     (void)pvParameters;
 
@@ -136,12 +150,21 @@ void stepper_Task(void *pvParameters)
         /* 原子取走串口请求；同一轮收到的忙碌请求合并为一次提示。 */
         primask = __get_PRIMASK();
         __disable_irq();
+        laser = pending_laser;
+        pending_laser = 0;
+        laser_busy = rejected_laser;
+        rejected_laser = 0;
+        /* A pending picking request takes precedence over manual selection. */
+        if (laser && !job_busy) DistanceTask_SelectLaser(laser);
+        else if (laser) { laser = 0; laser_busy = 1; }
         selected = pending_mango;
         pending_mango = 0;
         rejected = rejected_command;
         rejected_command = 0;
         __set_PRIMASK(primask);
         if (rejected) any_printf(USART3, "mango busy\r\n");
+        if (laser_busy) any_printf(USART1, "UPPER laser busy\r\n");
+        if (laser) any_printf(USART1, "UPPER laser=%u selected\r\n", (unsigned)laser);
 
         if (selected != 0U) {
             job.mango_id = selected;

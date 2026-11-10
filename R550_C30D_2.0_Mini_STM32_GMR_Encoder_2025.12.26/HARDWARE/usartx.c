@@ -1,6 +1,7 @@
 #include "usartx.h"
 #include "can_test.h"
 #include "distance_protocol.h"
+#include "distance_task.h"
 #include "servo.h"
 #include "usart.h"
 #include <stdio.h>
@@ -45,14 +46,7 @@ void data_task(void *pvParameters)
 {
 	 u32 lastWakeTime = getSysTickCnt();
      TickType_t lastDistanceReport = xTaskGetTickCount();
-     TickType_t lastDistanceUpdate = 0;
-     DistanceProtocol_Data distance;
-     USART3_DistanceDiagnostics rx_diag;
-     char rx_hex[3U * USART3_RAW_CAPTURE_SIZE + 1U];
-     const char *hex_digits = "0123456789ABCDEF";
-     uint8_t raw_index;
-     uint32_t lastDistanceFrame = 0;
-     uint8_t distanceSeen = 0;
+     DistanceTask_Data upper_distance;
      u8 probe_requested, probe_active = 0;
      TickType_t probe_started = 0;
      Servo_Result probe_result;
@@ -98,40 +92,16 @@ void data_task(void *pvParameters)
                            (unsigned int)servo_diag.pc10_high);
             }
 
-            /* Observe all four externally measured distances, independent of XSHUT. */
-            USART3_GetDistanceData(&distance);
-            if (distance.received && (!distanceSeen || distance.frame_count != lastDistanceFrame)) {
-                distanceSeen = 1;
-                lastDistanceFrame = distance.frame_count;
-                lastDistanceUpdate = xTaskGetTickCount();
-            }
-            if (!USART3_RAW_FORWARD_ENABLED && (TickType_t)(xTaskGetTickCount() - lastDistanceReport) >= pdMS_TO_TICKS(USART1_REPORT_PERIOD_MS)) {
+            /* Read the local VL53L0X owner's snapshot; never access I2C here. */
+            if ((TickType_t)(xTaskGetTickCount() - lastDistanceReport) >= pdMS_TO_TICKS(USART1_REPORT_PERIOD_MS)) {
                 lastDistanceReport = xTaskGetTickCount();
-                if (distanceSeen) {
-                    any_printf(USART1, "rx1 d1=%u d2=%u d3=%u d4=%u mm frames=%lu age_ms=%lu\r\n",
-                               (unsigned int)distance.distance_mm[0],
-                               (unsigned int)distance.distance_mm[1],
-                               (unsigned int)distance.distance_mm[2],
-                               (unsigned int)distance.distance_mm[3],
-                               (unsigned long)distance.frame_count,
-                               (unsigned long)((TickType_t)(lastDistanceReport - lastDistanceUpdate) * portTICK_PERIOD_MS));
-                } else {
-                    USART3_GetDistanceDiagnostics(&rx_diag);
-                    for (raw_index = 0; raw_index < rx_diag.raw_length; ++raw_index) {
-                        rx_hex[3U * raw_index] = hex_digits[rx_diag.raw[raw_index] >> 4];
-                        rx_hex[3U * raw_index + 1U] = hex_digits[rx_diag.raw[raw_index] & 0x0FU];
-                        rx_hex[3U * raw_index + 2U] = ' ';
-                    }
-                    rx_hex[3U * rx_diag.raw_length] = '\0';
-                    any_printf(USART1, "rx1 waiting bytes=%lu err=%lu flags=0x%02lX xor=%lu tail=%lu mode=%u pa10=%u raw=%s\r\n",
-                               (unsigned long)rx_diag.rx_bytes,
-                               (unsigned long)rx_diag.uart_errors,
-                               (unsigned long)rx_diag.error_flags,
-                               (unsigned long)rx_diag.checksum_errors,
-                               (unsigned long)rx_diag.tail_errors,
-                               (unsigned int)rx_diag.check_mode,
-                               (unsigned int)rx_diag.pd9_high, rx_hex);
-                }
+                DistanceTask_GetData(&upper_distance);
+                any_printf(USART1, "UPPER VL53L0X laser=%u distance=%u mm valid=%u status=%u age_ms=%lu\r\n",
+                           (unsigned)upper_distance.laser_id,
+                           (unsigned)upper_distance.distance_mm,
+                           (unsigned)upper_distance.valid,
+                           (unsigned)upper_distance.status,
+                           (unsigned long)((TickType_t)(lastDistanceReport - upper_distance.update_tick) * portTICK_PERIOD_MS));
             }
 			if(Check==0)
 			{
@@ -1153,6 +1123,12 @@ int USART1_IRQHandler(void)
         usart3_distance_receiver.length = 0;
         return 0;
     }
+    /* USART1 ASCII 1..4 select a local upper laser; do not forward commands. */
+    if (byte >= '1' && byte <= '4') {
+        StepperTask_RequestLaserFromISR((u8)(byte - '0'));
+        return 0;
+    }
+    if (byte == '\r' || byte == '\n') return 0;
 #if USART3_RAW_FORWARD_ENABLED
     if (status & USART_SR_RXNE) {
         uint16_t next = (usart3_forward_write + 1U) % USART3_FORWARD_SIZE;
