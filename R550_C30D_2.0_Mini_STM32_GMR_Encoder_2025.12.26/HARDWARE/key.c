@@ -13,13 +13,16 @@ void KEY_Init(void)
 	GPIO_InitTypeDef  GPIO_InitStructure;
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOC | RCC_AHB1Periph_GPIOE, ENABLE);//使能GPIOB时钟
   /* 按键初始化期间保持 PA2、PA3、PA6、PA7 四路激光 XSHUT 为低。 */
-  GPIO_ResetBits(GPIOA, GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_6 | GPIO_Pin_7);
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_6 | GPIO_Pin_7;
+  GPIO_ResetBits(GPIOA, GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_6);
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_6;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
   GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_2MHz;
   GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_DOWN;
   GPIO_Init(GPIOA, &GPIO_InitStructure);
+  GPIO_ResetBits(GPIOC, GPIO_Pin_11);
+  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_11;
+  GPIO_Init(GPIOC, &GPIO_InitStructure);
   GPIO_InitStructure.GPIO_Pin = KEY_PIN; //KEY对应引脚
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IN;//普通输入模式
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;//100M

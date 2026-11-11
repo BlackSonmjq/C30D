@@ -7,14 +7,14 @@
 #define DISTANCE_POLL_MS 50U    /* 每次单次测距前的任务等待时间，不含测量耗时。 */
 #define DISTANCE_RETRY_MS 1000U /* 初始化或通信失败后的重试间隔。 */
 #define DISTANCE_STALE_MS 500U  /* 超过此时效的数据不能用于控制电机。 */
-#define LASER_SHUT_PINS (GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_6 | GPIO_Pin_7)
+#define LASER_SHUT_PINS (GPIO_Pin_2 | GPIO_Pin_3 | GPIO_Pin_6)
 
-static GPIO_TypeDef * const laser_shut_port[4] = {GPIOA, GPIOA, GPIOA, GPIOA};
+static GPIO_TypeDef * const laser_shut_port[4] = {GPIOA, GPIOA, GPIOA, GPIOC};
 
 /* 四路共用默认 I2C 地址，必须通过独立 XSHUT 互斥启用。
  * 当前实物接入激光 1 和 3，编号仍按 1～4 保留。 */
 static const uint16_t laser_shut_pin[4] = {
-    GPIO_Pin_2, GPIO_Pin_3, GPIO_Pin_6, GPIO_Pin_7
+    GPIO_Pin_2, GPIO_Pin_3, GPIO_Pin_6, GPIO_Pin_11
 };
 
 static DistanceTask_Data distance_data = {0, 0, VL53L0X_NOT_READY, 0, 0};
@@ -25,9 +25,10 @@ void DistanceTask_InitShutdownPins(void)
 {
     GPIO_InitTypeDef gpio;
 
-    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOC, ENABLE);
     /* 先预置输出寄存器为低，再切换输出模式，避免上电时误释放传感器。 */
     GPIO_ResetBits(GPIOA, LASER_SHUT_PINS);
+    GPIO_ResetBits(GPIOC, GPIO_Pin_11);
     GPIO_StructInit(&gpio);
     gpio.GPIO_Pin = LASER_SHUT_PINS;
     gpio.GPIO_Mode = GPIO_Mode_OUT;
@@ -35,6 +36,8 @@ void DistanceTask_InitShutdownPins(void)
     gpio.GPIO_PuPd = GPIO_PuPd_DOWN;
     gpio.GPIO_Speed = GPIO_Speed_2MHz;
     GPIO_Init(GPIOA, &gpio);
+    gpio.GPIO_Pin = GPIO_Pin_11;
+    GPIO_Init(GPIOC, &gpio);
 }
 
 void DistanceTask_SelectLaser(uint8_t laser_id)
@@ -99,6 +102,7 @@ void distance_task(void *pvParameters)
         if (active_laser != requested_laser) {
             /* 地址均为 0x29：先关闭全部设备并等待 2 ms，再仅释放选中一路。 */
             GPIO_ResetBits(GPIOA, LASER_SHUT_PINS);
+            GPIO_ResetBits(GPIOC, GPIO_Pin_11);
             active_laser = 0;
             publish(VL53L0X_NOT_READY, NULL);
             vTaskDelay(pdMS_TO_TICKS(2U));
@@ -148,7 +152,7 @@ void DistanceTask_DrawOLED(void)
     else if (data.laser_id == 3U)
         OLED_ShowString(0, 0, "Laser 3 PA6     ");
     else if (data.laser_id == 4U)
-        OLED_ShowString(0, 0, "Laser 4 PA7     ");
+        OLED_ShowString(0, 0, "Laser 4 PC11    ");
     else
         OLED_ShowString(0, 0, "Lasers OFF      ");
     if (data.valid) {
