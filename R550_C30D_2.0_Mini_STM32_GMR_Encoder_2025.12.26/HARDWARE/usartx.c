@@ -22,6 +22,186 @@ static DistanceProtocol_Receiver usart3_distance_receiver;
 static volatile uint32_t usart3_rx_bytes, usart3_uart_errors, usart3_error_flags;
 static volatile uint8_t usart3_raw[USART3_RAW_CAPTURE_SIZE], usart3_raw_write, usart3_raw_length;
 static volatile u8 servo_probe_command;
+static volatile u8 servo_debug_pending, servo_debug_busy;
+static u8 servo_debug_prefix;
+/* Task-owned timed sequence: establish zero, +180 degrees, return to zero.
+ * Position pulses assume the existing 270-degree mode; no setup commands sent. */
+/* Only a full position reply for the selected ID counts, never #OK! or echo. */
+static u8 ServoDebug_Position(const char *frame, uint16_t length, u8 id, uint16_t *position)
+{
+    unsigned i, reply_id=0, pulse=0;
+    if (length != 10U || frame[0]!='#' || frame[4]!='P' || frame[9]!='!') return 0;
+    for (i=1; i<=3; ++i) {
+        if (frame[i]<'0' || frame[i]>'9') return 0;
+        reply_id=reply_id*10U+(unsigned)(frame[i]-'0');
+    }
+    for (i=5; i<=8; ++i) {
+        if (frame[i]<'0' || frame[i]>'9') return 0;
+        pulse=pulse*10U+(unsigned)(frame[i]-'0');
+    }
+    if (reply_id != id || pulse<500U || pulse>2500U) return 0;
+    *position=(uint16_t)pulse; return 1;
+}
+
+/* Firmware variants reply #001MOD2! or #001PMOD2! to PMOD queries. */
+static u8 ServoDebug_Mode(const char *frame, uint16_t length, u8 id, u8 *mode)
+{
+    unsigned i, reply_id=0, offset;
+    if ((length!=9U && length!=10U) || frame[0]!='#' || frame[length-1U]!='!') return 0;
+    for (i=1; i<=3; ++i) {
+        if (frame[i]<'0' || frame[i]>'9') return 0;
+        reply_id=reply_id*10U+(unsigned)(frame[i]-'0');
+    }
+    if (reply_id!=id) return 0;
+    offset=length==9U ? 7U : 8U;
+    if (length==9U ? memcmp(frame+4,"MOD",3)!=0 : memcmp(frame+4,"PMOD",4)!=0) return 0;
+    if (frame[offset]<'1' || frame[offset]>'8') return 0;
+    *mode=(u8)(frame[offset]-'0'); return 1;
+}
+
+static void ServoDebug_Process(void)
+{
+    static u8 id, phase, all_home, stage, attempts, stable, failed, query_valid, mode_reads, requested_mode;
+    static TickType_t move_started, query_started;
+    static uint16_t last_position, half_turn_target;
+    u8 request, mode, arrived=0;
+    TickType_t now=xTaskGetTickCount();
+    uint16_t target, length, position;
+    char frame[SERVO_FRAME_CAPACITY];
+    Servo_Result result;
+    uint32_t mask=__get_PRIMASK();
+    __disable_irq(); request=servo_debug_pending; servo_debug_pending=0; __set_PRIMASK(mask);
+    if (request == 5U || (!phase && request)) {
+        Servo_ClearRx(); all_home=(request==5U); id=all_home?1U:request;
+        phase=all_home?3U:1U; stage=all_home?0U:10U; attempts=stable=failed=0; last_position=0;
+        half_turn_target=SERVO_HALF_TURN_PULSE;
+    }
+    if (request>=6U && request<=9U) {
+        id=request-5U; requested_mode=id<=2U?2U:1U; phase=1; stage=20;
+    }
+    if (!phase) return;
+    /* M1/M2 set mode 2; M3/M4 set mode 1. Write once, then read back. */
+    if (stage==20U) {
+        Servo_ClearRx(); result=Servo_SetMode(id,requested_mode); mode_reads=0;
+        any_printf(USART1,"SERVO %u set mode%u tx=%u\r\n",(unsigned)id,(unsigned)requested_mode,(unsigned)result);
+        query_started=now; stage=result==SERVO_OK?21U:23U; return;
+    }
+    if (stage==21U) {
+        /* Capture ACK before clearing the mailbox for the mode query. */
+        if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK)
+            any_printf(USART1,"SERVO %u setup reply: %s\r\n",(unsigned)id,frame);
+        if ((TickType_t)(now-query_started)<pdMS_TO_TICKS(1000U)) return;
+        Servo_ClearRx(); snprintf(frame,sizeof(frame),"#%03uPMOD!",(unsigned)id);
+        result=Servo_SendCommand(frame); query_started=now; ++mode_reads;
+        any_printf(USART1,"SERVO %u mode read attempt=%u tx=%u\r\n",(unsigned)id,(unsigned)mode_reads,(unsigned)result);
+        stage=result==SERVO_OK?22U:23U; return;
+    }
+    if (stage==22U) {
+        if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK) {
+            any_printf(USART1,"SERVO %u mode raw[%u]: %s\r\n",(unsigned)id,(unsigned)length,frame);
+            if (ServoDebug_Mode(frame,length,id,&mode)) {
+                any_printf(USART1,"SERVO %u mode%u %s (read=%u)\r\n",(unsigned)id,(unsigned)requested_mode,mode==requested_mode?"CONFIRMED":"FAILED",(unsigned)mode);
+                stage=24;
+            }
+        }
+        if (stage!=24U) {
+            if ((TickType_t)(now-query_started)<pdMS_TO_TICKS(600U)) return;
+            /* Retry reads only: do not repeatedly write persistent configuration. */
+            if (mode_reads<3U) { stage=21; return; }
+            stage=23;
+        }
+    }
+    if (stage==23U || stage==24U) {
+        if (stage==23U) any_printf(USART1,"SERVO %u mode%u NOT CONFIRMED; check connection/readback\r\n",(unsigned)id,(unsigned)requested_mode);
+        Servo_ClearRx(); phase=0;
+        mask=__get_PRIMASK(); __disable_irq();
+        if (!servo_debug_pending) servo_debug_busy=0;
+        __set_PRIMASK(mask); return;
+    }
+    /* Read existing mode only: never send a mode-setting command. */
+    if (stage==10U) {
+        snprintf(frame,sizeof(frame),"#%03uPMOD!",(unsigned)id);
+        Servo_ClearRx(); result=Servo_SendCommand(frame);
+        query_started=now; stage=11;
+        any_printf(USART1,"SERVO %u mode query tx=%u\r\n",(unsigned)id,(unsigned)result);
+        return;
+    }
+    if (stage==11U) {
+        if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK &&
+            ServoDebug_Mode(frame,length,id,&mode)) {
+            if (mode<=4U) {
+                half_turn_target=mode>=3U ? 2500U : SERVO_HALF_TURN_PULSE;
+                any_printf(USART1,"SERVO %u mode=%u target180=%u\r\n",(unsigned)id,(unsigned)mode,(unsigned)half_turn_target);
+                Servo_ClearRx(); stage=0;
+            } else {
+                any_printf(USART1,"SERVO %u rejected: not position mode\r\n",(unsigned)id);
+                phase=0; Servo_ClearRx();
+                mask=__get_PRIMASK(); __disable_irq();
+                if (!servo_debug_pending) servo_debug_busy=0;
+                __set_PRIMASK(mask); return;
+            }
+        } else if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(600U)) {
+            any_printf(USART1,"SERVO %u mode unknown: assuming 270deg target180=%u\r\n",(unsigned)id,(unsigned)half_turn_target);
+            Servo_ClearRx(); stage=0;
+        }
+        return;
+    }
+    target=phase==2U ? half_turn_target : SERVO_HOME_PULSE;
+    if (stage==0U) {
+        Servo_ClearRx();
+        result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
+        ++attempts; stable=0; move_started=now; stage=1;
+        any_printf(USART1,"SERVO %u target=%u attempt=%u tx=%u\r\n",(unsigned)id,(unsigned)target,(unsigned)attempts,(unsigned)result);
+        return;
+    }
+    if (stage==1U) {
+        if ((TickType_t)(now-move_started)<pdMS_TO_TICKS(SERVO_MOVE_MS)) return;
+        Servo_ClearRx(); result=Servo_ReadPosition(id);
+        query_started=now; stage=2; query_valid=0;
+        if (result!=SERVO_OK) stable=0;
+        return;
+    }
+    if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK) {
+        if (ServoDebug_Position(frame,length,id,&position)) {
+            int error=(int)position-(int)target;
+            /* Endpoint feedback can stop above P0500 (observed P0544/0545).
+             * Keep midpoint tolerance tighter; do not alter servo calibration. */
+            int tolerance=(target==SERVO_HOME_PULSE || target==2500U) ? 60 : 20;
+            query_valid=1;
+            last_position=position;
+            stable=(error>=-tolerance && error<=tolerance) ? stable+1U : 0U;
+            any_printf(USART1,"SERVO %u pos=%u target=%u stable=%u\r\n",(unsigned)id,(unsigned)position,(unsigned)target,(unsigned)stable);
+            arrived=stable>=2U;
+        }
+        /* UART mailbox stops after one frame. Wait before the next query. */
+    }
+    if (arrived) {
+        Servo_ClearRx();
+        if (all_home && id<SERVO_COUNT) { ++id; stage=0; attempts=stable=0; last_position=0; return; }
+        if (!all_home && phase<3U) { ++phase; stage=0; attempts=stable=0; last_position=0; return; }
+        any_printf(USART1,"SERVO home within tolerance; failures=%u\r\n",(unsigned)failed);
+    } else if ((TickType_t)(now-move_started)>=pdMS_TO_TICKS(3000U)) {
+        Servo_ClearRx();
+        if (phase!=2U && attempts<2U) { stage=0; return; }
+        any_printf(USART1,"SERVO %u POSITION TIMEOUT target=%u last=%u (0=no reply)\r\n",(unsigned)id,(unsigned)target,(unsigned)last_position);
+        failed=1;
+        if (all_home && id<SERVO_COUNT) { ++id; stage=0; attempts=stable=0; last_position=0; return; }
+        /* If outward travel fails, still attempt a verified return to zero. */
+        if (!all_home && phase==2U) { phase=3; stage=0; attempts=stable=0; last_position=0; return; }
+    } else {
+        if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(150U)) {
+            /* Missing/malformed replies break consecutive-confirmation count. */
+            if (!query_valid) stable=0;
+            stage=1;
+        }
+        return;
+    }
+    phase=0; Servo_ClearRx();
+    mask=__get_PRIMASK(); __disable_irq();
+    if (!servo_debug_pending) servo_debug_busy=0;
+    __set_PRIMASK(mask);
+}
+
 
 SEND_DATA Send_Data;
 RECEIVE_DATA Receive_Data;
@@ -59,6 +239,7 @@ void data_task(void *pvParameters)
 			//��������20Hz��Ƶ������
 			vTaskDelayUntil(&lastWakeTime, F2T(RATE_20_HZ));
             CAN_Test_Process();
+            ServoDebug_Process();
             /* Consume the UART1 diagnostic request in task context. */
             taskENTER_CRITICAL();
             probe_requested = servo_probe_command;
@@ -67,7 +248,7 @@ void data_task(void *pvParameters)
 
             /* USART3 's': receive-only UART4 probe; report on USART1. */
             if (probe_requested) {
-                probe_result = probe_active ? SERVO_BUSY : Servo_StartRxProbe();
+                probe_result = (probe_active || servo_debug_busy) ? SERVO_BUSY : Servo_StartRxProbe();
                 if (probe_result == SERVO_OK) {
                     probe_started = xTaskGetTickCount();
                     probe_active = 1;
@@ -1123,6 +1304,25 @@ int USART1_IRQHandler(void)
         usart3_distance_receiver.length = 0;
         return 0;
     }
+    /* ASCII S0 homes all; S1..S4 exercises one servo. */
+    if (servo_debug_prefix == 2U) {
+        servo_debug_prefix=0;
+        if ((byte>='1' && byte<='4') && !servo_debug_busy) {
+            servo_debug_busy=1;
+            servo_debug_pending=(u8)(6U+byte-'1');
+        }
+        return 0;
+    }
+    if (byte == 'M') { servo_debug_prefix=2U; return 0; }
+    if (servo_debug_prefix) {
+        servo_debug_prefix = 0;
+        if (byte >= '0' && byte <= '4' && (byte == '0' || !servo_debug_busy)) {
+            servo_debug_busy = 1;
+            servo_debug_pending = byte == '0' ? 5U : byte - '0';
+        }
+        return 0;
+    }
+    if (byte == 'S') { servo_debug_prefix = 1; return 0; }
     /* USART1 ASCII 1..4 select a local upper laser; do not forward commands. */
     if (byte >= '1' && byte <= '4') {
         StepperTask_RequestLaserFromISR((u8)(byte - '0'));
