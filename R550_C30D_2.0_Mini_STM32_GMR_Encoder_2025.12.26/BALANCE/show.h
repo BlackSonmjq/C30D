@@ -15,7 +15,8 @@ void OLED_ShowChecking(void);
 void OLED_ShowCheckResult(void);
 
 extern u8 oled_page,oled_refresh_flag;
-#define OLED_MAX_Page 3 //OLED菜单页数
+/* Pages 0..3 include the default camera diagnostics on page 3. */
+#define OLED_MAX_Page 4 //OLED菜单页数
 
 extern float base_vol;
 extern float VolMean_Filter(float data);

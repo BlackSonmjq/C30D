@@ -1,5 +1,7 @@
 #include "show.h"
 #include "distance_task.h"
+#include "camera_protocol.h"
+#include <stdio.h>
 int Voltage_Show;
 unsigned char i;          
 unsigned char Send_Count; 
@@ -9,7 +11,7 @@ extern int MPU9250SensorCountA, MPU9250SensorCountB, MPU9250SensorCountC, MPU925
 
 
 u8 oled_refresh_flag;
-u8 oled_page=DISTANCE_OLED_PAGE;
+u8 oled_page=3; /* Camera communication diagnostic page. */
 /**************************************************************************
 Function: Read the battery voltage, buzzer alarm, start the self-test, send data to APP, OLED display task
 Input   : none
@@ -82,6 +84,38 @@ void OLED_ShowGamePadState(void)
 	show_usb_enum = 1;
 }
 
+/* Camera diagnostic page 3, refreshed at 10 Hz.
+ * Freshness uses frame-count changes observed by this page, not wire timestamps.
+ * LINK OK: valid frame observed within 1 s. WAIT RX: no bytes since boot.
+ * STALE: no recent RX. BAD DATA: RX continues without recent valid frames.
+ * Hide old target values after timeout; B=0 displays DX as invalid (---).
+ * F/R display modulo 100000, E/U modulo 10000 to fit the OLED width.
+ * This page's freshness decision is for display only, not vehicle control.
+ */
+static void Camera_DrawOLED(void)
+{
+    static uint32_t previous_frames, previous_bytes;
+    static TickType_t last_valid, last_rx;
+    Camera_Data data;
+    TickType_t now=xTaskGetTickCount();
+    char line[24];
+    unsigned fresh;
+    Camera_GetData(&data);
+    if (data.frames!=previous_frames) { previous_frames=data.frames; last_valid=now; }
+    if (data.bytes!=previous_bytes) { previous_bytes=data.bytes; last_rx=now; }
+    fresh=data.frames && (TickType_t)(now-last_valid)<pdMS_TO_TICKS(1000U);
+    OLED_ShowString(0,0,(const u8 *)(fresh?"CAM3 LINK OK":data.bytes==0?"CAM3 WAIT RX":(TickType_t)(now-last_rx)>=pdMS_TO_TICKS(1000U)?"CAM3 STALE":"CAM3 BAD DATA"));
+    if (fresh) {
+        if (data.pole) snprintf(line,sizeof(line),"B:%u DX:%+d",(unsigned)data.pole,(int)data.offset);
+        else snprintf(line,sizeof(line),"B:0 DX:---");
+        OLED_ShowString(0,12,(const u8 *)line);
+        snprintf(line,sizeof(line),"G:%u REGION:%u",(unsigned)data.green,(unsigned)data.region);
+        OLED_ShowString(0,24,(const u8 *)line);
+    } else { OLED_ShowString(0,12,"B:- DX:---"); OLED_ShowString(0,24,"G:- REGION:-"); }
+    snprintf(line,sizeof(line),"F:%lu R:%lu",(unsigned long)(data.frames%100000U),(unsigned long)(data.bytes%100000U)); OLED_ShowString(0,36,(const u8 *)line);
+    snprintf(line,sizeof(line),"E:%lu U:%lu",(unsigned long)(data.bad%10000U),(unsigned long)(data.uart_errors%10000U)); OLED_ShowString(0,48,(const u8 *)line);
+}
+
 void oled_show(void)
 {   
 	int Car_Mode_Show;
@@ -95,7 +129,9 @@ void oled_show(void)
 		 if(Car_Mode_Show>7)Car_Mode_Show=7; 
 		  //Car_Mode_Show=0;
 	
-	memset(OLED_GRAM,0, 128*8*sizeof(u8));	//GRAM清零但不立即刷新，防止花屏
+	memset(OLED_GRAM,0, 128*8*sizeof(u8));
+    if (oled_page==3) { Camera_DrawOLED(); OLED_Refresh_Gram(); return; }
+	//GRAM清零但不立即刷新，防止花屏
 	if(Check==0)
 	{
 		if( show_usb_enum == 1 )
@@ -148,7 +184,8 @@ void oled_show(void)
 	if(oled_page==0)
 	{
 		 Voltage_Show=Voltage*100; 
-		memset(OLED_GRAM,0, 128*8*sizeof(u8));	//GRAM清零但不立即刷新，防止花屏
+		memset(OLED_GRAM,0, 128*8*sizeof(u8));
+	//GRAM清零但不立即刷新，防止花屏
 		 if(Check==0)//The car displays normally when the self-check mode is not enabled //没有开启自检模式时小车正常显示
 		 {	
 			 //The first line of the display displays the content//

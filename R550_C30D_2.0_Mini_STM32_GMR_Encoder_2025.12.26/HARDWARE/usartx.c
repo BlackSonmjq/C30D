@@ -3,13 +3,14 @@
 #include "distance_protocol.h"
 #include "distance_task.h"
 #include "servo.h"
+#include "camera_protocol.h"
 #include "usart.h"
 #include <stdio.h>
 #include <string.h>
 
-/* USART1 prints diagnostics; USART3 independently forwards incoming bytes. */
-/* Temporary raw USART1 -> USART3 bridge; set to 0 to restore diagnostics. */
-#define USART3_RAW_FORWARD_ENABLED 1
+/* USART1 handles upper-computer commands/logs. USART3 receives camera frames.
+ * Keep the legacy bridge disabled while USART3 is connected to the camera. */
+#define USART3_RAW_FORWARD_ENABLED 0
 #define USART3_FORWARD_SIZE 1024U
 #if USART3_RAW_FORWARD_ENABLED
 static volatile uint8_t usart3_forward[USART3_FORWARD_SIZE];
@@ -740,117 +741,32 @@ void uart5_init(u32 bound)
   USART_ITConfig(UART5, USART_IT_RXNE, ENABLE); //Open the serial port to accept interrupts //�������ڽ����ж�
   USART_Cmd(UART5, ENABLE);                     //Enable serial port 5 //ʹ�ܴ���5
 }
-/**************************************************************************
-Function: Serial port 1 receives interrupted
-Input   : none
-Output  : none
-�������ܣ�����1�����ж�
-��ڲ�������
-�� �� ֵ����
-**************************************************************************/
+/* Camera RX on USART3 (PD9), via the onboard CH9102 USB bridge.
+ * ISR only parses bytes and updates diagnostics. No RTOS calls, OLED writes
+ * or motion requests here. UART errors invalidate the partial frame so later
+ * traffic can resynchronize. See camera_protocol.h for integration rules.
+ */
+static Camera_Receiver camera_receiver;
+void Camera_GetData(Camera_Data *data)
+{
+    uint32_t mask=__get_PRIMASK();
+    if (!data) return;
+    __disable_irq(); *data=camera_receiver.data; __set_PRIMASK(mask);
+}
 int USART3_IRQHandler(void)
 {
-#if USART3_RAW_FORWARD_ENABLED
-    /* Drain without blocking the USART1 receive interrupt. */
-    if (USART_GetITStatus(USART3, USART_IT_TXE) != RESET) {
-        if (usart3_forward_read != usart3_forward_write) {
-            USART3->DR = usart3_forward[usart3_forward_read];
-            usart3_forward_read = (usart3_forward_read + 1U) % USART3_FORWARD_SIZE;
-        } else {
-            USART_ITConfig(USART3, USART_IT_TXE, DISABLE);
-        }
+    uint32_t sr=USART3->SR;
+    if (sr & (USART_SR_RXNE|USART_SR_ORE|USART_SR_FE|USART_SR_NE|USART_SR_PE)) {
+        uint8_t byte=(uint8_t)USART3->DR;
+        if (sr & (USART_SR_ORE|USART_SR_FE|USART_SR_NE|USART_SR_PE)) {
+            ++camera_receiver.data.uart_errors;
+            ++camera_receiver.data.bytes;
+            camera_receiver.length=0;
+        } else Camera_Push(&camera_receiver,byte);
     }
-#endif
-	if(USART_GetITStatus(USART3, USART_IT_RXNE) != RESET) //Check if data is received //�ж��Ƿ���յ�����
-	{
-		u8 Usart_Receive;
-		static u8 Count;
-		static u8 rxbuf[11];
-		int check=0,error=1,i;
-		
-		Usart_Receive = USART_ReceiveData(USART3); //Read the data //��ȡ����
-        /* Receive-only probe request, handled in task context. */
-        if (Count == 0 && Usart_Receive == 's') {
-            servo_probe_command = 1;
-            return 0;
-        }
-		if(SysVal.Time_count<CONTROL_DELAY)
-			// Data is not processed until 10 seconds after startup
-		  //����10��ǰ����������
-			return 0;	
-			
-		//Fill the array with serial data
-		//����������������
-    rxbuf[Count]=Usart_Receive;  
-		
-		//Ensure that the first data in the array is FRAME_HEADER
-		//ȷ�������һ������ΪFRAME_HEADER
-    if(Usart_Receive == FRAME_HEADER||Count>0) 
-			Count++; 
-		else 
-			Count=0;
-		
-		if (Count == 11) //Verify the length of the packet //��֤���ݰ��ĳ���
-		{   
-				Count=0; //Prepare for the serial port data to be refill into the array //Ϊ����������������������׼��
-				if(rxbuf[10] == FRAME_TAIL) //Verify the frame tail of the packet //��֤���ݰ���֡β
-				{			
-					for(i=0; i<9; i++)
-					{
-						//XOR bit check, used to detect data error
-						//���λУ�飬���ڼ�������Ƿ����
-						check=rxbuf[i]^check; 
-					}
-					if(check==rxbuf[9]) 
-						//XOR bit check successful
-					  //���λУ��ɹ�
-					  error=0; 
-					
-					if(error==0)	 
-				  {		
-						float Vz;
-            if(Usart1_ON_Flag==0)
-						{	
-							//Serial port 1 controls flag position 1, other flag position 0
-							//����1���Ʊ�־λ��1��������־λ��0
-							//Usart_ON_Flag=1;
-							Usart1_ON_Flag=1;
-							APP_ON_Flag=0;
-							PS2_ON_Flag=0;
-							Remote_ON_Flag=0;
-							CAN_ON_Flag=0;
-							
-						}		
-						command_lost_count=0;
-						//Calculate the 3-axis target velocity from the serial data, which is divided into 8-bit high and 8-bit low units mm/s
-						//�Ӵ�������������Ŀ���ٶȣ��ָ�8λ�͵�8λ ��λmm/s
-						Move_X=XYZ_Target_Speed_transition(rxbuf[3],rxbuf[4]);
-						Move_Y=XYZ_Target_Speed_transition(rxbuf[5],rxbuf[6]);
-						Vz    =XYZ_Target_Speed_transition(rxbuf[7],rxbuf[8]);
-						if(Car_Mode==Akm_Car)
-						{
-							Move_Z=Vz_to_Akm_Angle(Move_X, Vz);
-						}
-						else
-						{
-							Move_Z=XYZ_Target_Speed_transition(rxbuf[7],rxbuf[8]);
-						}		
-					}
-			  }
-		 }
-	}
-		return 0;	
+    return 0;
 }
 
-/**************************************************************************
-Function: Refresh the OLED screen
-Input   : none
-Output  : none
-�������ܣ�����2�����ж�
-��ڲ�������
-����  ֵ����
-**************************************************************************/
-//BT04-A������ATָ������˺���.�������ӷ�����Ͽ�����
 static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 {
 	#define DEBUG_BT04ACommand 0
