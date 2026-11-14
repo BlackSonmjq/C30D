@@ -16,12 +16,12 @@
 #endif
 #define SERVO_COMMAND_LIMIT 63U
 static uint8_t initialized;
-static volatile uint8_t fault_latched;
 /* DMA1 stream 4/channel 4 is UART4_TX (RM0090). Keep this buffer in SRAM,
  * not on a caller's possibly CCM-backed stack. No other driver owns stream 4. */
 static uint8_t tx_buffer[SERVO_COMMAND_LIMIT];
 #define SERVO_DMA_FLAGS (DMA_HIFCR_CTCIF4 | DMA_HIFCR_CHTIF4 | DMA_HIFCR_CTEIF4 | DMA_HIFCR_CDMEIF4 | DMA_HIFCR_CFEIF4)
 static volatile uint8_t sending;
+static volatile Servo_Result tx_result;
 static volatile uint8_t receiving;
 static volatile uint8_t probing;
 enum { REPLY_ANY, REPLY_POSITION, REPLY_MODE };
@@ -80,7 +80,7 @@ void Servo_Init(void)
     GPIO_PinAFConfig(GPIOC, GPIO_PinSource10, GPIO_AF_UART4);
     GPIO_Init(GPIOC, &gpio);
     USART_StructInit(&uart);
-    uart.USART_BaudRate = 115200;
+    uart.USART_BaudRate = SERVO_BAUDRATE;
     uart.USART_Mode = USART_Mode_Rx;
     USART_Init(UART4, &uart);
     USART_HalfDuplexCmd(UART4, ENABLE);
@@ -149,13 +149,43 @@ void Servo_GetDiagnostics(Servo_Diagnostics *data)
     __set_PRIMASK(mask);
 }
 
-static uint8_t wait_flag(uint16_t flag)
+/* IRQ-safe TX completion: only register updates, no RTOS or long polling.
+ * At 9600 baud a whole byte takes about 1 ms; never mask IRQs for that wait. */
+static void finish_tx(Servo_Result result)
 {
-    uint32_t remaining = SERVO_POLL_LIMIT;
-    while (USART_GetFlagStatus(UART4, flag) == RESET) {
-        if (--remaining == 0U) return 0;
+    UART4->CR1 &= ~USART_CR1_TCIE;
+    UART4->CR3 &= ~USART_CR3_DMAT;
+    DMA1_Stream4->CR &= ~DMA_SxCR_EN;
+    DMA1->HIFCR=SERVO_DMA_FLAGS;
+    UART4->CR1 &= ~USART_CR1_TE;
+    if (result==SERVO_OK && SERVO_RX_IRQ_ENABLED && frame_length==0U) {
+        rx_budget=2U*SERVO_FRAME_CAPACITY;
+        receiving=1;
+        UART4->CR1 |= USART_CR1_RE;
+        USART_ITConfig(UART4,USART_IT_RXNE,ENABLE);
     }
-    return 1;
+    tx_result=result;
+    sending=0;
+}
+
+Servo_Result Servo_SetBusBaud(uint32_t baud)
+{
+    USART_InitTypeDef uart;
+    uint32_t mask;
+    if (baud!=9600UL && baud!=115200UL) return SERVO_INVALID_ARGUMENT;
+    if (!initialized) return SERVO_NOT_INITIALIZED;
+    mask=__get_PRIMASK(); __disable_irq();
+    if (sending || probing) { __set_PRIMASK(mask); return SERVO_BUSY; }
+    Servo_ClearRx();
+    USART_Cmd(UART4,DISABLE);
+    USART_StructInit(&uart);
+    uart.USART_BaudRate=baud;
+    uart.USART_Mode=USART_Mode_Rx;
+    USART_Init(UART4,&uart);
+    stop_rx();
+    USART_Cmd(UART4,ENABLE);
+    __set_PRIMASK(mask);
+    return SERVO_OK;
 }
 
 /* Called with IRQs masked, before the receive window is opened. */
@@ -214,8 +244,6 @@ Servo_Result Servo_SendCommand(const char *command)
     if (length < 2U || length > SERVO_COMMAND_LIMIT ||
         command[0] != '#' || command[length - 1U] != '!') return SERVO_INVALID_ARGUMENT;
     if (!initialized) return SERVO_NOT_INITIALIZED;
-    /* Block raw position frames as well as the typed movement API after fault. */
-    if (fault_latched && length==15U && command[4]=='P' && command[9]=='T') return SERVO_BUSY;
     /* Keep the whole frame in one task execution slice. IRQs remain enabled
      * except for the existing short direction-switch critical section. */
     if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
@@ -246,43 +274,28 @@ Servo_Result Servo_SendCommand(const char *command)
     DMA1->HIFCR = SERVO_DMA_FLAGS;
     DMA1_Stream4->CR = DMA_SxCR_CHSEL_2 | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1;
     UART4->CR1 |= USART_CR1_TE;
+    UART4->SR &= ~USART_SR_TC;
+    UART4->CR1 |= USART_CR1_TCIE;
+    tx_result=SERVO_OK;
     __DMB();
     DMA1_Stream4->CR |= DMA_SxCR_EN;
     UART4->CR3 |= USART_CR3_DMAT;
     __set_PRIMASK(mask);
-    /* DMA keeps all bytes contiguous even while higher-priority tasks/IRQs run.
-     * Only the tail and half-duplex turnaround need interrupt protection. */
-    remaining=SERVO_POLL_LIMIT;
-    while (DMA1_Stream4->NDTR > 1U) {
-        if (--remaining==0U || (DMA1->HISR & (DMA_HISR_TEIF4 | DMA_HISR_DMEIF4 | DMA_HISR_FEIF4))) {
-            result = SERVO_TX_TIMEOUT;
-            break;
+    /* DMA and TC IRQ run with IRQs enabled throughout the full 9600-baud
+     * frame. The polling fallback also turns around only AFTER TC is set. */
+    remaining=SERVO_POLL_LIMIT*length;
+    while (sending) {
+        if (--remaining==0U || (DMA1->HISR & (DMA_HISR_TEIF4|DMA_HISR_DMEIF4|DMA_HISR_FEIF4))) {
+            mask=__get_PRIMASK(); __disable_irq();
+            if (sending) finish_tx(SERVO_TX_TIMEOUT);
+            __set_PRIMASK(mask);
+        } else if (DMA1_Stream4->NDTR==0U && (DMA1->HISR & DMA_HISR_TCIF4) && USART_GetFlagStatus(UART4,USART_FLAG_TC)!=RESET) {
+            mask=__get_PRIMASK(); __disable_irq();
+            if (sending) finish_tx(SERVO_OK);
+            __set_PRIMASK(mask);
         }
     }
-    mask = __get_PRIMASK();
-    __disable_irq();
-    remaining=SERVO_POLL_LIMIT;
-    while (result==SERVO_OK && !(DMA1->HISR & DMA_HISR_TCIF4)) {
-        if (--remaining==0U || (DMA1->HISR & (DMA_HISR_TEIF4 | DMA_HISR_DMEIF4 | DMA_HISR_FEIF4)))
-            result=SERVO_TX_TIMEOUT;
-    }
-    /* TXE is not enough: the final stop bit must leave the shift register. */
-    if (!wait_flag(USART_FLAG_TC)) result = SERVO_TX_TIMEOUT;
-    UART4->CR3 &= ~USART_CR3_DMAT;
-    DMA1_Stream4->CR &= ~DMA_SxCR_EN;
-    remaining=SERVO_POLL_LIMIT;
-    while ((DMA1_Stream4->CR & DMA_SxCR_EN) && --remaining) {}
-    if (!remaining) { initialized=0; result=SERVO_TX_TIMEOUT; }
-    DMA1->HIFCR = SERVO_DMA_FLAGS;
-    UART4->CR1 &= ~USART_CR1_TE;
-    if (result == SERVO_OK && SERVO_RX_IRQ_ENABLED && frame_length == 0U) {
-        rx_budget = 2U * SERVO_FRAME_CAPACITY;
-        receiving = 1;
-        UART4->CR1 |= USART_CR1_RE;
-        USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
-    }
-    sending = 0;
-    __set_PRIMASK(mask);
+    result=tx_result;
     if (scheduler_locked) (void)xTaskResumeAll();
     return result;
 }
@@ -306,7 +319,6 @@ Servo_Result Servo_SetMode(uint8_t id, uint8_t mode)
 Servo_Result Servo_MovePulse(uint8_t id, uint16_t pulse, uint16_t time_ms)
 {
     char command[24];
-    if (fault_latched) return SERVO_BUSY;
     if (!valid_id(id) || pulse < 500U || pulse > 2500U || time_ms > 9999U)
         return SERVO_INVALID_ARGUMENT;
     snprintf(command, sizeof(command), "#%03uP%04uT%04u!",
@@ -337,18 +349,6 @@ Servo_Result Servo_Stop(uint8_t id)
     if (!valid_id(id)) return SERVO_INVALID_ARGUMENT;
     snprintf(command, sizeof(command), "#%03uPDST!", (unsigned)id);
     return Servo_SendCommand(command);
-}
-
-uint8_t Servo_IsFaulted(void)
-{
-    return fault_latched;
-}
-
-Servo_Result Servo_FaultStop(uint8_t id)
-{
-    fault_latched=1;
-    Servo_ClearRx();
-    return Servo_Stop(id);
 }
 
 Servo_Result Servo_ReadPosition(uint8_t id)
@@ -419,6 +419,10 @@ Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length)
 void UART4_IRQHandler(void)
 {
     uint32_t status = UART4->SR;
+    if ((status & USART_SR_TC) && (UART4->CR1 & USART_CR1_TCIE) && sending) {
+        if (DMA1_Stream4->NDTR==0U) finish_tx(SERVO_OK);
+        else UART4->CR1 &= ~USART_CR1_TCIE; /* Early TC: polling handles completion/error. */
+    }
     ++diag_irq_count;
     diag_last_status = status;
     if (status & (USART_SR_RXNE | USART_SR_ORE | USART_SR_FE | USART_SR_NE | USART_SR_PE)) {

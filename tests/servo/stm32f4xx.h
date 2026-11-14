@@ -31,6 +31,8 @@ extern USART_TypeDef mock_uart;
 #define UART4_IRQn 52
 #define USART_CR1_RE 4U
 #define USART_CR1_TE 8U
+#define USART_CR1_TCIE 64U
+#define USART_SR_TC 64U
 #define USART_SR_PE 1U
 #define USART_SR_FE 2U
 #define USART_SR_NE 4U

@@ -15,8 +15,6 @@ Servo_Result Servo_ReadPosition(uint8_t id);
 Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length);
 Servo_Result Servo_Stop(uint8_t id);
 void Servo_ClearRx(void);
-Servo_Result Servo_FaultStop(uint8_t id);
-uint8_t Servo_IsFaulted(void);
 #endif
 
 #ifndef SERVO_POSITION_TOLERANCE

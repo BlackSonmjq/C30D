@@ -8,7 +8,9 @@
  * ?????? MCU ?????????????
  * ????????? M1/M2/M3/M4 ????????? 2/2/1/1???????
  */
-/* ZP10S: UART4, PC10 (single-wire half duplex), 115200 8N1.
+/* ZP10S: UART4, PC10 (single-wire half duplex), 9600 8N1.
+ * B0 on the 115200-baud upper UART explicitly migrates IDs 1..4 from
+ * their former 115200 device rate to 9600; no startup EEPROM writes.
  * IDs 1..4 match the former pushrod IDs. No broadcast motion API.
  * Mode 1: 270 degrees, P0500 = 0 degrees, P1833 ~= 180 degrees.
  */
@@ -16,6 +18,7 @@
 #define SERVO_HOME_PULSE        500U
 #define SERVO_HALF_TURN_PULSE   1833U
 #define SERVO_MOVE_MS           500U
+#define SERVO_BAUDRATE          9600UL
 #define SERVO_POSITION_TOLERANCE 100U /* All IDs and targets: +/-100 feedback units. */
 #define SERVO_FRAME_CAPACITY    64U
 
@@ -64,6 +67,8 @@ void Servo_GetDiagnostics(Servo_Diagnostics *data);
  */
 void Servo_Init(void);
 Servo_Result Servo_SendCommand(const char *command);
+/* Change only the MCU UART. B0 explicitly migrates devices from 115200. */
+Servo_Result Servo_SetBusBaud(uint32_t baud);
 /* Explicit persistent setup; allow servo processing/ACK before next command.
  * SetMode accepts position modes 1..4 only. Home/Twist assume mode 1.
  * SetID accepts old ID 0..254, new ID 1..4: connect ONE servo when assigning.
@@ -75,10 +80,6 @@ Servo_Result Servo_MoveAngle(uint8_t id, uint16_t degrees, uint16_t time_ms);
 Servo_Result Servo_Home(uint8_t id, uint16_t time_ms);
 Servo_Result Servo_Twist(uint8_t id, uint16_t time_ms);
 Servo_Result Servo_Stop(uint8_t id);
-/* Fault-stop latches out motion until MCU restart; it never writes ID/mode.
- * A sent stop is not a guarantee of physical stopping on a faulty link. */
-Servo_Result Servo_FaultStop(uint8_t id);
-uint8_t Servo_IsFaulted(void);
 Servo_Result Servo_ReadPosition(uint8_t id);
 
 /* Single-frame mailbox, including terminating NUL. Generic commands/probes

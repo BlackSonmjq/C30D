@@ -1,6 +1,6 @@
 # ZP10S 标准库接口
 
-驱动：`HARDWARE/servo.c`、`HARDWARE/servo.h`。使用 UART4、PC10 单线半双工，115200、8N1；系统启动调用 `Servo_Init()`，只初始化通信，不发送动作或修改配置。四个舵机 ID 使用 1、2、3、4，与原推杆编号对应。第 4 路激光 XSHUT 已从 PC10 迁至 PC11，包括上电初始化、测距任务和 OLED 显示。
+驱动：`HARDWARE/servo.c`、`HARDWARE/servo.h`。使用 UART4、PC10 单线半双工，9600、8N1；系统启动调用 `Servo_Init()`，只初始化通信，不发送动作或修改配置。四个舵机 ID 使用 1、2、3、4，与原推杆编号对应。第 4 路激光 XSHUT 已从 PC10 迁至 PC11，包括上电初始化、测距任务和 OLED 显示。
 
 自动采摘协调任务通过 `ServoTask_*` 接口调用舵机：确认零位、转到 180°、恢复零位，位置回读确认后再进行步进返程。每段使用代码中的 `SERVO_MOVE_MS`（当前 500 ms），超时为 3 秒。舵机需预先配置为 270° 位置模式：1/2 号模式 2，3/4 号模式 1；自动任务不改写配置。串口裸字符 `1～4` 目前仍仅选激光，不触发自动任务。自动任务期间拒绝手动舵机动作和接收诊断，手动序列占用总线时自动舵机请求失败并沿用原返程处理。
 
@@ -11,24 +11,28 @@
 - 出厂 ID 通常为 0：一次只接一只舵机，依次调用 `Servo_SetID(0, 1)` 至 `Servo_SetID(0, 4)`。确认回包 `#001P!` 等，再接下一只，最后并联总线。
 - 按当前机构方向配置：1/2 号使用模式 2，3/4 号使用模式 1。可分别发送 `M1`～`M4` 设置，并等待 `CONFIRMED` 回读确认。不要每次启动重复写 ID 或模式。实际安装方向先空载核对。
 
-## Fault-stop behavior (fault-stop-5)
+## 9600-baud migration (baud9600-6)
 
-S1-S4 and K1-K4 use home -> 180 degrees -> home, 500 ms per move,
-with +/-100 position units and two valid feedback confirmations. Missing
-queries retain the previous valid confirmation, inside a 3-second phase bound.
+UART4/PC10 now starts at 9600 8N1. The upper-computer USART1 stays at
+115200 8N1. After flashing, send B0 once while idle. It probes IDs 1-4
+at 9600 first; if needed it probes at 115200 and sends #001PBD0! (or the
+matching ID), then switches back to 9600 and verifies a mode reply.
+The supplied device protocol defines PBD0 as 9600 baud. No ID or mode
+is rewritten and startup does not write device configuration.
 
-Automatic motion retransmission and retry homing have been removed. A timeout
-or send failure sends PDST, ends the servo sequence and latches out all further
-motion until MCU restart. No automatic return is attempted after a fault.
-Feedback beyond the upper commanded endpoint plus 100 also stops and latches.
-Raw position commands and Servo_MovePulse are blocked by the transport latch;
-stop and readback remain available. A transmitted stop is not proof that a
-faulty device/link physically stopped. Disconnect servo power on runaway.
+Wait for four baud=9600 CONFIRMED lines and final confirmed_mask=0x0F
+before S2 or K commands. A partial run leaves the MCU bus at 9600. Repeat B0
+to retry unconfirmed IDs; already migrated devices are only read. Never
+assume tx=0 or a baud-write ACK alone confirms the new communication rate.
 
-Manual mode reads retry three times; no confirmed mode means no movement.
-Existing ID/mode settings are not rewritten. UART4 DMA, the scheduler guard,
-priority-2 RX and ID/type reply filtering are retained. OLED page 3 shows
-integration status and page 4 shows camera diagnostics.
+The previous fault latch and travel guard have been removed as requested.
+Original feedback/retry behavior is restored: +/-100 units, 500 ms moves,
+two valid arrival samples, at most two motion retries inside each 3-second
+phase, and return-to-zero attempt after outward timeout.
+
+DMA transmits continuously. UART TC completion switches to RX in the ISR;
+no byte-duration wait runs with global interrupts masked at 9600. Normal
+stop/query semantics and transport error timeouts remain unchanged.
 
 ## 动作含义
 
@@ -65,7 +69,7 @@ Twist 是绝对位置接口：连续调用不会每次再增加半圈。每轮�
 
 发送接口的 `SERVO_OK` 只表示串口发送完成，不代表舵机已确认、已到位或已脱果。需要确认时由同一任务串行发送请求、轮询回包并处理超时；切换模式后先消费确认，再发下一条指令。自动任务已加入位置回读和超时判断，正常流程确认回零后才返程；故障仍按原协调流程记录错误并尝试步进返程。
 
-启动时复位 UART4、清除待处理中断，并关闭接收器及 RXNE 中断；不会在未发送命令时持续接收。发送成功且没有未读回包时，驱动等待 TC 后开启接收。调度器启动后，每条指令从发送前到收发切换完成期间暂停任务调度，成功、BUSY和发送超时路径都会恢复调度；支持嵌套暂停及调度器启动前调用。整帧期间保留中断，最后一个字节及收发切换期间短暂全局关中断，正常最多约两个字节时间（115200 下约174微秒）；硬件异常使用有限轮询退出。该措施避免任务切换拉长帧间字节间隔，中断处理仍可能影响间隔。发送仅限任务上下文，并发发送返回 BUSY；请求/回包事务由调用方串行管理。
+Startup resets UART4 and leaves RX disabled. DMA sends frames with interrupts enabled; UART TC completion immediately switches to RX. The task scheduler guard spans the send, but there is no global interrupt-masked wait for slow bytes. Finite polling handles peripheral errors. Send APIs remain task-context only and requests/replies must be serialized.
 
 接收邮箱容量64字节。普通动作、设置指令及接收诊断保留首帧接收规则。PRAD位置查询只接受同编号的合法 `#002P1833!` 类位置帧；PMOD模式查询接受同编号的 `#002MOD2!` 或 `#002PMOD2!`。查询期间忽略ACK、指令回显、错误编号和格式错误的帧，继续接收，匹配帧到达后才关闭接收。缓冲区不足返回 BUFFER_TOO_SMALL 并保留原帧，`length` 不含NUL。每次发送前需先消费或清除上一回包。串口错误、帧缓冲区溢出或单次累计输入达到128字节时仍关闭接收，包括连续无效帧，避免持续异常中断；下次成功发送可重新开启。没有回包时由调用方计时，超时调用 `Servo_ClearRx()` 取消接收并清空邮箱。
 

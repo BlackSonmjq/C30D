@@ -1,3 +1,5 @@
+Send B0 once after flashing to migrate servo IDs 1-4 from 115200 to 9600; wait for confirmed_mask=0x0F. Upper USART1 stays 115200. Repeating B0 resumes partial migrations without rewriting confirmed devices. Fault latch/travel guard are removed; the previous bounded feedback/retry flow is restored.
+
 > Current console: USART1 RX (PA10) accepts local task/servo commands; USART3 PD8/PD9 is reserved for the camera protocol. USART1 TX (PA9) prints servo logs only at 115200 8N1. Laser, APP and boot prints are disabled. The distance/rx3 examples below describe earlier configurations.
 
 # 串口1任务指令
@@ -15,7 +17,7 @@
 
 裸数字 `1～4` 仍仅选激光，`S0`～`S4`、`M1`～`M4` 保持现有舵机调试功能。
 
-S1-S4 and K1-K4 use 500 ms, +/-100 position units, two valid feedback confirmations. Faults stop and latch motion; no automatic retransmission or homing after a fault. Unconfirmed modes cancel manual movement.
+S1-S4 and K1-K4 use feedback-confirmed home -> 180 degrees -> home, 500 ms, +/-100. Missing replies preserve valid arrival counts; stalled targets retry at most twice within 3 seconds. K2 no longer uses timed completion.
 
 S1-S4 require a confirmed position mode (1-4); after three unanswered mode queries, motion is cancelled and the busy flag is released. UART4 query reception filters ACKs, echoes, wrong IDs and malformed frames until a matching reply or the existing limits. Whole-frame TX suspends task scheduling while keeping IRQs enabled except for the final direction transition. UART4 IRQ preemption priority remains 2.
 

@@ -10,6 +10,8 @@ static DMA_Stream_TypeDef mock_stream;
 static unsigned dma_offset;
 static char tx[128];
 static unsigned tx_size, checks, tc_checks, tc_delay, fail_flag, nested, isr;
+static uint32_t bus_baud;
+static unsigned complete_via_irq;
 static uint32_t irq_mask;
 static unsigned rx_irq_enabled, nvic_enabled, cleared_pending;
 static uint8_t pc10_high = 1;
@@ -48,7 +50,7 @@ void NVIC_Init(NVIC_InitTypeDef *irq) {
 }
 void NVIC_ClearPendingIRQ(int irq) { CHECK(irq == UART4_IRQn); ++cleared_pending; }
 void USART_StructInit(USART_InitTypeDef *uart) { memset(uart, 0, sizeof(*uart)); }
-void USART_Init(USART_TypeDef *p, USART_InitTypeDef *uart) { CHECK(uart->USART_BaudRate == 115200); p->CR1 = uart->USART_Mode; }
+void USART_Init(USART_TypeDef *p, USART_InitTypeDef *uart) { CHECK(uart->USART_BaudRate == 9600 || uart->USART_BaudRate == 115200); bus_baud=uart->USART_BaudRate; p->CR1 = uart->USART_Mode; }
 void USART_DeInit(USART_TypeDef *p) { CHECK(p == UART4); memset(p, 0, sizeof(*p)); rx_irq_enabled = 0; }
 void USART_Cmd(USART_TypeDef *p, FunctionalState e) { CHECK(p == UART4); (void)e; }
 void USART_HalfDuplexCmd(USART_TypeDef *p, FunctionalState e) { CHECK(p == UART4 && e == ENABLE); }
@@ -57,10 +59,14 @@ void USART_ITConfig(USART_TypeDef *p, uint16_t i, FunctionalState e) {
     rx_irq_enabled = e == ENABLE;
 }
 FlagStatus USART_GetFlagStatus(USART_TypeDef *p, uint16_t f) {
+    CHECK(!irq_mask); /* Never wait a 9600-baud byte with IRQs masked. */
     CHECK(scheduler_state == taskSCHEDULER_NOT_STARTED || scheduler_depth > 0);
     if (f == USART_FLAG_TC) {
         ++tc_checks;
         if (tc_delay) { --tc_delay; return RESET; }
+        if (complete_via_irq && f!=fail_flag) {
+            complete_via_irq=0; p->SR=USART_SR_TC; UART4_IRQHandler();
+        }
     }
     return f == fail_flag ? RESET : SET;
 }
@@ -128,6 +134,10 @@ int main(void) {
     CHECK(Servo_Home(1, 1500) == SERVO_NOT_INITIALIZED);
     UART4->CR1 = 0xFFFFFFFFU; /* Simulate peripheral state left by a bootloader. */
     Servo_Init(); CHECK(tx_size == 0 && nvic_enabled && cleared_pending == 1);
+    CHECK(bus_baud==9600);
+    CHECK(Servo_SetBusBaud(115200)==SERVO_OK && bus_baud==115200);
+    CHECK(Servo_SetBusBaud(9600)==SERVO_OK && bus_baud==9600);
+    CHECK(Servo_SetBusBaud(12345)==SERVO_INVALID_ARGUMENT && bus_baud==9600);
     check_idle();
     CHECK(Servo_Home(1, 500) == SERVO_OK); expect("#001P0500T0500!");
     CHECK(!suspend_calls && !resume_calls); /* Supported before scheduler startup. */
@@ -167,6 +177,9 @@ int main(void) {
     }
     nested = 1; tc_delay = 3; before = tc_checks;
     CHECK(Servo_Home(1, 1000) == SERVO_OK); expect("#001P0500T1000!"); CHECK(tc_checks - before == 4);
+    complete_via_irq=1;
+    CHECK(Servo_Home(2,500)==SERVO_OK); expect("#002P0500T0500!");
+    CHECK(!complete_via_irq && !(UART4->CR1 & USART_CR1_TCIE) && receiving);
     CHECK(Servo_MoveAngle(2, 180, 9999) == SERVO_OK); expect("#002P1833T9999!");
     CHECK(Servo_MoveAngle(3, 270, 20) == SERVO_OK); expect("#003P2500T0020!");
     CHECK(Servo_SetMode(4, 1) == SERVO_OK); expect("#004PMOD1!");
@@ -242,14 +255,6 @@ int main(void) {
     for (unsigned n = 0; n < 40U; ++n) receive("#OK!");
     check_idle(); CHECK(!frame_length); /* Filtering still has a bounded noise budget. */
     CHECK(suspend_calls == resume_calls && !scheduler_depth);
-    CHECK(!Servo_IsFaulted());
-    CHECK(Servo_FaultStop(2)==SERVO_OK); expect("#002PDST!");
-    CHECK(Servo_IsFaulted());
-    CHECK(Servo_Home(2,500)==SERVO_BUSY); expect("");
-    CHECK(Servo_SendCommand("#002P1833T0500!")==SERVO_BUSY); expect("");
-    CHECK(Servo_ReadPosition(2)==SERVO_OK); expect("#002PRAD!");
-    Servo_ClearRx();
-    CHECK(Servo_Stop(2)==SERVO_OK); expect("#002PDST!");
-    printf("PASS: servo transport, fault latch blocks motion but allows stop/query (%u checks)\n", checks);
+    printf("PASS: servo transport, four IDs, half-turn mapping, TC/timeout, parser/error boundaries (%u checks)\n", checks);
     return 0;
 }
