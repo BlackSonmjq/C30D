@@ -39,6 +39,7 @@ Servo_Result Servo_SendCommand(const char *command) {
     if (scenario>=8 && bus_baud!=device_baud[id]) return SERVO_OK;
     if (memcmp(command+4,"PVER",4)==0) {
         snprintf(reply,sizeof(reply),"#%03uPV0.97!",id);
+        if (scenario==12) snprintf(reply,sizeof(reply),"#%03u@ ZL-ZServo_AD_CBM V2.1.16STG!",id);
         if (scenario==11) { strcpy(delayed_reply,reply); strcpy(reply,"#OK!"); }
         return SERVO_OK;
     }
@@ -101,8 +102,17 @@ int main(void) {
     CHECK(!ServoDebug_Version("#003PV0.97!",11,2));
     CHECK(!ServoDebug_Version("#002PVER!",9,2));
     CHECK(!ServoDebug_Version("#OK!",4,2));
+    {
+        const char *actual="#002@ ZL-ZServo_AD_CBM V2.1.16STG!";
+        CHECK(ServoDebug_Version(actual,(uint16_t)strlen(actual),2));
+        CHECK(!ServoDebug_Version(actual,(uint16_t)strlen(actual),1));
+        CHECK(!ServoDebug_Version(actual,(uint16_t)strlen(actual)-1U,2));
+        CHECK(!ServoDebug_Version("#002@ V2.1.16STG!",(uint16_t)strlen("#002@ V2.1.16STG!"),2));
+    }
     for (id=1;id<=4;++id) device_baud[id]=known_baud[id]=115200;
     version_queries=baud_writes=0; run(8,12);
+    CHECK(version_queries==4 && !baud_writes && !home_commands && !outward_commands);
+    version_queries=0; run(12,12);
     CHECK(version_queries==4 && !baud_writes && !home_commands && !outward_commands);
     device_baud[2]=9600; known_baud[2]=115200;
     version_queries=0; run(11,14);

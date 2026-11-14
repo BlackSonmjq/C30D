@@ -67,18 +67,26 @@ static u8 ServoDebug_Mode(const char *frame, uint16_t length, u8 id, u8 *mode)
     *mode=(u8)(frame[offset]-'0'); return 1;
 }
 
-/* PVER readback per the ZP10S manual p25: #002PV0.97!.
+/* PVER: manual #002PV0.97!, CBM firmware #002@ ZL-ZServo_AD_CBM V2.1.16STG!.
  * Never mistake #OK!, query echoes or another ID for a version. */
 static u8 ServoDebug_Version(const char *frame, uint16_t length, u8 id)
 {
+    static const char brand[]="ZL-ZServo_";
     unsigned i, reply_id=0;
-    if (length<8U || frame[0]!='#' || frame[4]!='P' || frame[5]!='V' ||
-        frame[6]<'0' || frame[6]>'9' || frame[length-1U]!='!') return 0;
+    if (length<8U || frame[0]!='#' || frame[length-1U]!='!') return 0;
     for (i=1;i<=3;++i) {
         if (frame[i]<'0' || frame[i]>'9') return 0;
         reply_id=reply_id*10U+(unsigned)(frame[i]-'0');
     }
-    return reply_id==id;
+    if (reply_id!=id) return 0;
+    if (frame[4]=='P' && frame[5]=='V' && frame[6]>='0' && frame[6]<='9') return 1;
+    if (frame[4]!='@') return 0;
+    i=5;
+    while (i<length-1U && frame[i]==' ') ++i;
+    if (i+sizeof(brand)-1U>=length || memcmp(frame+i,brand,sizeof(brand)-1U)!=0) return 0;
+    for (;i+2U<length-1U;++i)
+        if (frame[i]==' ' && frame[i+1U]=='V' && frame[i+2U]>='0' && frame[i+2U]<='9') return 1;
+    return 0;
 }
 
 static void ServoDebug_Process(void)
@@ -102,7 +110,7 @@ static void ServoDebug_Process(void)
         phase=all_home?3U:1U; stage=all_home?0U:10U; attempts=stable=failed=0; last_position=0;
         half_turn_target=SERVO_HALF_TURN_PULSE;
         mode_reads=0;
-        any_printf(USART1,"SERVO debug=baud-version-8 request=%u\r\n",(unsigned)request);
+        any_printf(USART1,"SERVO debug=baud-version-9 request=%u\r\n",(unsigned)request);
     }
     if (request>=6U && request<=9U) {
         id=request-5U; requested_mode=id<=2U?2U:1U; phase=1; stage=20;

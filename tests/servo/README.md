@@ -113,3 +113,9 @@ V0 reads versions of IDs 1-4; V1-V4 read one. These commands send only
 a servo or write ID/mode/baud. A valid version looks like #002PV0.97!.
 Raw replies are logged; OK, echoes and wrong IDs do not count as a version.
 The receiver continues listening for a trailing version after an ACK.
+
+Observed CBM version readback (all four IDs):
+`#002@ ZL-ZServo_AD_CBM V2.1.16STG!` (matching ID).
+The baud-version-9 parser accepts this branded @ format as well as PV0.97,
+while rejecting ACK, echo, wrong ID and truncated data. This only fixes version
+recognition; it does not establish whether PBD0 works on that firmware.
