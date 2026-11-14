@@ -174,8 +174,8 @@ DistanceTask_Data 包含 distance_mm、valid、status、update_tick、laser_id�
 FreeRTOS 堆配置为 32 KB，覆盖 USB、定时器及全部应用任务的启动分配。启动日志 `boot: tasks servo=1 stepper=1 distance=1 heap_free=...` 表示三个动作/测距任务均已成功创建；负值表示对应任务创建失败。原 20 KB 配置在启用 USB 时会导致最后创建的测距任务内存不足。
 
 - 串口1使用 115200、8N1、文本模式，发送 `K1`～`K4` 分别启动 1～4 号完整任务：测距、靠近至 对应编号阈值、舵机转 180° 后回零、步进返程、关闭激光。无需换行，也支持追加 CR/LF；忙碌时拒绝新任务，不排队。裸字符 `1～4` 仍仅选择激光。
-- K1/K3/K4 使用 P0500 回零 → P1833（约180°）→ P0500 回零，每段500 ms，以连续两次位置回读确认，阶段超时3秒。K2使用延时流程：P1833 → 等待1.5秒 → P0500 → 等待1.5秒，不判断到位。
-- S1～S4 必须确认位置模式后执行回零、转180°、回零；模式查询最多3次，失败则取消动作。S2容忍值为90，180°阶段反馈541时最多额外重发3次，间隔至少500 ms。UART4中断抢占优先级为2；查询期间过滤ACK、回显、无关或格式错误的帧，继续等待有效回复。整帧发送期间暂停任务调度，保留中断及末字节收发切换保护。引脚、各路击打距离和26000脉冲上限保留。
+- K1-K4: P0500 -> P1833 -> P0500, 500 ms per move, +/-100 position units, two valid confirmations. Missing replies preserve arrival counts; stalled targets retry at most twice within the original 3-second phase deadline.
+- S1-S4 use the same feedback policy. Mode reads retry three times, then fall back to 270-degree targets if no mode reply arrives. Unsupported modes cancel motion. UART4 uses DMA transmission with the scheduler guard and priority-2 RX/type/ID filtering retained.
 - 舵机沿用已配置的 270° 位置模式（1/2 号模式 2，3/4 号模式 1，匹配机构方向），自动任务不写模式或 ID；手动舵机调试、接收诊断与自动动作互斥。
 - 上电 PA2/PA3/PA6/PC11 全部拉低，协调任务按编号启用对应激光，完成后全关。
 - IMU 上电约 10 秒采集静止样本校准；蜂鸣器已禁用。

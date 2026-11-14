@@ -11,20 +11,21 @@
 - 出厂 ID 通常为 0：一次只接一只舵机，依次调用 `Servo_SetID(0, 1)` 至 `Servo_SetID(0, 4)`。确认回包 `#001P!` 等，再接下一只，最后并联总线。
 - 按当前机构方向配置：1/2 号使用模式 2，3/4 号使用模式 1。可分别发送 `M1`～`M4` 设置，并等待 `CONFIRMED` 回读确认。不要每次启动重复写 ID 或模式。实际安装方向先空载核对。
 
-## Original servo task restored
+## Merged feedback control
 
-S2 与 S1/S3/S4 共用调试流程：查询现有模式，确认回零，转180°，再确认回零；每段运动500 ms，要求连续两次位置确认，每段超时3秒。2号到位容差保留 ±90。K2 仍使用延时流程：直接发送 P1833，等待1.5秒后发送 P0500，再等待1.5秒结束，不查询模式或位置；`SERVO_2_DELAY_MS=1500` 配置两段等待时间，发送失败仍报错。S0 保持原逻辑。
+S1-S4 and K1-K4 now use home -> 180 degrees -> home. All IDs and targets
+use +/-100 position units and 500 ms moves. Two successive valid replies
+confirm arrival; missing query replies do not reset the count. Valid off-target
+positions reset the count. A stalled absolute target is resent at most twice,
+with a 500 ms wait before querying again; retries retain the 3-second deadline.
+K2 no longer uses a fixed 1500 ms delay without feedback.
 
-S1～S4 必须读回有效的位置模式1～4后才开始运动。模式查询每次等待600 ms，最多发送3次；始终没有有效模式回复时输出 `MODE NOT CONFIRMED; motion cancelled` 并释放调试忙标志，不再假定270°模式。该修改只影响手动S1～S4的模式门槛，K2延时流程保持不变。
-
-S2 在180°阶段收到有效的2号位置反馈 P0541 且未到位时，按至少500 ms间隔重发当前绝对目标，最多额外发送3次（含首次最多4次）。重发后等待500 ms再查询位置，保留原阶段3秒超时，不因重发延长。日志为 `SERVO 2 retry target=... pos=541 retry=... tx=...`。初始和最终回零、S0、其他舵机及K2不触发这项重发。
-
-Automatic K1/K3/K4 use the initial three-target sequence: P0500 -> P1833 -> P0500.
-For these IDs, each move uses 500 ms and requires two consecutive valid position replies.
-The position-query window is 150 ms and each phase times out after 3 seconds.
-K2 has no special mode-read gate, midpoint, retry or packet-loss policy.
-S1-S4 share the original manual sequence and mode handling. UART4 IRQ preemption priority is 2 (subpriority 0), raised from 6. It is above the FreeRTOS syscall threshold of 5, so the RX ISR must not call RTOS APIs. Shared RX state uses PRIMASK protection; this change reduces RX interrupt masking without changing task priorities, motion commands or retry logic.
-The OLED task page retains its original fields; D3/D4/D5 diagnostic extensions are removed.
+Manual mode reads retry three times, then use the existing 270-degree fallback
+if no mode is received. Unsupported non-position modes cancel motion. Automatic
+K commands retain the configured 270-degree modes and never rewrite ID/mode.
+UART4 uses DMA1 stream 4/channel 4 for contiguous transmission. The existing
+scheduler guard, priority-2 RX interrupt and reply-type/ID filtering are retained.
+OLED page 3 shows the integration job; page 4 shows camera diagnostics.
 
 ## 动作含义
 

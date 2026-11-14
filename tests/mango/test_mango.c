@@ -18,6 +18,8 @@ static TickType_t tick, high_at;
 static uint8_t reply_pending, servo_id, manual_busy, bad_reply, no_reply;
 static uint8_t fail_home, fail_query, home_after_twist;
 static uint16_t servo_target;
+static uint16_t physical_position;
+static uint8_t lossy_test, drop_outward, drop_return;
 static unsigned int move_count, query_count, stops;
 static unsigned int checks, completed_jobs, hits, starts, case_id, stop_partial_edge;
 static u8 in_actuator, sensor, active_motor, output_id, forced_invalid, initial_close;
@@ -75,19 +77,19 @@ void DistanceTask_GetData(DistanceTask_Data *data) {
 u8 USART_ServoControlBusy(void) { return manual_busy; }
 void Servo_ClearRx(void) { reply_pending = 0; }
 Servo_Result Servo_MovePulse(uint8_t id, uint16_t pulse, uint16_t duration_ms) {
-    unsigned int index = move_count % (id == 2U ? 2U : 3U);
+    unsigned int index = move_count % 3U;
     CHECK(id == motion.mango_id && !running[active_motor] && sensor == id);
     CHECK(duration_ms == SERVO_MOVE_MS);
     if (fail_strike && pulse == SERVO_HALF_TURN_PULSE) return SERVO_TX_TIMEOUT;
     if (fail_home && hits && pulse == SERVO_HOME_PULSE) return SERVO_TX_TIMEOUT;
-    CHECK(fail_strike || fail_query || bad_reply || no_reply || (id == 2U ?
-          (index == 0U ? pulse == SERVO_HALF_TURN_PULSE : pulse == SERVO_HOME_PULSE) :
+    CHECK(lossy_test || fail_strike || fail_query || bad_reply || no_reply ||
           (index == 0U ? pulse == SERVO_HOME_PULSE :
-          index == 1U ? pulse == SERVO_HALF_TURN_PULSE : pulse == SERVO_HOME_PULSE)));
-    if (id == 2U && pulse == SERVO_HOME_PULSE && hits && !fail_strike)
-        CHECK((TickType_t)(tick-high_at) >= 1500U && (TickType_t)(tick-high_at) <= 1520U);
+          index == 1U ? pulse == SERVO_HALF_TURN_PULSE : pulse == SERVO_HOME_PULSE));
     ++move_count;
     servo_id = id; servo_target = pulse;
+    if (pulse==SERVO_HALF_TURN_PULSE && drop_outward) --drop_outward;
+    else if (pulse==SERVO_HOME_PULSE && hits && drop_return) --drop_return;
+    else physical_position=pulse==500U ? 545U : pulse;
     high_at = tick; output_id = id;
     if (pulse == SERVO_HALF_TURN_PULSE) ++hits;
     else if (hits) home_after_twist = 1;
@@ -95,7 +97,7 @@ Servo_Result Servo_MovePulse(uint8_t id, uint16_t pulse, uint16_t duration_ms) {
 }
 Servo_Result Servo_ReadPosition(uint8_t id) {
     CHECK(id == servo_id && (TickType_t)(tick-high_at) >= SERVO_MOVE_MS);
-    CHECK(id != 2U); /* Servo 2 must never depend on position feedback. */
+    /* All IDs now require feedback confirmation. */
     ++query_count;
     if (fail_query && servo_target == SERVO_HALF_TURN_PULSE) return SERVO_TX_TIMEOUT;
     reply_pending = 1;
@@ -115,7 +117,7 @@ Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length) {
         default: sprintf(buffer,"#%03uP1200!",(unsigned)servo_id); break;
         }
     } else {
-        sprintf(buffer,"#%03uP%04u!",(unsigned)servo_id,(unsigned)(servo_target == 500U ? 545U : servo_target));
+        sprintf(buffer,"#%03uP%04u!",(unsigned)servo_id,(unsigned)physical_position);
         if (phase == 2U && stable == 1U && servo_target == SERVO_HOME_PULSE) output_id = 0;
     }
     *length = (uint16_t)strlen(buffer);
@@ -191,7 +193,7 @@ static void reset(void) {
     stop_return = 0;
     tick = 0; job_busy = pending_mango = rejected_command = 0;
     actuator.state = SERVO_TASK_IDLE; actuator.id = start_pending = 0;
-    phase = stage = stable = failed = moved = query_valid = 0;
+    phase = stage = stable = failed = moved = 0;
     memset(&motion, 0, sizeof(motion));
     memset(count, 0, sizeof(count)); memset(running, 0, sizeof(running));
     hits = starts = stop_partial_edge = 0; last_move = 0;
@@ -200,32 +202,33 @@ static void reset(void) {
     reply_pending = servo_id = manual_busy = bad_reply = no_reply = 0;
     fail_home = fail_query = home_after_twist = 0;
     move_count = query_count = stops = 0; servo_target = 0;
+    lossy_test=drop_outward=drop_return=0; physical_position=545;
     ++case_id;
 }
 int main(void) {
     u8 id;
     CHECK(MANGO_MAX_PULSES == 26000UL);
     actuator.id = 2;
-    CHECK(position_matches("#002P0590!", 10, 500));
-    CHECK(!position_matches("#002P0591!", 10, 500));
-    CHECK(position_matches("#002P1743!", 10, 1833));
-    CHECK(position_matches("#002P1923!", 10, 1833));
-    CHECK(!position_matches("#002P1742!", 10, 1833));
-    CHECK(!position_matches("#002P1924!", 10, 1833));
+    CHECK(position_matches("#002P0600!", 10, 500));
+    CHECK(!position_matches("#002P0601!", 10, 500));
+    CHECK(position_matches("#002P1733!", 10, 1833));
+    CHECK(position_matches("#002P1933!", 10, 1833));
+    CHECK(!position_matches("#002P1732!", 10, 1833));
+    CHECK(!position_matches("#002P1934!", 10, 1833));
     for (id = 1; id <= 4; ++id) {
         char reply[16];
-        if (id == 2) continue;
+
         actuator.id = id;
-        sprintf(reply, "#%03uP0560!", (unsigned)id); CHECK(position_matches(reply, 10, 500));
-        sprintf(reply, "#%03uP0561!", (unsigned)id); CHECK(!position_matches(reply, 10, 500));
-        sprintf(reply, "#%03uP1853!", (unsigned)id); CHECK(position_matches(reply, 10, 1833));
-        sprintf(reply, "#%03uP1854!", (unsigned)id); CHECK(!position_matches(reply, 10, 1833));
+        sprintf(reply, "#%03uP0600!", (unsigned)id); CHECK(position_matches(reply, 10, 500));
+        sprintf(reply, "#%03uP0601!", (unsigned)id); CHECK(!position_matches(reply, 10, 500));
+        sprintf(reply, "#%03uP1933!", (unsigned)id); CHECK(position_matches(reply, 10, 1833));
+        sprintf(reply, "#%03uP1934!", (unsigned)id); CHECK(!position_matches(reply, 10, 1833));
     }
     for (id = 1; id <= 4; ++id) {
         reset(); inject_busy = 1; stop_partial_edge = 1;
         run_job(id, MANGO_OK);
         CHECK(hits == 1 && starts == 2 && motion.outward_pulses == 43);
-        CHECK(move_count == (id == 2U ? 2U : 3U) && query_count == (id == 2U ? 0U : 6U) && home_after_twist);
+        CHECK(move_count == 3U && query_count == 6U && home_after_twist);
         /* Same ID again, initially 1 mm below threshold: no stale pulses. */
         initial_close = 1;
         run_job(id, MANGO_OK);
@@ -249,15 +252,19 @@ int main(void) {
     reset(); stop_return = 1; run_job(1, MANGO_RETURN_FAILED); CHECK(hits == 1);
     reset(); tick = 0xfffffff0U; run_job(1, MANGO_OK); CHECK(hits == 1);
     reset(); CHECK(!StepperTask_RequestMangoFromISR(0)); CHECK(!StepperTask_RequestMangoFromISR(5));
-    reset(); bad_reply = 1; run_job(2, MANGO_OK); CHECK(home_after_twist && starts == 2);
-    reset(); no_reply = 1; run_job(2, MANGO_OK); CHECK(home_after_twist && !query_count);
+    reset(); bad_reply = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && starts == 2);
+    reset(); no_reply = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && query_count);
     reset(); fail_strike = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(!hits && starts == 2);
     reset(); fail_home = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
-    reset(); tick = 0xfffffff0U; initial_close = 1; run_job(2, MANGO_OK); CHECK(home_after_twist && !query_count);
+    reset(); tick = 0xfffffff0U; initial_close = 1; run_job(2, MANGO_OK); CHECK(home_after_twist && query_count);
     reset(); no_reply = 1; run_job(3, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && starts == 2);
     reset(); fail_query = 1; run_job(1, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && starts == 2);
     reset(); fail_home = 1; run_job(4, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
     reset(); manual_busy = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(!hits && !move_count);
+    reset(); lossy_test=drop_outward=1; run_job(2,MANGO_OK);
+    CHECK(move_count==4 && home_after_twist);
+    reset(); lossy_test=drop_return=1; run_job(2,MANGO_OK);
+    CHECK(move_count==4 && home_after_twist);
     reset(); CHECK(!ServoTask_Start(0) && !ServoTask_Start(5));
     CHECK(ServoTask_Start(1) && !ServoTask_Start(2));
     ServoTask_Cancel(); CHECK(!ServoTask_IsBusy() && !move_count && !stops);

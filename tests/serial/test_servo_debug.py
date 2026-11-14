@@ -89,7 +89,7 @@ def simulate(number, mode, fail_move=False, fail_read=False, position_offset=0,
         cpu.emu_start(symbols["ServoDebug_Process"] | 1, 0x1000, count=100000)
         if not support["read"](cpu, "servo_debug_busy"):
             if mode is None:
-                assert mode_queries == 3 and not moves
+                assert mode_queries == 3
             if stuck_outward:
                 outward_ticks = [t for p, t in zip(moves, move_ticks) if p in (1833, 2500)]
                 assert len(outward_ticks) <= 4
@@ -105,20 +105,20 @@ for number, mode in [(1, 2), (2, 2), (3, 1), (4, 1)]:
     assert simulate(number, mode) == ([500, 1833, 500], [])
 assert simulate(2, 1) == ([500, 1833, 500], [])
 assert simulate(2, 3) == ([500, 2500, 500], [])
-assert simulate(2, None) == ([], [])
+assert simulate(2, None) == ([500, 1833, 500], [])
 assert simulate(2, 7) == ([], [])
-assert simulate(2, 2, fail_move=True) == ([500, 1833, 500], [])
+assert simulate(2, 2, fail_move=True) == ([500, 1833, 1833, 1833, 500], [])
 assert simulate(2, 2, fail_read=True) == ([500, 500], [])
-assert simulate(2, 2, position_offset=90) == ([500, 1833, 500], [])
-assert simulate(2, 2, position_offset=91) == ([500, 500], [])
+assert simulate(2, 2, position_offset=100) == ([500, 1833, 500], [])
+assert simulate(2, 2, position_offset=101) == ([500]*6, [])
 assert simulate(1, 7) == ([], [])
-assert simulate(3, None) == ([], [])
-assert simulate(4, 1, fail_move=True) == ([500, 1833, 500], [])
+assert simulate(3, None) == ([500, 1833, 500], [])
+assert simulate(4, 1, fail_move=True) == ([500, 1833, 1833, 1833, 500], [])
 assert simulate(1, 2, fail_read=True) == ([500, 500], [])
 assert simulate(2, 2, stuck_outward=1) == ([500, 1833, 1833, 500], [])
-assert simulate(2, 2, stuck_outward=3) == ([500, 1833, 1833, 1833, 1833, 500], [])
-assert simulate(2, 2, stuck_outward=99) == ([500, 1833, 1833, 1833, 1833, 500], [])
+assert simulate(2, 2, stuck_outward=3) == ([500, 1833, 1833, 1833, 500], [])
+assert simulate(2, 2, stuck_outward=99) == ([500, 1833, 1833, 1833, 500], [])
 assert simulate(2, 3, stuck_outward=1) == ([500, 2500, 2500, 500], [])
-assert simulate(3, 1, stuck_outward=99) == ([500, 1833, 500], [])
-assert simulate(2, 2, stuck_outward=99, stuck_position=542) == ([500, 1833, 500], [])
-print("PASS: S1-S4 feedback, mode timeout cancels after 3 queries; S2 P0541 retries and tolerance (22 scenarios)")
+assert simulate(3, 1, stuck_outward=99) == ([500, 1833, 1833, 1833, 500], [])
+assert simulate(2, 2, stuck_outward=99, stuck_position=542) == ([500, 1833, 1833, 1833, 500], [])
+print("PASS: S1-S4 feedback, mode retries and fallback; all-ID stalled retries and tolerance (22 scenarios)")

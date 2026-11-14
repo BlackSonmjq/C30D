@@ -2,10 +2,13 @@
 #include "usartx.h"
 #include "usart.h"
 
-/* IDs 1/3/4: home, half turn, home. ID 2: timed half turn, home.
+/* All IDs: feedback-confirmed home, half turn, home.
  * Existing 270-degree position modes are configured externally. */
 static volatile ServoTask_Data actuator = {0, SERVO_TASK_IDLE};
-static uint8_t start_pending, phase, stage, stable, failed, moved, query_valid;
+static uint8_t start_pending, phase, stage, stable, failed, moved;
+static uint8_t motion_retries, stalled_samples, position_seen;
+static uint16_t last_position;
+static TickType_t last_motion_sent;
 static TickType_t move_started, query_started;
 
 uint8_t ServoTask_IsBusy(void)
@@ -35,7 +38,7 @@ void ServoTask_Cancel(void)
     taskENTER_CRITICAL();
     id = actuator.id;
     stop = actuator.state == SERVO_TASK_RUNNING && moved;
-    start_pending = phase = stage = stable = failed = moved = query_valid = 0;
+    start_pending = phase = stage = stable = failed = moved = 0;
     actuator.id = 0;
     actuator.state = SERVO_TASK_IDLE;
     taskEXIT_CRITICAL();
@@ -57,8 +60,7 @@ void ServoTask_GetData(ServoTask_Data *data)
 static uint8_t position_matches(const char *frame, uint16_t length, uint16_t target)
 {
     unsigned i, id = 0, position = 0;
-    int error, tolerance = actuator.id == 2U ? SERVO_2_POSITION_TOLERANCE :
-        (target == SERVO_HOME_PULSE ? 60 : 20);
+    int error, tolerance = SERVO_POSITION_TOLERANCE;
     if (length != 10U || frame[0] != '#' || frame[4] != 'P' || frame[9] != '!') return 0;
     for (i = 1; i <= 8; ++i) {
         if (i == 4U) continue;
@@ -70,6 +72,12 @@ static uint8_t position_matches(const char *frame, uint16_t length, uint16_t tar
     any_printf(USART1, "SERVO %u phase=%u pos=%u target=%u\r\n",
                (unsigned)actuator.id, (unsigned)phase, (unsigned)position, (unsigned)target);
     error = (int)position - (int)target;
+    if (position_seen && (error < -tolerance || error > tolerance) &&
+        (int)position-(int)last_position >= -5 && (int)position-(int)last_position <= 5)
+        ++stalled_samples;
+    else stalled_samples=0;
+    position_seen=1;
+    last_position=(uint16_t)position;
     return error >= -tolerance && error <= tolerance;
 }
 
@@ -97,8 +105,8 @@ void servo_task(void *pvParameters)
     for (;;) {
         if (start_pending) {
             start_pending = 0;
-            phase = stage = stable = failed = moved = query_valid = 0;
-            if (actuator.id == 2U) phase = 1; /* No feedback or initial homing. */
+            phase = stage = stable = failed = moved = 0;
+
         }
         if (actuator.state == SERVO_TASK_RUNNING) {
             target = phase == 1U ? SERVO_HALF_TURN_PULSE : SERVO_HOME_PULSE;
@@ -111,36 +119,37 @@ void servo_task(void *pvParameters)
                 if (Servo_MovePulse(actuator.id, target, SERVO_MOVE_MS) != SERVO_OK) {
                     phase_failed();
                 } else {
-                    move_started = xTaskGetTickCount();
+                    move_started = last_motion_sent = xTaskGetTickCount();
+                    motion_retries=stalled_samples=position_seen=0;
                     stable = 0;
                     stage = 1;
-                }
-            } else if (actuator.id == 2U) {
-                /* Time-based completion; never query position for servo 2. */
-                if ((TickType_t)(now - move_started) >= pdMS_TO_TICKS(SERVO_2_DELAY_MS)) {
-                    Servo_ClearRx();
-                    if (phase == 1U) { phase = 2; stage = 0; }
-                    else {
-                        actuator.state = failed ? SERVO_TASK_ERROR : SERVO_TASK_DONE;
-                        any_printf(USART1, "SERVO 2 timed sequence finished error=%u\r\n", (unsigned)failed);
-                    }
                 }
             } else if ((TickType_t)(now - move_started) >= pdMS_TO_TICKS(MANGO_SERVO_PHASE_TIMEOUT_MS)) {
                 phase_failed();
             } else if (stage == 1U &&
-                       (TickType_t)(now - move_started) >= pdMS_TO_TICKS(SERVO_MOVE_MS)) {
+                       (TickType_t)(now - last_motion_sent) >= pdMS_TO_TICKS(SERVO_MOVE_MS)) {
                 Servo_ClearRx();
                 if (Servo_ReadPosition(actuator.id) != SERVO_OK) {
                     phase_failed();
                 } else {
                     query_started = xTaskGetTickCount();
-                    query_valid = 0;
                     stage = 2;
                 }
             } else if (stage == 2U) {
                 if (Servo_GetFrame(frame, sizeof(frame), &length) == SERVO_OK) {
-                    query_valid = position_matches(frame, length, target);
-                    stable = query_valid ? stable + 1U : 0U;
+                    stable = position_matches(frame, length, target) ? stable + 1U : 0U;
+                    /* Retry a stalled absolute target within the original
+                     * deadline, using the same feedback policy as manual S1..S4. */
+                    if (!stable && stalled_samples>=1U && motion_retries<2U &&
+                        (TickType_t)(now-move_started)+pdMS_TO_TICKS(SERVO_MOVE_MS+300U)<pdMS_TO_TICKS(MANGO_SERVO_PHASE_TIMEOUT_MS)) {
+                        Servo_ClearRx();
+                        ++motion_retries;
+                        stalled_samples=0;
+                        if (Servo_MovePulse(actuator.id,target,SERVO_MOVE_MS)!=SERVO_OK) phase_failed();
+                        else { last_motion_sent=xTaskGetTickCount(); stage=1; }
+                        any_printf(USART1,"SERVO %u motion retry=%u target=%u\r\n",
+                                   (unsigned)actuator.id,(unsigned)motion_retries,(unsigned)target);
+                    }
                     if (stable >= 2U) {
                         Servo_ClearRx();
                         if (phase < 2U) { ++phase; stage = 0; }
@@ -153,7 +162,7 @@ void servo_task(void *pvParameters)
                 }
                 if (stage == 2U && actuator.state == SERVO_TASK_RUNNING &&
                     (TickType_t)(now - query_started) >= pdMS_TO_TICKS(MANGO_SERVO_QUERY_MS)) {
-                    if (!query_valid) stable = 0;
+                    /* A missing query does not invalidate the last valid sample. */
                     stage = 1;
                 }
             }

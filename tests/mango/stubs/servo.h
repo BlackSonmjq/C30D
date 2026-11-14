@@ -16,3 +16,7 @@ Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length);
 Servo_Result Servo_Stop(uint8_t id);
 void Servo_ClearRx(void);
 #endif
+
+#ifndef SERVO_POSITION_TOLERANCE
+#define SERVO_POSITION_TOLERANCE 100U
+#endif

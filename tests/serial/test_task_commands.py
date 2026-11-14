@@ -13,7 +13,7 @@ from unicorn.arm_const import UC_ARM_REG_LR, UC_ARM_REG_SP
 
 ROOT = Path(__file__).resolve().parents[2]
 FIRMWARE = Path(sys.argv[1]) if len(sys.argv) > 1 else (
-    ROOT.parent / "C30D-develop-EIDE/build/FreeRTOS/WHEELTEC.axf"
+    ROOT.parent.parent / "C30D_EIDE/build/FreeRTOS/WHEELTEC.axf"
 )
 UART1 = 0x40011000
 with FIRMWARE.open("rb") as stream:
@@ -65,7 +65,7 @@ for number in range(1, 5):
     check(read(cpu, "job_busy") == 1)
     check(read(cpu, "pending_mango") == number)
     check(read(cpu, "pending_laser") == 0)
-    check(read(cpu, "usart3_forward_write", 2) == 0)
+    check("usart3_forward_write" not in symbols)  # USART3 belongs to the camera.
 
 cpu = fresh()
 receive(cpu, "K1K2K3K4")

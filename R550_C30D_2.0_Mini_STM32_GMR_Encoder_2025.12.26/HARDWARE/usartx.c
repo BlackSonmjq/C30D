@@ -3,15 +3,16 @@
 #include "distance_protocol.h"
 #include "distance_task.h"
 #include "servo.h"
+#include "camera_protocol.h"
 #include "servo_task.h"
 #include "stepper_task.h"
 #include "usart.h"
 #include <stdio.h>
 #include <string.h>
 
-/* USART1 prints diagnostics; USART3 independently forwards incoming bytes. */
-/* Temporary raw USART1 -> USART3 bridge; set to 0 to restore diagnostics. */
-#define USART3_RAW_FORWARD_ENABLED 1
+/* USART1 handles upper-computer commands/logs. USART3 receives camera frames.
+ * Keep the legacy bridge disabled while USART3 is connected to the camera. */
+#define USART3_RAW_FORWARD_ENABLED 0
 #define USART3_FORWARD_SIZE 1024U
 #if USART3_RAW_FORWARD_ENABLED
 static volatile uint8_t usart3_forward[USART3_FORWARD_SIZE];
@@ -19,8 +20,6 @@ static volatile uint16_t usart3_forward_read, usart3_forward_write;
 static volatile uint32_t usart3_forward_dropped;
 #endif
 #define USART1_BINARY_FEEDBACK_ENABLED 0
-#define SERVO_DEBUG_2_RETRY_LIMIT 3U
-#define SERVO_DEBUG_2_RETRY_MS 500U
 static DistanceProtocol_Receiver usart3_distance_receiver;
 static volatile uint32_t usart3_rx_bytes, usart3_uart_errors, usart3_error_flags;
 static volatile uint8_t usart3_raw[USART3_RAW_CAPTURE_SIZE], usart3_raw_write, usart3_raw_length;
@@ -70,9 +69,9 @@ static u8 ServoDebug_Mode(const char *frame, uint16_t length, u8 id, u8 *mode)
 
 static void ServoDebug_Process(void)
 {
-    static u8 id, phase, all_home, stage, attempts, stable, failed, query_valid, mode_reads, requested_mode;
-    static TickType_t move_started, query_started, last_command;
-    static u8 position_retries;
+    static u8 id, phase, all_home, stage, attempts, stable, failed, mode_reads, requested_mode;
+    static TickType_t move_started, query_started, last_motion_sent;
+    static u8 motion_retries, stalled_samples, position_seen;
     static uint16_t last_position, half_turn_target;
     static Servo_Diagnostics mode_rx_start;
     Servo_Diagnostics mode_rx_end;
@@ -88,7 +87,7 @@ static void ServoDebug_Process(void)
         phase=all_home?3U:1U; stage=all_home?0U:10U; attempts=stable=failed=0; last_position=0;
         half_turn_target=SERVO_HALF_TURN_PULSE;
         mode_reads=0;
-
+        any_printf(USART1,"SERVO debug=dma-feedback-3 request=%u\r\n",(unsigned)request);
     }
     if (request>=6U && request<=9U) {
         id=request-5U; requested_mode=id<=2U?2U:1U; phase=1; stage=20;
@@ -150,8 +149,10 @@ static void ServoDebug_Process(void)
         return;
     }
     if (stage==11U) {
-        if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK &&
-            ServoDebug_Mode(frame,length,id,&mode)) {
+        result=Servo_GetFrame(frame,sizeof(frame),&length);
+        if (result==SERVO_OK)
+            any_printf(USART1,"SERVO %u mode reply: %s\r\n",(unsigned)id,frame);
+        if (result==SERVO_OK && ServoDebug_Mode(frame,length,id,&mode)) {
             if (mode<=4U) {
                 half_turn_target=mode>=3U ? 2500U : SERVO_HALF_TURN_PULSE;
                 any_printf(USART1,"SERVO %u mode=%u target180=%u\r\n",(unsigned)id,(unsigned)mode,(unsigned)half_turn_target);
@@ -164,16 +165,9 @@ static void ServoDebug_Process(void)
                 __set_PRIMASK(mask); return;
             }
         } else if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(600U)) {
-            Servo_ClearRx();
-            if (mode_reads<3U) {
-                any_printf(USART1,"SERVO %u mode read retry=%u\r\n",(unsigned)id,(unsigned)(mode_reads+1U));
-                stage=10; return;
-            }
-            any_printf(USART1,"SERVO %u MODE NOT CONFIRMED; motion cancelled\r\n",(unsigned)id);
-            phase=0;
-            mask=__get_PRIMASK(); __disable_irq();
-            if (!servo_debug_pending) servo_debug_busy=0;
-            __set_PRIMASK(mask);
+            if (mode_reads<3U) { stage=10; return; }
+            any_printf(USART1,"SERVO %u mode unknown: assuming 270deg target180=%u\r\n",(unsigned)id,(unsigned)half_turn_target);
+            Servo_ClearRx(); stage=0;
         }
         return;
     }
@@ -181,40 +175,51 @@ static void ServoDebug_Process(void)
     if (stage==0U) {
         Servo_ClearRx();
         result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
-        ++attempts; stable=0; move_started=now; last_command=now; position_retries=0; stage=1;
+        any_printf(USART1,"SERVO cmd=#%03uP%04uT%04u! tx=%u\r\n",
+                   (unsigned)id,(unsigned)target,(unsigned)SERVO_MOVE_MS,(unsigned)result);
+        ++attempts; stable=0; move_started=last_motion_sent=now; stage=1;
+        motion_retries=0; stalled_samples=0; position_seen=0;
         any_printf(USART1,"SERVO %u target=%u attempt=%u tx=%u\r\n",(unsigned)id,(unsigned)target,(unsigned)attempts,(unsigned)result);
         return;
     }
     if (stage==1U) {
-        if ((TickType_t)(now-last_command)<pdMS_TO_TICKS(SERVO_MOVE_MS)) return;
+        if ((TickType_t)(now-last_motion_sent)<pdMS_TO_TICKS(SERVO_MOVE_MS)) return;
         Servo_ClearRx(); result=Servo_ReadPosition(id);
-        query_started=now; stage=2; query_valid=0;
-        if (result!=SERVO_OK) stable=0;
+        query_started=now; stage=2;
         return;
     }
     if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK) {
         if (ServoDebug_Position(frame,length,id,&position)) {
             int error=(int)position-(int)target;
-            /* Endpoint feedback can stop above P0500 (observed P0544/0545).
-             * Keep midpoint tolerance tighter; do not alter servo calibration. */
-            int tolerance=id==2U ? SERVO_2_POSITION_TOLERANCE :
-                ((target==SERVO_HOME_PULSE || target==2500U) ? 60 : 20);
-            query_valid=1;
+            /* Use the same arrival tolerance for every servo and target. */
+            int tolerance=(int)SERVO_POSITION_TOLERANCE;
+            /* A valid but unchanged position far from the target can indicate
+             * a lost motion command. Retry the same absolute target at most
+             * twice, while retaining the original 3 s phase deadline. */
+            if (position_seen && (error < -tolerance || error > tolerance) &&
+                (int)position-(int)last_position >= -5 &&
+                (int)position-(int)last_position <= 5) {
+                ++stalled_samples;
+            } else {
+                stalled_samples=0;
+            }
             last_position=position;
+            position_seen=1;
             stable=(error>=-tolerance && error<=tolerance) ? stable+1U : 0U;
             any_printf(USART1,"SERVO %u pos=%u target=%u stable=%u\r\n",(unsigned)id,(unsigned)position,(unsigned)target,(unsigned)stable);
             arrived=stable>=2U;
-            /* Retry the unchanged absolute target only for S2 stuck at P0541.
-             * Preserve the original phase deadline; wait for each resent move. */
-            if (id==2U && !all_home && phase==2U && position==541U && !stable &&
-                position_retries<SERVO_DEBUG_2_RETRY_LIMIT &&
-                (TickType_t)(now-last_command)>=pdMS_TO_TICKS(SERVO_DEBUG_2_RETRY_MS) &&
-                (TickType_t)(now-move_started)<pdMS_TO_TICKS(3000U)) {
-                Servo_ClearRx(); result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
-                ++position_retries; last_command=xTaskGetTickCount();
-                stable=query_valid=0; stage=1;
-                any_printf(USART1,"SERVO 2 retry target=%u pos=541 retry=%u tx=%u\r\n",
-                           (unsigned)target,(unsigned)position_retries,(unsigned)result);
+            if (!arrived && stalled_samples>=1U && motion_retries<2U &&
+                (TickType_t)(now-move_started)+pdMS_TO_TICKS(SERVO_MOVE_MS+300U)<pdMS_TO_TICKS(3000U)) {
+                Servo_ClearRx();
+                result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
+                ++motion_retries;
+                stalled_samples=0;
+                stable=0;
+                last_motion_sent=now;
+                stage=1;
+                any_printf(USART1,"SERVO %u motion retry=%u pos=%u target=%u tx=%u\r\n",
+                           (unsigned)id,(unsigned)motion_retries,(unsigned)position,
+                           (unsigned)target,(unsigned)result);
                 return;
             }
         }
@@ -235,8 +240,8 @@ static void ServoDebug_Process(void)
         if (!all_home && phase==2U) { phase=3; stage=0; attempts=stable=0; last_position=0; return; }
     } else {
         if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(150U)) {
-            /* Missing/malformed replies break consecutive-confirmation count. */
-            if (!query_valid) stable=0;
+            /* Count successive valid positions across missing replies. An
+             * out-of-range position still resets stable; the 3 s bound remains. */
             stage=1;
         }
         return;
@@ -774,117 +779,32 @@ void uart5_init(u32 bound)
   USART_ITConfig(UART5, USART_IT_RXNE, ENABLE); //Open the serial port to accept interrupts //�������ڽ����ж�
   USART_Cmd(UART5, ENABLE);                     //Enable serial port 5 //ʹ�ܴ���5
 }
-/**************************************************************************
-Function: Serial port 1 receives interrupted
-Input   : none
-Output  : none
-�������ܣ�����1�����ж�
-��ڲ�������
-�� �� ֵ����
-**************************************************************************/
+/* Camera RX on USART3 (PD9), via the onboard CH9102 USB bridge.
+ * ISR only parses bytes and updates diagnostics. No RTOS calls, OLED writes
+ * or motion requests here. UART errors invalidate the partial frame so later
+ * traffic can resynchronize. See camera_protocol.h for integration rules.
+ */
+static Camera_Receiver camera_receiver;
+void Camera_GetData(Camera_Data *data)
+{
+    uint32_t mask=__get_PRIMASK();
+    if (!data) return;
+    __disable_irq(); *data=camera_receiver.data; __set_PRIMASK(mask);
+}
 int USART3_IRQHandler(void)
 {
-#if USART3_RAW_FORWARD_ENABLED
-    /* Drain without blocking the USART1 receive interrupt. */
-    if (USART_GetITStatus(USART3, USART_IT_TXE) != RESET) {
-        if (usart3_forward_read != usart3_forward_write) {
-            USART3->DR = usart3_forward[usart3_forward_read];
-            usart3_forward_read = (usart3_forward_read + 1U) % USART3_FORWARD_SIZE;
-        } else {
-            USART_ITConfig(USART3, USART_IT_TXE, DISABLE);
-        }
+    uint32_t sr=USART3->SR;
+    if (sr & (USART_SR_RXNE|USART_SR_ORE|USART_SR_FE|USART_SR_NE|USART_SR_PE)) {
+        uint8_t byte=(uint8_t)USART3->DR;
+        if (sr & (USART_SR_ORE|USART_SR_FE|USART_SR_NE|USART_SR_PE)) {
+            ++camera_receiver.data.uart_errors;
+            ++camera_receiver.data.bytes;
+            camera_receiver.length=0;
+        } else Camera_Push(&camera_receiver,byte);
     }
-#endif
-	if(USART_GetITStatus(USART3, USART_IT_RXNE) != RESET) //Check if data is received //�ж��Ƿ���յ�����
-	{
-		u8 Usart_Receive;
-		static u8 Count;
-		static u8 rxbuf[11];
-		int check=0,error=1,i;
-		
-		Usart_Receive = USART_ReceiveData(USART3); //Read the data //��ȡ����
-        /* Receive-only probe request, handled in task context. */
-        if (Count == 0 && Usart_Receive == 's') {
-            servo_probe_command = 1;
-            return 0;
-        }
-		if(SysVal.Time_count<CONTROL_DELAY)
-			// Data is not processed until 10 seconds after startup
-		  //����10��ǰ����������
-			return 0;	
-			
-		//Fill the array with serial data
-		//����������������
-    rxbuf[Count]=Usart_Receive;  
-		
-		//Ensure that the first data in the array is FRAME_HEADER
-		//ȷ�������һ������ΪFRAME_HEADER
-    if(Usart_Receive == FRAME_HEADER||Count>0) 
-			Count++; 
-		else 
-			Count=0;
-		
-		if (Count == 11) //Verify the length of the packet //��֤���ݰ��ĳ���
-		{   
-				Count=0; //Prepare for the serial port data to be refill into the array //Ϊ����������������������׼��
-				if(rxbuf[10] == FRAME_TAIL) //Verify the frame tail of the packet //��֤���ݰ���֡β
-				{			
-					for(i=0; i<9; i++)
-					{
-						//XOR bit check, used to detect data error
-						//���λУ�飬���ڼ�������Ƿ����
-						check=rxbuf[i]^check; 
-					}
-					if(check==rxbuf[9]) 
-						//XOR bit check successful
-					  //���λУ��ɹ�
-					  error=0; 
-					
-					if(error==0)	 
-				  {		
-						float Vz;
-            if(Usart1_ON_Flag==0)
-						{	
-							//Serial port 1 controls flag position 1, other flag position 0
-							//����1���Ʊ�־λ��1��������־λ��0
-							//Usart_ON_Flag=1;
-							Usart1_ON_Flag=1;
-							APP_ON_Flag=0;
-							PS2_ON_Flag=0;
-							Remote_ON_Flag=0;
-							CAN_ON_Flag=0;
-							
-						}		
-						command_lost_count=0;
-						//Calculate the 3-axis target velocity from the serial data, which is divided into 8-bit high and 8-bit low units mm/s
-						//�Ӵ�������������Ŀ���ٶȣ��ָ�8λ�͵�8λ ��λmm/s
-						Move_X=XYZ_Target_Speed_transition(rxbuf[3],rxbuf[4]);
-						Move_Y=XYZ_Target_Speed_transition(rxbuf[5],rxbuf[6]);
-						Vz    =XYZ_Target_Speed_transition(rxbuf[7],rxbuf[8]);
-						if(Car_Mode==Akm_Car)
-						{
-							Move_Z=Vz_to_Akm_Angle(Move_X, Vz);
-						}
-						else
-						{
-							Move_Z=XYZ_Target_Speed_transition(rxbuf[7],rxbuf[8]);
-						}		
-					}
-			  }
-		 }
-	}
-		return 0;	
+    return 0;
 }
 
-/**************************************************************************
-Function: Refresh the OLED screen
-Input   : none
-Output  : none
-�������ܣ�����2�����ж�
-��ڲ�������
-����  ֵ����
-**************************************************************************/
-//BT04-A������ATָ������˺���.�������ӷ�����Ͽ�����
 static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 {
 	#define DEBUG_BT04ACommand 0

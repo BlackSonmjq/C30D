@@ -1,3 +1,4 @@
+/* Integration: task diagnostics use USART1. USART3 is the camera data link. */
 #include "stepper_task.h"
 #include "distance_task.h"
 #include "servo_task.h"
@@ -81,7 +82,7 @@ static void finish_job(StepperTask_Data *job)
     u32 primask;
     job->state = STEPPER_RETURNED;
     publish(job);
-    any_printf(USART3, "mango %u done result=%u out=%lu back=%lu\r\n",
+    any_printf(USART1, "mango %u done result=%u out=%lu back=%lu\r\n",
                (unsigned int)job->mango_id, (unsigned int)job->result,
                (unsigned long)job->outward_pulses, (unsigned long)job->pulses);
     /* 完成日志发送后再允许新请求，保持串口反馈和任务接收顺序一致。 */
@@ -112,12 +113,12 @@ static void begin_return(StepperTask_Data *job, TickType_t *phase_started)
         DistanceTask_SelectLaser(0);
         job->result = MANGO_RETURN_FAILED;
         job->state = STEPPER_FAULT;
-        any_printf(USART3, "mango %u fault return failed\r\n", (unsigned int)job->mango_id);
+        any_printf(USART1, "mango %u fault return failed\r\n", (unsigned int)job->mango_id);
         return; /* 原点不确定，保留忙碌锁定，人工检查原点并复位后再运行。 */
     }
     *phase_started = xTaskGetTickCount();
     job->state = STEPPER_RETURNING;
-    any_printf(USART3, "mango %u returning %lu\r\n", (unsigned int)job->mango_id,
+    any_printf(USART1, "mango %u returning %lu\r\n", (unsigned int)job->mango_id,
                (unsigned long)job->outward_pulses);
 }
 
@@ -134,7 +135,7 @@ static void begin_strike(StepperTask_Data *job, TickType_t *phase_started)
     }
     *phase_started = xTaskGetTickCount();
     job->state = STEPPER_STRIKING;
-    any_printf(USART3, "mango %u striking out=%lu\r\n", (unsigned int)job->mango_id,
+    any_printf(USART1, "mango %u striking out=%lu\r\n", (unsigned int)job->mango_id,
                (unsigned long)job->outward_pulses);
 }
 
@@ -170,7 +171,7 @@ void stepper_Task(void *pvParameters)
         rejected = rejected_command;
         rejected_command = 0;
         __set_PRIMASK(primask);
-        if (rejected) any_printf(USART3, "mango busy\r\n");
+        if (rejected) any_printf(USART1, "mango busy\r\n");
         if (laser_busy) any_printf(USART1, "UPPER laser busy\r\n");
         if (laser) any_printf(USART1, "UPPER laser=%u selected\r\n", (unsigned)laser);
 
@@ -186,7 +187,7 @@ void stepper_Task(void *pvParameters)
             DistanceTask_SelectLaser(selected);
             phase_started = xTaskGetTickCount();
             job.state = STEPPER_WAITING_DISTANCE;
-            any_printf(USART3, "mango %u start motor=%s\r\n", (unsigned int)selected,
+            any_printf(USART1, "mango %u start motor=%s\r\n", (unsigned int)selected,
                        job.motor == A4988_MOTOR_Left ? "left" : "right");
         }
 
@@ -204,7 +205,7 @@ void stepper_Task(void *pvParameters)
                     if (StepperMotor_StartMove(job.motor, signed_pulses)) {
                         job.state = STEPPER_MOVING;
                         phase_started = now;
-                        any_printf(USART3, "mango %u approaching\r\n", (unsigned int)job.mango_id);
+                        any_printf(USART1, "mango %u approaching\r\n", (unsigned int)job.mango_id);
                     } else {
                         job.result = MANGO_MOVE_FAILED;
                         begin_return(&job, &phase_started);
@@ -260,7 +261,7 @@ void stepper_Task(void *pvParameters)
                 } else {
                     job.result = MANGO_RETURN_FAILED;
                     job.state = STEPPER_FAULT;
-                    any_printf(USART3, "mango %u fault out=%lu back=%lu\r\n",
+                    any_printf(USART1, "mango %u fault out=%lu back=%lu\r\n",
                                (unsigned int)job.mango_id, (unsigned long)job.outward_pulses,
                                (unsigned long)job.pulses);
                 }

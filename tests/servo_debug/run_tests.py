@@ -1,0 +1,94 @@
+"""Exercise extracted production servo debug logic in Cortex-M4 emulation."""
+from pathlib import Path
+import os, struct, subprocess, sys
+ROOT = Path(__file__).resolve().parents[2]
+BUILD = ROOT / "tests/servo_debug/.build"
+BUILD.mkdir(parents=True,exist_ok=True)
+# Reuse already installed local emulator packages when present.
+sys.path.insert(0, str(BUILD / "python_deps"))
+from elftools.elf.elffile import ELFFile
+from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_INTR
+from unicorn.arm_const import UC_ARM_REG_R0, UC_ARM_REG_R1, UC_ARM_REG_PC, UC_ARM_REG_SP
+BIN = Path(os.environ.get("ARMCC_BIN", "D:/Keil_v5/ARM/ARMCC/bin"))
+source = ROOT / "tests/servo_debug/test_servo_debug.c"
+firmware = ROOT / "R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26"
+includes = [firmware / p for p in ["USER", "CORE", "FWLIB/inc", "FreeRTOS/include", "FreeRTOS/portable/RVDS/ARM_CM4F"]]
+includes += [firmware / p for p in ["SYSTEM/sys", "SYSTEM/delay", "SYSTEM/usart", "HARDWARE", "HARDWARE/ICM20948", "BALANCE", "AutoRecharge"]]
+includes = [ROOT / "tests/servo", BUILD] + includes
+production = (firmware / "HARDWARE/usartx.c").read_text(encoding="utf-8", errors="replace")
+start = production.index("static volatile u8 servo_probe_command")
+end = production.index("SEND_DATA Send_Data;", start)
+(BUILD / "production_logic.inc").write_text(production[start:end], encoding="utf-8")
+subprocess.run([str(BIN / "armcc.exe"), "--cpu", "Cortex-M4.fp", "--c99", "-O0", "-g",
+    "-DSTM32F40_41xxx", "-DUSE_STDPERIPH_DRIVER", "-DARM_MATH_CM4"] +
+    ["-I" + str(p) for p in includes] + ["-c", str(source), "-o", str(BUILD / "test_mango.o")], check=True)
+subprocess.run([str(BIN / "armlink.exe"), "--cpu", "Cortex-M4.fp", "--ro_base", "0x0",
+    "--rw_base", "0x20000000", "--entry", "__main", str(BUILD / "test_mango.o"),
+    "-o", str(BUILD / "test_mango.axf")], check=True)
+
+cpu = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)
+cpu.mem_map(0x0, 0x400000)
+cpu.mem_map(0x20000000, 0x200000)
+with (BUILD / "test_mango.axf").open("rb") as stream:
+    elf = ELFFile(stream)
+    entry = elf.header.e_entry
+    for segment in elf.iter_segments():
+        if segment.header.p_type == "PT_LOAD":
+            cpu.mem_write(segment.header.p_vaddr, segment.data())
+
+def words(address, count):
+    return struct.unpack("<" + "I" * count, cpu.mem_read(address, 4 * count))
+
+def cstring(address):
+    data = bytearray()
+    while True:
+        value = cpu.mem_read(address + len(data), 1)
+        if value == b"\0":
+            return bytes(data)
+        data.extend(value)
+
+output = []
+exited = False
+
+def semihosting(uc, number, _):
+    global exited
+    pc = uc.reg_read(UC_ARM_REG_PC)
+    if bytes(uc.mem_read(pc, 2)) == b"\xab\xbe":
+        uc.reg_write(UC_ARM_REG_PC, (pc + 2) | 1)
+    elif bytes(uc.mem_read(pc - 2, 2)) != b"\xab\xbe":
+        raise RuntimeError(f"Unexpected exception {number} at {pc:#x}")
+    operation = uc.reg_read(UC_ARM_REG_R0)
+    argument = uc.reg_read(UC_ARM_REG_R1)
+    result = 0
+    if operation == 1:  # SYS_OPEN (:tt)
+        result = 1
+    elif operation == 3:  # SYS_WRITEC
+        output.append(bytes(uc.mem_read(argument, 1)))
+    elif operation == 4:  # SYS_WRITE0
+        output.append(cstring(argument))
+    elif operation == 5:  # SYS_WRITE
+        _, address, length = words(argument, 3)
+        output.append(bytes(uc.mem_read(address, length)))
+    elif operation == 9:  # SYS_ISTTY
+        result = 1
+    elif operation == 0x15:  # SYS_GET_CMDLINE
+        address, _ = words(argument, 2)
+        uc.mem_write(address, b"\0")
+        uc.mem_write(argument + 4, struct.pack("<I", 0))
+    elif operation == 0x16:  # SYS_HEAPINFO
+        address, = words(argument, 1)
+        uc.mem_write(address, struct.pack("<IIII", 0x20080000, 0x20100000, 0x201ff000, 0x20100000))
+    elif operation in (0x18, 0x20):  # SYS_EXIT / SYS_EXIT_EXTENDED
+        exited = True
+        uc.emu_stop()
+    elif operation not in (2, 0x13):  # SYS_CLOSE / SYS_ERRNO
+        raise RuntimeError(f"Unsupported semihosting call {operation:#x}")
+    uc.reg_write(UC_ARM_REG_R0, result)
+
+cpu.hook_add(UC_HOOK_INTR, semihosting)
+cpu.reg_write(UC_ARM_REG_SP, 0x201ff000)
+cpu.emu_start(entry | 1, 0xffffffff, timeout=30_000_000, count=20_000_000)
+message = b"".join(output).decode("utf-8", errors="replace")
+print(message, end="")
+if not exited or "PASS:" not in message or "FAIL" in message:
+    raise SystemExit("State machine tests failed or did not finish")

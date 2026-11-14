@@ -1,4 +1,4 @@
-> Current console: USART1 RX (PA10) accepts local task/servo commands; other raw input is forwarded on USART3 TX (PD8). USART1 TX (PA9) prints servo logs only at 115200 8N1. Laser, APP and boot prints are disabled. The distance/rx3 examples below describe earlier configurations.
+> Current console: USART1 RX (PA10) accepts local task/servo commands; USART3 PD8/PD9 is reserved for the camera protocol. USART1 TX (PA9) prints servo logs only at 115200 8N1. Laser, APP and boot prints are disabled. The distance/rx3 examples below describe earlier configurations.
 
 # 串口1任务指令
 
@@ -15,7 +15,7 @@
 
 裸数字 `1～4` 仍仅选激光，`S0`～`S4`、`M1`～`M4` 保持现有舵机调试功能。
 
-S2 now shares S1/S3/S4's manual mode query and home -> 180 degrees -> home sequence, with two consecutive position confirmations per phase and a 3-second phase timeout. S2 keeps its position tolerance of 90. K2 still sends P1833 directly, waits 1500 ms, sends P0500, then waits 1500 ms without querying mode or position. S0 is unchanged.
+S1-S4 and K1-K4 use feedback-confirmed home -> 180 degrees -> home, 500 ms, +/-100. Missing replies preserve valid arrival counts; stalled targets retry at most twice within 3 seconds. K2 no longer uses timed completion.
 
 S1-S4 require a confirmed position mode (1-4); after three unanswered mode queries, motion is cancelled and the busy flag is released. UART4 query reception filters ACKs, echoes, wrong IDs and malformed frames until a matching reply or the existing limits. Whole-frame TX suspends task scheduling while keeping IRQs enabled except for the final direction transition. UART4 IRQ preemption priority remains 2.
 
