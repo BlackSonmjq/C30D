@@ -77,6 +77,8 @@ typedef struct _RECEIVE_DATA_
 }RECEIVE_DATA;
 
 
+/* Manual servo sequence/probe owns UART4; task-context snapshot. */
+u8 USART_ServoControlBusy(void);
 void data_task(void *pvParameters);
 void data_transition(void);
 void USART1_SEND(void);

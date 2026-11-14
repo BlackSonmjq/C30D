@@ -15,6 +15,8 @@
 #define SERVO_COUNT             4U
 #define SERVO_HOME_PULSE        500U
 #define SERVO_HALF_TURN_PULSE   1833U
+#define SERVO_2_DELAY_MS 1500U /* Timed outward and return waits; no position checks. */
+#define SERVO_2_POSITION_TOLERANCE 90U /* Position units, applies to home and turn. */
 #define SERVO_MOVE_MS           500U
 #define SERVO_FRAME_CAPACITY    64U
 
@@ -57,6 +59,8 @@ void Servo_GetDiagnostics(Servo_Diagnostics *data);
 /* Configure transport only: does not change IDs/modes or move any servo.
  * Call once at startup. Send APIs are task-context only and non-reentrant:
  * concurrent send returns BUSY. Application owns request/reply sequencing.
+ * Whole-frame TX suspends task scheduling when the scheduler is started;
+ * IRQs remain enabled except during short RX/TX direction transitions.
  * OK means bytes sent, NOT acknowledged or physical movement completed.
  */
 void Servo_Init(void);
@@ -74,9 +78,11 @@ Servo_Result Servo_Twist(uint8_t id, uint16_t time_ms);
 Servo_Result Servo_Stop(uint8_t id);
 Servo_Result Servo_ReadPosition(uint8_t id);
 
-/* Single-frame mailbox, including terminating NUL. Supports #OK! and #id...!.
+/* Single-frame mailbox, including terminating NUL. Generic commands/probes
+ * accept #OK! and #id...!. PRAD/PMOD queries wait for a valid same-ID position
+ * or mode reply, ignoring ACKs, echoes and unrelated/malformed frames.
  * On BUFFER_TOO_SMALL the frame is retained and *length gives required bytes
- * excluding NUL. RX stops on a complete frame, UART error or byte budget limit.
+ * excluding NUL. RX stops on a matching frame, UART error or byte budget limit.
  * Consume/clear the previous reply before sending the next command.
  * On application reply timeout call ClearRx to cancel reception.
  * No motion-complete inference is made from a reply.

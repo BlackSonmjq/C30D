@@ -1,4 +1,4 @@
-/* Execute the production coordinator and timed pushrod task in ARM emulation.
+/* Execute the production coordinator and servo actuator task in ARM emulation.
  * RTOS delay/timers/sensor/GPIO are deterministic mocks, not physical hardware.
  */
 #include <stdio.h>
@@ -7,15 +7,18 @@
 #include <setjmp.h>
 #define DistanceTask_SelectLaser Mock_SelectLaser
 #define DistanceTask_GetData Mock_GetDistance
-#include "../../R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/pushrod_task.c"
+#include "../../R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/servo_task.c"
 #include "../../R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/stepper_task.c"
 
 static void test_distance_flow(void);
 static void distance_delay(TickType_t ticks);
 static u8 in_distance, stop_return;
 static jmp_buf job_exit, actuator_yield, distance_exit;
-static TickType_t tick, high_at, last_high_duration;
-static uint8_t timed_done_id;
+static TickType_t tick, high_at;
+static uint8_t reply_pending, servo_id, manual_busy, bad_reply, no_reply;
+static uint8_t fail_home, fail_query, home_after_twist;
+static uint16_t servo_target;
+static unsigned int move_count, query_count, stops;
 static unsigned int checks, completed_jobs, hits, starts, case_id, stop_partial_edge;
 static u8 in_actuator, sensor, active_motor, output_id, forced_invalid, initial_close;
 static u8 inject_busy, inject_pulse_limit, fail_return, fail_strike, freeze_motion, jump_clock;
@@ -23,6 +26,8 @@ static u32 count[3], target[3];
 static u8 running[3];
 static s32 last_move;
 static Mango_Result expected_result;
+/* Independent expected values: do not derive boundary inputs from production macros. */
+static const u16 expected_targets[4] = {108, 60, 45, 35};
 /* Hardware direction: left approaches low, right approaches high. */
 static int outward(s32 pulses) { return active_motor == 1 ? pulses < 0 : pulses > 0; }
 
@@ -57,36 +62,69 @@ u8 StepperMotor_StartMove(u8 motor, s32 pulses) {
 }
 void DistanceTask_SelectLaser(uint8_t id) { sensor = id; }
 void DistanceTask_GetData(DistanceTask_Data *data) {
+    u16 threshold = sensor >= 1U && sensor <= 4U ? expected_targets[sensor - 1U] : 60U;
     memset(data, 0, sizeof(*data));
     data->laser_id = sensor;
     data->valid = sensor && !forced_invalid;
     data->status = data->valid ? VL53L0X_OK : VL53L0X_NOT_READY;
-    data->distance_mm = initial_close || (outward(last_move) && count[active_motor] >= 37) ? 150 : 151;
-    if (inject_pulse_limit) data->distance_mm = 151;
+    /* Equality keeps approaching; one millimeter below permits the servo. */
+    data->distance_mm = initial_close || (outward(last_move) && count[active_motor] >= 37) ? threshold - 1U : threshold;
+    if (inject_pulse_limit)
+        data->distance_mm = inject_pulse_limit == 2U && count[active_motor] >= MANGO_MAX_PULSES ? threshold - 1U : threshold;
 }
-Pushrod_Result Pushrod_StartTimed(uint8_t id, uint16_t duration_ms) {
-    CHECK(id == motion.mango_id);
-    CHECK(!running[active_motor]);
-    CHECK(sensor == id);
-    if (fail_strike) return PUSHROD_NOT_INITIALIZED;
-    CHECK(duration_ms == 5000);
-    CHECK(output_id == 0);
-    output_id = id;
-    high_at = tick;
-    timed_done_id = 0;
-    ++hits;
-    return PUSHROD_OK;
+u8 USART_ServoControlBusy(void) { return manual_busy; }
+void Servo_ClearRx(void) { reply_pending = 0; }
+Servo_Result Servo_MovePulse(uint8_t id, uint16_t pulse, uint16_t duration_ms) {
+    unsigned int index = move_count % (id == 2U ? 2U : 3U);
+    CHECK(id == motion.mango_id && !running[active_motor] && sensor == id);
+    CHECK(duration_ms == SERVO_MOVE_MS);
+    if (fail_strike && pulse == SERVO_HALF_TURN_PULSE) return SERVO_TX_TIMEOUT;
+    if (fail_home && hits && pulse == SERVO_HOME_PULSE) return SERVO_TX_TIMEOUT;
+    CHECK(fail_strike || fail_query || bad_reply || no_reply || (id == 2U ?
+          (index == 0U ? pulse == SERVO_HALF_TURN_PULSE : pulse == SERVO_HOME_PULSE) :
+          (index == 0U ? pulse == SERVO_HOME_PULSE :
+          index == 1U ? pulse == SERVO_HALF_TURN_PULSE : pulse == SERVO_HOME_PULSE)));
+    if (id == 2U && pulse == SERVO_HOME_PULSE && hits && !fail_strike)
+        CHECK((TickType_t)(tick-high_at) >= 1500U && (TickType_t)(tick-high_at) <= 1520U);
+    ++move_count;
+    servo_id = id; servo_target = pulse;
+    high_at = tick; output_id = id;
+    if (pulse == SERVO_HALF_TURN_PULSE) ++hits;
+    else if (hits) home_after_twist = 1;
+    return SERVO_OK;
 }
-uint8_t Pushrod_TimedDone(uint8_t id) { return id && id == timed_done_id; }
-Pushrod_Result Pushrod_Stop(uint8_t id) {
-    if (output_id == id) {
-        last_high_duration = tick - high_at;
-        CHECK(last_high_duration >= MANGO_STRIKE_MS);
-        CHECK(last_high_duration <= MANGO_STRIKE_MS + 10);
-        output_id = 0;
+Servo_Result Servo_ReadPosition(uint8_t id) {
+    CHECK(id == servo_id && (TickType_t)(tick-high_at) >= SERVO_MOVE_MS);
+    CHECK(id != 2U); /* Servo 2 must never depend on position feedback. */
+    ++query_count;
+    if (fail_query && servo_target == SERVO_HALF_TURN_PULSE) return SERVO_TX_TIMEOUT;
+    reply_pending = 1;
+    return SERVO_OK;
+}
+Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length) {
+    CHECK(capacity >= 11);
+    if (!reply_pending || (no_reply && servo_target == SERVO_HALF_TURN_PULSE)) return SERVO_NO_FRAME;
+    reply_pending = 0;
+    if (bad_reply && servo_target == SERVO_HALF_TURN_PULSE) {
+        /* ACK, wrong ID, echo, malformed frame and off-target feedback. */
+        switch (query_count % 5U) {
+        case 0: strcpy(buffer,"#OK!"); break;
+        case 1: sprintf(buffer,"#%03uP1833!", (unsigned)(servo_id % 4U + 1U)); break;
+        case 2: sprintf(buffer,"#%03uP1833T0500!",(unsigned)servo_id); break;
+        case 3: sprintf(buffer,"#%03uP18x3!",(unsigned)servo_id); break;
+        default: sprintf(buffer,"#%03uP1200!",(unsigned)servo_id); break;
+        }
+    } else {
+        sprintf(buffer,"#%03uP%04u!",(unsigned)servo_id,(unsigned)(servo_target == 500U ? 545U : servo_target));
+        if (phase == 2U && stable == 1U && servo_target == SERVO_HOME_PULSE) output_id = 0;
     }
-    if(timed_done_id == id) timed_done_id = 0;
-    return PUSHROD_OK;
+    *length = (uint16_t)strlen(buffer);
+    return SERVO_OK;
+}
+Servo_Result Servo_Stop(uint8_t id) {
+    CHECK(id == servo_id || fail_strike);
+    output_id = 0; ++stops;
+    return SERVO_OK;
 }
 void vTaskDelay(TickType_t ticks) {
     u32 delta;
@@ -94,12 +132,6 @@ void vTaskDelay(TickType_t ticks) {
     if (in_actuator) longjmp(actuator_yield, 1);
     CHECK(ticks == 10);
     tick += ticks;
-    /* Timer IRQ stops the physical output even before the task is resumed. */
-    if(output_id && (TickType_t)(tick - high_at) >= MANGO_STRIKE_MS) {
-        timed_done_id = output_id;
-        output_id = 0;
-        last_high_duration = MANGO_STRIKE_MS;
-    }
     if (jump_clock && motion.state == STEPPER_MOVING) {
         tick += MANGO_MOTION_TIMEOUT_MS;
         jump_clock = 0;
@@ -126,8 +158,9 @@ void vTaskDelay(TickType_t ticks) {
         running[active_motor] = 0;
     }
     in_actuator = 1;
-    if (!setjmp(actuator_yield)) pushrod_task(NULL);
+    if (!setjmp(actuator_yield)) servo_task(NULL);
     in_actuator = 0;
+    if (servo_id == 2U && (TickType_t)(tick-high_at) >= SERVO_MOVE_MS) output_id = 0;
     if (motion.state == STEPPER_FAULT) {
         CHECK(expected_result == MANGO_RETURN_FAILED);
         CHECK(StepperTask_IsBusy());
@@ -157,23 +190,43 @@ static void run_job(u8 id, Mango_Result result) {
 static void reset(void) {
     stop_return = 0;
     tick = 0; job_busy = pending_mango = rejected_command = 0;
-    actuator.state = PUSHROD_TASK_IDLE; actuator.id = start_pending = 0;
+    actuator.state = SERVO_TASK_IDLE; actuator.id = start_pending = 0;
+    phase = stage = stable = failed = moved = query_valid = 0;
     memset(&motion, 0, sizeof(motion));
     memset(count, 0, sizeof(count)); memset(running, 0, sizeof(running));
     hits = starts = stop_partial_edge = 0; last_move = 0;
     forced_invalid = initial_close = inject_busy = inject_pulse_limit = 0;
     fail_return = fail_strike = freeze_motion = jump_clock = output_id = sensor = 0;
-    last_high_duration = 0;
-    timed_done_id = 0;
+    reply_pending = servo_id = manual_busy = bad_reply = no_reply = 0;
+    fail_home = fail_query = home_after_twist = 0;
+    move_count = query_count = stops = 0; servo_target = 0;
     ++case_id;
 }
 int main(void) {
     u8 id;
+    CHECK(MANGO_MAX_PULSES == 26000UL);
+    actuator.id = 2;
+    CHECK(position_matches("#002P0590!", 10, 500));
+    CHECK(!position_matches("#002P0591!", 10, 500));
+    CHECK(position_matches("#002P1743!", 10, 1833));
+    CHECK(position_matches("#002P1923!", 10, 1833));
+    CHECK(!position_matches("#002P1742!", 10, 1833));
+    CHECK(!position_matches("#002P1924!", 10, 1833));
+    for (id = 1; id <= 4; ++id) {
+        char reply[16];
+        if (id == 2) continue;
+        actuator.id = id;
+        sprintf(reply, "#%03uP0560!", (unsigned)id); CHECK(position_matches(reply, 10, 500));
+        sprintf(reply, "#%03uP0561!", (unsigned)id); CHECK(!position_matches(reply, 10, 500));
+        sprintf(reply, "#%03uP1853!", (unsigned)id); CHECK(position_matches(reply, 10, 1833));
+        sprintf(reply, "#%03uP1854!", (unsigned)id); CHECK(!position_matches(reply, 10, 1833));
+    }
     for (id = 1; id <= 4; ++id) {
         reset(); inject_busy = 1; stop_partial_edge = 1;
         run_job(id, MANGO_OK);
         CHECK(hits == 1 && starts == 2 && motion.outward_pulses == 43);
-        /* Same ID again, initially at threshold: do not return stale pulses. */
+        CHECK(move_count == (id == 2U ? 2U : 3U) && query_count == (id == 2U ? 0U : 6U) && home_after_twist);
+        /* Same ID again, initially 1 mm below threshold: no stale pulses. */
         initial_close = 1;
         run_job(id, MANGO_OK);
         CHECK(hits == 2 && motion.outward_pulses == 0 && starts == 2);
@@ -183,12 +236,31 @@ int main(void) {
     reset(); run_job(3, MANGO_SENSOR_LOST); CHECK(!hits && starts == 2);
     reset(); inject_pulse_limit = 1; run_job(1, MANGO_PULSE_LIMIT);
     CHECK(!hits && motion.outward_pulses == MANGO_MAX_PULSES);
+    /* All four IDs: reaching 26000 pulses and a distance below threshold must return,
+     * never start the servo. Return the same pulse count on both motors. */
+    for (id = 1; id <= 4; ++id) {
+        reset(); inject_pulse_limit = 2; run_job(id, MANGO_PULSE_LIMIT);
+        CHECK(!hits && !move_count && starts == 2);
+        CHECK(motion.outward_pulses == 26000UL && motion.pulses == 26000UL);
+    }
     reset(); fail_strike = 1; run_job(4, MANGO_PUSHROD_FAILED); CHECK(!hits && starts == 2);
     reset(); jump_clock = 1; run_job(1, MANGO_MOTION_TIMEOUT); CHECK(!hits && starts == 2);
     reset(); fail_return = 1; run_job(3, MANGO_RETURN_FAILED); CHECK(hits == 1);
     reset(); stop_return = 1; run_job(1, MANGO_RETURN_FAILED); CHECK(hits == 1);
     reset(); tick = 0xfffffff0U; run_job(1, MANGO_OK); CHECK(hits == 1);
     reset(); CHECK(!StepperTask_RequestMangoFromISR(0)); CHECK(!StepperTask_RequestMangoFromISR(5));
+    reset(); bad_reply = 1; run_job(2, MANGO_OK); CHECK(home_after_twist && starts == 2);
+    reset(); no_reply = 1; run_job(2, MANGO_OK); CHECK(home_after_twist && !query_count);
+    reset(); fail_strike = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(!hits && starts == 2);
+    reset(); fail_home = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
+    reset(); tick = 0xfffffff0U; initial_close = 1; run_job(2, MANGO_OK); CHECK(home_after_twist && !query_count);
+    reset(); no_reply = 1; run_job(3, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && starts == 2);
+    reset(); fail_query = 1; run_job(1, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && starts == 2);
+    reset(); fail_home = 1; run_job(4, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
+    reset(); manual_busy = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(!hits && !move_count);
+    reset(); CHECK(!ServoTask_Start(0) && !ServoTask_Start(5));
+    CHECK(ServoTask_Start(1) && !ServoTask_Start(2));
+    ServoTask_Cancel(); CHECK(!ServoTask_IsBusy() && !move_count && !stops);
     test_distance_flow();
     printf("PASS: %u scenarios, %u completed jobs, %u checks\n", case_id, completed_jobs, checks);
     return 0;
@@ -206,13 +278,13 @@ int main(void) {
 static uint16_t gpio_levels;
 static u8 initialized_laser, measured_laser, gpio_ready;
 static unsigned int range_reads, distance_loops;
-static const uint16_t expected_shut[4] = {1U << 2, 1U << 3, 1U << 6, 1U << 7};
+static const uint16_t expected_shut[4] = {1U << 2, 1U << 3, 1U << 6, 1U << 11};
 void GPIO_ResetBits(void *port, uint16_t mask) {
-    CHECK(port == GPIOA && mask == LASER_SHUT_PINS);
+    CHECK((port == GPIOA && mask == LASER_SHUT_PINS) || (port == GPIOC && mask == GPIO_Pin_11));
     gpio_levels &= ~mask;
 }
 void GPIO_SetBits(void *port, uint16_t mask) {
-    CHECK(port == GPIOA && gpio_ready);
+    CHECK(port == (requested_laser == 4 ? GPIOC : GPIOA) && gpio_ready);
     CHECK(gpio_levels == 0); /* Every selection must first shut down ALL. */
     CHECK(requested_laser >= 1 && requested_laser <= 4);
     CHECK(mask == expected_shut[requested_laser - 1]);
@@ -220,12 +292,12 @@ void GPIO_SetBits(void *port, uint16_t mask) {
 }
 void GPIO_StructInit(GPIO_InitTypeDef *gpio) { memset(gpio, 0, sizeof(*gpio)); }
 void GPIO_Init(void *port, GPIO_InitTypeDef *gpio) {
-    CHECK(port == GPIOA && gpio->GPIO_Pin == LASER_SHUT_PINS);
+    CHECK((port == GPIOA && gpio->GPIO_Pin == LASER_SHUT_PINS) || (port == GPIOC && gpio->GPIO_Pin == GPIO_Pin_11));
     CHECK(!gpio_levels && gpio->GPIO_Mode == GPIO_Mode_OUT && gpio->GPIO_PuPd == GPIO_PuPd_DOWN);
     gpio_ready = 1;
 }
 void RCC_AHB1PeriphClockCmd(unsigned int peripheral, unsigned int enabled) {
-    CHECK(peripheral == RCC_AHB1Periph_GPIOA && enabled == ENABLE);
+    CHECK(peripheral == (RCC_AHB1Periph_GPIOA | RCC_AHB1Periph_GPIOC) && enabled == ENABLE);
 }
 VL53L0X_Status VL53L0X_Init(void) {
     CHECK(gpio_levels == expected_shut[requested_laser - 1]);

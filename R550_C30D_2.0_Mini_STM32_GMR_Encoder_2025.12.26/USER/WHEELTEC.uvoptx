@@ -890,8 +890,8 @@
       <tvExp>0</tvExp>
       <tvExpOptDlg>0</tvExpOptDlg>
       <bDave2>0</bDave2>
-      <PathWithFileName>..\BALANCE\pushrod_task.c</PathWithFileName>
-      <FilenameWithoutPath>pushrod_task.c</FilenameWithoutPath>
+      <PathWithFileName>..\BALANCE\servo_task.c</PathWithFileName>
+      <FilenameWithoutPath>servo_task.c</FilenameWithoutPath>
       <RteFlg>0</RteFlg>
       <bShared>0</bShared>
     </File>

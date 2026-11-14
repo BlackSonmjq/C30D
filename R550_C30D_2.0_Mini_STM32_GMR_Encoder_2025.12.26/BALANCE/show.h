@@ -9,13 +9,15 @@
 
 void show_task(void *pvParameters);
 void oled_show(void);
+void OLED_ShowTaskStatus(void);
 void APP_Show(void);
 void OLED_ShowCheckConfirming(void);
 void OLED_ShowChecking(void);
 void OLED_ShowCheckResult(void);
 
 extern u8 oled_page,oled_refresh_flag;
-#define OLED_MAX_Page 3 //OLED菜单页数
+#define TASK_OLED_PAGE 3U
+#define OLED_MAX_Page 4 //OLED菜单页数
 
 extern float base_vol;
 extern float VolMean_Filter(float data);

@@ -1,4 +1,33 @@
-> Current wiring (supersedes the configuration below): distance input is USART1 RX (PA10); raw bytes are forwarded on USART3 TX (PD8). USART1 TX (PA9) prints rx1 distance/waiting diagnostics every 500 ms at 115200 8N1, even without input. Connect adapter RX to PA9 and share GND. At startup it prints boot: detecting IMU. The USART3 input and rx3 examples below describe the earlier configuration.
+> Current console: USART1 RX (PA10) accepts local task/servo commands; other raw input is forwarded on USART3 TX (PD8). USART1 TX (PA9) prints servo logs only at 115200 8N1. Laser, APP and boot prints are disabled. The distance/rx3 examples below describe earlier configurations.
+
+# 串口1任务指令
+
+串口1接收端 PA10、发送端 PA9，115200、8N1，使用文本发送模式：
+
+| 指令 | 动作 |
+| --- | --- |
+| `K1` / `K2` | 执行 1 / 2 号完整任务，使用左步进及同编号激光、舵机 |
+| `K3` / `K4` | 执行 3 / 4 号完整任务，使用右步进及同编号激光、舵机 |
+
+击打距离分别为：`K1` 小于 108 mm，`K2` 小于 60 mm，`K3` 小于 45 mm，`K4` 小于 35 mm。
+
+流程为测距、靠近至有效距离小于对应编号阈值、舵机正转 180° 并回零、步进等脉冲返程、关闭激光。等于阈值时继续靠近。指令无需换行，可追加 CR/LF，也可分两次发送 `K` 和编号。只识别大写 `K` 和编号 `1～4`；忙碌时不切换目标、不排队。连续发送 `K1K2` 时，首个任务立即占用，第二个被拒绝。指令在本地消费，不通过 USART3 透明转发。UART 接收错误会清除未完成的指令前缀。
+
+裸数字 `1～4` 仍仅选激光，`S0`～`S4`、`M1`～`M4` 保持现有舵机调试功能。
+
+S2 now shares S1/S3/S4's manual mode query and home -> 180 degrees -> home sequence, with two consecutive position confirmations per phase and a 3-second phase timeout. S2 keeps its position tolerance of 90. K2 still sends P1833 directly, waits 1500 ms, sends P0500, then waits 1500 ms without querying mode or position. S0 is unchanged.
+
+S1-S4 require a confirmed position mode (1-4); after three unanswered mode queries, motion is cancelled and the busy flag is released. UART4 query reception filters ACKs, echoes, wrong IDs and malformed frames until a matching reply or the existing limits. Whole-frame TX suspends task scheduling while keeping IRQs enabled except for the final direction transition. UART4 IRQ preemption priority remains 2.
+
+During S2 outward motion, a valid position of 541 triggers up to three resends of the current absolute target, spaced at least 500 ms apart. Each resend allows 500 ms of motion before querying again; the original phase deadline is retained. Other positions, homing phases, other IDs and K2 do not trigger this retry.
+
+构建 EIDE 固件后，可仿真执行编译后的 USART1 中断入口：
+
+```powershell
+uv run --with unicorn --with pyelftools python tests/serial/test_task_commands.py
+```
+
+测试覆盖四个编号、分次发送、CR/LF、连续请求的忙碌拒绝、无效编号、重复前缀、UART 错误恢复及原数字/舵机调试指令。
 
 # 串口3测距接收协议
 

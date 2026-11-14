@@ -1,8 +1,8 @@
+#define GPIO_Pin_11 (1U << 11)
 #include <stdint.h>
 #define GPIO_Pin_2 (1U << 2)
 #define GPIO_Pin_3 (1U << 3)
 #define GPIO_Pin_6 (1U << 6)
-#define GPIO_Pin_7 (1U << 7)
 typedef void GPIO_TypeDef;
 #define GPIO_Pin_10 (1U << 10)
 #define GPIOC ((void *)3)

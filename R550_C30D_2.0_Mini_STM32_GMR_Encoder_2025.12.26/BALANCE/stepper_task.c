@@ -1,9 +1,9 @@
 #include "stepper_task.h"
 #include "distance_task.h"
-#include "pushrod_task.h"
+#include "servo_task.h"
 #include "usart.h"
 
-/* 联调主流程：选中激光 -> 等有效距离 -> 靠近至 150 mm -> 推杆击打 5 秒
+/* 联调主流程：选中激光 -> 等有效距离 -> 靠近至小于对应编号阈值 -> 舵机正转 180 度后回零
  * -> 按已输出的前进脉冲数返程 -> 关闭激光 -> 等待下一条串口命令。
  * 一次只处理一个芒果；STEP 计数为指令脉冲，不能检测机械失步或打滑。 */
 #define MANGO_CHECK_MS 10U
@@ -68,6 +68,14 @@ static u8 forward_high(u8 motor)
     return motor == A4988_MOTOR_Left ? MANGO_LEFT_FORWARD_HIGH : MANGO_RIGHT_FORWARD_HIGH;
 }
 
+static u16 target_mm(u8 mango_id)
+{
+    static const u16 targets[4] = {
+        MANGO_TARGET_1_MM, MANGO_TARGET_2_MM, MANGO_TARGET_3_MM, MANGO_TARGET_4_MM
+    };
+    return mango_id >= 1U && mango_id <= 4U ? targets[mango_id - 1U] : 0U;
+}
+
 static void finish_job(StepperTask_Data *job)
 {
     u32 primask;
@@ -88,7 +96,7 @@ static void finish_job(StepperTask_Data *job)
 static void begin_return(StepperTask_Data *job, TickType_t *phase_started)
 {
     s32 signed_pulses;
-    PushrodTask_Cancel();
+    ServoTask_Cancel();
     StepperMotor_Disable(job->motor);
     job->outward_pulses = StepperMotor_GetCompletedPulses(job->motor);
     job->pulses = 0;
@@ -115,11 +123,11 @@ static void begin_return(StepperTask_Data *job, TickType_t *phase_started)
 
 static void begin_strike(StepperTask_Data *job, TickType_t *phase_started)
 {
-    /* 必须先停步进并保存最终计数，再请求与芒果同编号的推杆。 */
+    /* 必须先停步进并保存最终计数，再请求与芒果同编号的舵机。 */
     StepperMotor_Disable(job->motor);
     job->outward_pulses = StepperMotor_GetCompletedPulses(job->motor);
     job->pulses = job->outward_pulses;
-    if (!PushrodTask_Start(job->mango_id)) {
+    if (!ServoTask_Start(job->mango_id)) {
         job->result = MANGO_PUSHROD_FAILED;
         begin_return(job, phase_started);
         return;
@@ -133,7 +141,7 @@ static void begin_strike(StepperTask_Data *job, TickType_t *phase_started)
 void stepper_Task(void *pvParameters)
 {
     DistanceTask_Data distance;
-    PushrodTask_Data pushrod;
+    ServoTask_Data servo;
     StepperTask_Data job = {0, STEPPER_WAITING_COMMAND, 0, 0, 0, MANGO_OK};
     TickType_t phase_started = 0, now;
     u32 primask;
@@ -174,7 +182,7 @@ void stepper_Task(void *pvParameters)
             job.result = MANGO_OK;
             /* 每轮都清零旧计数，避免本轮无需前进时仍按上轮步数返程。 */
             StepperMotor_ResetCompletedPulses(job.motor);
-            PushrodTask_Cancel();
+            ServoTask_Cancel();
             DistanceTask_SelectLaser(selected);
             phase_started = xTaskGetTickCount();
             job.state = STEPPER_WAITING_DISTANCE;
@@ -188,7 +196,7 @@ void stepper_Task(void *pvParameters)
         case STEPPER_WAITING_DISTANCE:
             /* 只使用当前选中激光的有效数据；未接入模块最多等待 5 秒。 */
             if (distance.valid && distance.laser_id == job.mango_id) {
-                if (distance.distance_mm <= MANGO_TARGET_MM) {
+                if (distance.distance_mm < target_mm(job.mango_id)) {
                     begin_strike(&job, &phase_started);
                 } else {
                     signed_pulses = forward_high(job.motor) ?
@@ -209,16 +217,17 @@ void stepper_Task(void *pvParameters)
             break;
 
         case STEPPER_MOVING:
-            /* 距离失效先停车返程；仅有效距离达到阈值时允许进入击打。 */
+            /* 距离失效、达到脉冲上限或异常停止均直接返程。
+             * 上限优先于击打距离：同一轮恰好到位也不再启动舵机。 */
             job.pulses = StepperMotor_GetCompletedPulses(job.motor);
             if (!distance.valid || distance.laser_id != job.mango_id) {
                 job.result = MANGO_SENSOR_LOST;
                 begin_return(&job, &phase_started);
-            } else if (distance.distance_mm <= MANGO_TARGET_MM) {
-                begin_strike(&job, &phase_started);
             } else if (job.pulses >= MANGO_MAX_PULSES || !StepperMotor_IsRunning(job.motor)) {
                 job.result = MANGO_PULSE_LIMIT;
                 begin_return(&job, &phase_started);
+            } else if (distance.distance_mm < target_mm(job.mango_id)) {
+                begin_strike(&job, &phase_started);
             } else if ((TickType_t)(now - phase_started) >= pdMS_TO_TICKS(MANGO_MOTION_TIMEOUT_MS)) {
                 job.result = MANGO_MOTION_TIMEOUT;
                 begin_return(&job, &phase_started);
@@ -226,12 +235,12 @@ void stepper_Task(void *pvParameters)
             break;
 
         case STEPPER_STRIKING:
-            /* 推杆任务实际拉高输出后计时，确认输出拉低并发布 DONE 才返程。
-             * 额外 1 秒只用于检测任务执行异常，不延长正常击打时间。 */
-            PushrodTask_GetData(&pushrod);
-            if (pushrod.id == job.mango_id && pushrod.state == PUSHROD_TASK_DONE) {
+            /* 舵机任务确认正转 180 度并回零、发布 DONE 后才返程。
+             * 额外 1 秒只用于检测任务执行异常，不延长正常舵机动作。 */
+            ServoTask_GetData(&servo);
+            if (servo.id == job.mango_id && servo.state == SERVO_TASK_DONE) {
                 begin_return(&job, &phase_started);
-            } else if (pushrod.id != job.mango_id || pushrod.state == PUSHROD_TASK_ERROR ||
+            } else if (servo.id != job.mango_id || servo.state == SERVO_TASK_ERROR ||
                        (TickType_t)(now - phase_started) >= pdMS_TO_TICKS(MANGO_STRIKE_MS + 1000UL)) {
                 job.result = MANGO_PUSHROD_FAILED;
                 begin_return(&job, &phase_started);

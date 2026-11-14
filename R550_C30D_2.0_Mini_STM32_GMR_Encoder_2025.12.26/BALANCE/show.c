@@ -1,5 +1,8 @@
 #include "show.h"
 #include "distance_task.h"
+#include "stepper_task.h"
+#include "servo_task.h"
+#include <stdio.h>
 int Voltage_Show;
 unsigned char i;          
 unsigned char Send_Count; 
@@ -59,7 +62,7 @@ void show_task(void *pvParameters)
 		else if(10<=Voltage && Voltage<10.5f && LowVoltage_1<2)LowVoltage_1++; //10.5V, first buzzer when low battery //10.5V，低电量时蜂鸣器第一次报警
 		else if(Voltage<10 && LowVoltage_2==0)LowVoltage_2=1; //只在等于0时初始化
 					
-		APP_Show();	 //Send data to the APP //向APP发送数据
+		/* USART1 is reserved for servo logs; APP telemetry disabled. */ //APP_Show();	 //Send data to the APP //向APP发送数据
 		
 		if(oled_refresh_flag) OLED_Clear(),oled_refresh_flag=0;
 		else oled_show(); //Tasks are displayed on the screen //显示屏显示任务
@@ -80,6 +83,82 @@ uint8_t show_usb_enum = 0;
 void OLED_ShowGamePadState(void)
 {
 	show_usb_enum = 1;
+}
+
+/* A task page row uses the font's actual 6-pixel width. The legacy string
+ * API advances by 8 and clears the whole display after a bottom-row wrap. */
+static void OLED_TaskLine(u8 y, const char *text)
+{
+    u8 x;
+    for (x = 0; *text && x <= 122U; x += 6U, ++text)
+        OLED_ShowChar(x, y, (u8)*text, 12U, 1U);
+}
+
+/* Read-only task page. show_task owns framebuffer clearing and refresh. */
+void OLED_ShowTaskStatus(void)
+{
+    StepperTask_Data job;
+    ServoTask_Data servo;
+    DistanceTask_Data distance;
+    const char *state, *result, *servo_state;
+    char line[22]; /* 128 pixels / 6 pixels per character: at most 21. */
+    u8 busy;
+    StepperTask_GetData(&job);
+    ServoTask_GetData(&servo);
+    DistanceTask_GetData(&distance);
+    busy = StepperTask_IsBusy();
+
+    switch (job.state) {
+        case STEPPER_WAITING_COMMAND: state = busy ? "QUEUED" : "WAIT K1-K4"; break;
+        case STEPPER_WAITING_DISTANCE: state = "WAIT RANGE"; break;
+        case STEPPER_MOVING: state = "APPROACH"; break;
+        case STEPPER_STRIKING: state = "SERVO 180->0"; break;
+        case STEPPER_RETURNING: state = "RETURNING"; break;
+        case STEPPER_FINISHING: state = "LASER OFF"; break;
+        case STEPPER_RETURNED: state = job.result == MANGO_OK ? "DONE / READY" : "ABORT / READY"; break;
+        case STEPPER_FAULT: state = "FAULT / LOCKED"; break;
+        default: state = "UNKNOWN"; break;
+    }
+    switch (job.result) {
+        case MANGO_OK:
+            result = busy ? "RUNNING" : job.state == STEPPER_RETURNED ? "OK" : "--";
+            break;
+        case MANGO_RANGE_TIMEOUT: result = "RANGE TIMEOUT"; break;
+        case MANGO_SENSOR_LOST: result = "SENSOR LOST"; break;
+        case MANGO_PULSE_LIMIT: result = "PULSE LIMIT"; break;
+        case MANGO_MOVE_FAILED: result = "MOVE FAILED"; break;
+        case MANGO_PUSHROD_FAILED: result = "SERVO FAILED"; break;
+        case MANGO_MOTION_TIMEOUT: result = "MOVE TIMEOUT"; break;
+        case MANGO_RETURN_FAILED: result = "RETURN FAILED"; break;
+        default: result = "UNKNOWN"; break;
+    }
+    switch (servo.state) {
+        case SERVO_TASK_IDLE: servo_state = "IDLE"; break;
+        case SERVO_TASK_RUNNING: servo_state = "RUN"; break;
+        case SERVO_TASK_DONE: servo_state = "DONE"; break;
+        default: servo_state = "ERR"; break;
+    }
+    if (job.mango_id >= 1U && job.mango_id <= 4U)
+        snprintf(line, sizeof(line), "K%u %s %s 4/4", (unsigned)job.mango_id,
+                 job.motor == A4988_MOTOR_Left ? "LEFT" : "RIGHT", busy ? "BUSY" : "READY");
+    else
+        snprintf(line, sizeof(line), "TASK K1-K4 READY 4/4");
+    OLED_TaskLine(0, line);
+    snprintf(line, sizeof(line), "ST:%s", state);
+    OLED_TaskLine(12, line);
+    if (distance.valid && job.mango_id != 0U && distance.laser_id == job.mango_id)
+        snprintf(line, sizeof(line), "D%u:%umm S%u:%s", (unsigned)distance.laser_id,
+                 (unsigned)distance.distance_mm, (unsigned)servo.id, servo_state);
+    else
+        snprintf(line, sizeof(line), "D%u:---- S%u:%s", (unsigned)distance.laser_id,
+                 (unsigned)servo.id, servo_state);
+    OLED_TaskLine(24, line);
+    /* Each commanded travel is bounded to 26000 pulses. */
+    snprintf(line, sizeof(line), "P:%lu OUT:%lu", (unsigned long)job.pulses,
+             (unsigned long)job.outward_pulses);
+    OLED_TaskLine(36, line);
+    snprintf(line, sizeof(line), "RES:%s", result);
+    OLED_TaskLine(48, line);
 }
 
 void oled_show(void)
@@ -390,6 +469,11 @@ void oled_show(void)
 			OLED_Refresh_Gram();
 		}
 	
+        else if(oled_page==TASK_OLED_PAGE)
+        {
+            OLED_ShowTaskStatus();
+            OLED_Refresh_Gram();
+        }
         else if(oled_page==DISTANCE_OLED_PAGE)
         {
             DistanceTask_DrawOLED();

@@ -1,15 +1,30 @@
 # ZP10S 标准库接口
 
-驱动：`HARDWARE/servo.c`、`HARDWARE/servo.h`。使用 UART4、PC10 单线半双工，115200、8N1；系统启动调用 `Servo_Init()`，只初始化通信，不发送动作或修改配置。四个舵机 ID 使用 1、2、3、4，与原推杆编号对应。第 4 路激光 XSHUT 已从 PC10 迁至 PA7，包括上电初始化、测距任务和 OLED 显示。
+驱动：`HARDWARE/servo.c`、`HARDWARE/servo.h`。使用 UART4、PC10 单线半双工，115200、8N1；系统启动调用 `Servo_Init()`，只初始化通信，不发送动作或修改配置。四个舵机 ID 使用 1、2、3、4，与原推杆编号对应。第 4 路激光 XSHUT 已从 PC10 迁至 PC11，包括上电初始化、测距任务和 OLED 显示。
 
-本次先提供接口，自动采摘协调任务仍使用原推杆流程，尚未调用舵机动作。不要把现有串口采摘命令当作舵机测试命令。
+自动采摘协调任务通过 `ServoTask_*` 接口调用舵机：确认零位、转到 180°、恢复零位，位置回读确认后再进行步进返程。每段使用代码中的 `SERVO_MOVE_MS`（当前 500 ms），超时为 3 秒。舵机需预先配置为 270° 位置模式：1/2 号模式 2，3/4 号模式 1；自动任务不改写配置。串口裸字符 `1～4` 目前仍仅选激光，不触发自动任务。自动任务期间拒绝手动舵机动作和接收诊断，手动序列占用总线时自动舵机请求失败并沿用原返程处理。
 
 ## 接线与一次性配置
 
 - 四个舵机的 S 信号接 PC10 总线，舵机电源按型号要求单独供电，与主控共地；PC10 为开漏复用，需保证总线上拉和电平与 STM32 兼容，勿用 MCU GPIO 给舵机供电。
-- 激光 4 的 XSHUT 实物改接 PA7，其余三路仍为 PA2、PA3、PA6。
+- 激光 4 的 XSHUT 实物改接 PC11，其余三路仍为 PA2、PA3、PA6。
 - 出厂 ID 通常为 0：一次只接一只舵机，依次调用 `Servo_SetID(0, 1)` 至 `Servo_SetID(0, 4)`。确认回包 `#001P!` 等，再接下一只，最后并联总线。
-- 对每个 ID 显式调用 `Servo_SetMode(id, 1)`，并确认 `#OK!` 后再发动作。模式 1 是 270° 舵机模式；不要每次启动重复写 ID 或模式。实际安装方向先空载核对，模式 2 为反向的 270° 模式。
+- 按当前机构方向配置：1/2 号使用模式 2，3/4 号使用模式 1。可分别发送 `M1`～`M4` 设置，并等待 `CONFIRMED` 回读确认。不要每次启动重复写 ID 或模式。实际安装方向先空载核对。
+
+## Original servo task restored
+
+S2 与 S1/S3/S4 共用调试流程：查询现有模式，确认回零，转180°，再确认回零；每段运动500 ms，要求连续两次位置确认，每段超时3秒。2号到位容差保留 ±90。K2 仍使用延时流程：直接发送 P1833，等待1.5秒后发送 P0500，再等待1.5秒结束，不查询模式或位置；`SERVO_2_DELAY_MS=1500` 配置两段等待时间，发送失败仍报错。S0 保持原逻辑。
+
+S1～S4 必须读回有效的位置模式1～4后才开始运动。模式查询每次等待600 ms，最多发送3次；始终没有有效模式回复时输出 `MODE NOT CONFIRMED; motion cancelled` 并释放调试忙标志，不再假定270°模式。该修改只影响手动S1～S4的模式门槛，K2延时流程保持不变。
+
+S2 在180°阶段收到有效的2号位置反馈 P0541 且未到位时，按至少500 ms间隔重发当前绝对目标，最多额外发送3次（含首次最多4次）。重发后等待500 ms再查询位置，保留原阶段3秒超时，不因重发延长。日志为 `SERVO 2 retry target=... pos=541 retry=... tx=...`。初始和最终回零、S0、其他舵机及K2不触发这项重发。
+
+Automatic K1/K3/K4 use the initial three-target sequence: P0500 -> P1833 -> P0500.
+For these IDs, each move uses 500 ms and requires two consecutive valid position replies.
+The position-query window is 150 ms and each phase times out after 3 seconds.
+K2 has no special mode-read gate, midpoint, retry or packet-loss policy.
+S1-S4 share the original manual sequence and mode handling. UART4 IRQ preemption priority is 2 (subpriority 0), raised from 6. It is above the FreeRTOS syscall threshold of 5, so the RX ISR must not call RTOS APIs. Shared RX state uses PRIMASK protection; this change reduces RX interrupt masking without changing task priorities, motion commands or retry logic.
+The OLED task page retains its original fields; D3/D4/D5 diagnostic extensions are removed.
 
 ## 动作含义
 
@@ -25,7 +40,7 @@
 
 270° 模式换算：`P = 500 + round(角度 × 2000 / 270)`，因此半圈为 P1833；P1500 是约 135°，P2500 是约 270°。位置换算是名义值，实际零位和转角需要机构联调。
 
-`time_ms` 范围 0～9999；默认常量 `SERVO_MOVE_MS=1500` 仅供初始空载调试。下例假设 ID 和模式已配置并核对，运行在单一控制任务中：
+`time_ms` 范围 0～9999；当前常量 `SERVO_MOVE_MS=500` 供自动动作及调试使用。下例假设 ID 和模式已配置并核对，运行在单一控制任务中：
 
 ```c
 #include "servo.h"
@@ -44,11 +59,11 @@ Twist 是绝对位置接口：连续调用不会每次再增加半圈。每轮�
 
 ## 返回值和接收约定
 
-发送接口的 `SERVO_OK` 只表示串口发送完成，不代表舵机已确认、已到位或已脱果。需要确认时由同一任务串行发送请求、轮询回包并处理超时；切换模式后先消费确认，再发下一条指令。自动流程后续应加到位和故障判断，不能仅凭发送成功返程。
+发送接口的 `SERVO_OK` 只表示串口发送完成，不代表舵机已确认、已到位或已脱果。需要确认时由同一任务串行发送请求、轮询回包并处理超时；切换模式后先消费确认，再发下一条指令。自动任务已加入位置回读和超时判断，正常流程确认回零后才返程；故障仍按原协调流程记录错误并尝试步进返程。
 
-启动时复位 UART4、清除待处理中断，并关闭接收器及 RXNE 中断；不会在未发送命令时持续接收。发送成功且没有未读回包时，驱动等待 TC 后开启接收。最后一个字节及收发切换期间短暂屏蔽中断，正常最多约两个字节时间（115200 下约 174 微秒）；硬件异常使用有限轮询退出。发送仅限任务上下文，并发发送返回 BUSY；请求/回包事务由调用方串行管理。所有常用动作接口只接受 ID 1～4，原始 SendCommand 由调用方负责内容。
+启动时复位 UART4、清除待处理中断，并关闭接收器及 RXNE 中断；不会在未发送命令时持续接收。发送成功且没有未读回包时，驱动等待 TC 后开启接收。调度器启动后，每条指令从发送前到收发切换完成期间暂停任务调度，成功、BUSY和发送超时路径都会恢复调度；支持嵌套暂停及调度器启动前调用。整帧期间保留中断，最后一个字节及收发切换期间短暂全局关中断，正常最多约两个字节时间（115200 下约174微秒）；硬件异常使用有限轮询退出。该措施避免任务切换拉长帧间字节间隔，中断处理仍可能影响间隔。发送仅限任务上下文，并发发送返回 BUSY；请求/回包事务由调用方串行管理。
 
-接收邮箱容量 64 字节，支持 `#OK!` 和带 ID 的帧。收到完整回包即关闭接收；未读帧保留时不再开启接收。缓冲区不足返回 BUFFER_TOO_SMALL 并保留原帧，`length` 不含 NUL。每次发送前需先消费或清除上一回包。串口错误、帧缓冲区溢出或单次累计输入达到 128 字节时，关闭接收，避免持续异常中断；下次成功发送可重新开启。没有回包时由调用方计时，超时调用 `Servo_ClearRx()` 取消接收并清空邮箱。`SERVO_RX_IRQ_ENABLED=0` 可禁用回包接收用于诊断，默认值 1 仍遵循上述按需接收流程。
+接收邮箱容量64字节。普通动作、设置指令及接收诊断保留首帧接收规则。PRAD位置查询只接受同编号的合法 `#002P1833!` 类位置帧；PMOD模式查询接受同编号的 `#002MOD2!` 或 `#002PMOD2!`。查询期间忽略ACK、指令回显、错误编号和格式错误的帧，继续接收，匹配帧到达后才关闭接收。缓冲区不足返回 BUFFER_TOO_SMALL 并保留原帧，`length` 不含NUL。每次发送前需先消费或清除上一回包。串口错误、帧缓冲区溢出或单次累计输入达到128字节时仍关闭接收，包括连续无效帧，避免持续异常中断；下次成功发送可重新开启。没有回包时由调用方计时，超时调用 `Servo_ClearRx()` 取消接收并清空邮箱。
 
 ## 串口1接收诊断
 
@@ -58,6 +73,12 @@ Twist 是绝对位置接口：连续调用不会每次再增加半圈。每轮�
 
 请同时记录 OLED 是否保持显示，并保留开始和结果两行原始输出，以便区分线路电平、帧错误及中断触发情况。若发生死机或复位导致没有结果行，先记录最后一行输出。
 
+## 串口日志
+
+M1～M4 在模式查询超时时输出 `mode rx attempt=... irq=... bytes=... errors=... flags=... receiving=... pc10=...`，计数为本次查询窗口的增量（flags 为累计错误位）。没有完整帧时，`bytes=0` 表示没有接收字节；`bytes>0` 表示收到字节但未得到可识别的完整模式回复，需结合 `errors` 和已有 `mode raw` 日志判断。该日志不改变动作流程。
+
+串口1只输出 `SERVO ` 或 `servo ` 开头的舵机日志，关闭激光周期数据、APP `{A…}/{B…}` 和启动信息。自动任务记录目标、位置反馈、错误和完成状态；`phase=0/1/2` 分别表示初始回零、转动180度、返回零位。串口接收指令、测距和OLED显示保持不变。
+
 ## 仿真验证
 
 在仓库根目录运行（与 mango 测试共用输出目录，顺序执行）：
@@ -65,6 +86,8 @@ Twist 是绝对位置接口：连续调用不会每次再增加半圈。每轮�
 ```powershell
 uv run --with unicorn --with pyelftools python tests/mango/run_tests.py tests/servo/test_servo.c
 uv run --with unicorn --with pyelftools python tests/mango/run_tests.py
+uv run --with unicorn --with pyelftools python tests/serial/test_servo_debug.py
+uv run --with unicorn --with pyelftools python tests/serial/test_servo_transport.py
 ```
 
 测试编译生产驱动并模拟 UART/GPIO，覆盖四个 ID、角度换算、命令格式、TC 等待、发送超时、并发拒绝、启动关闭接收、旧外设状态复位、回包容量、连续噪声、溢出、串口错误关闭接收及下一请求恢复。不能替代电气及实物运动验证。

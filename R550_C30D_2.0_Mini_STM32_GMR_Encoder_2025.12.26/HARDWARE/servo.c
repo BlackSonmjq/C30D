@@ -3,7 +3,10 @@
 #include "stm32f4xx_rcc.h"
 #include "stm32f4xx_usart.h"
 #include "misc.h"
+#include "FreeRTOS.h"
+#include "task.h"
 #include <stdio.h>
+#include <string.h>
 
 /* Finite polling budget per byte/TC; independent of RTOS tick and interrupts.
  * This is a fault escape bound, not a calibrated wall-clock delay.
@@ -14,8 +17,11 @@
 #define SERVO_COMMAND_LIMIT 63U
 static uint8_t initialized;
 static volatile uint8_t sending;
-    static volatile uint8_t receiving;
+static volatile uint8_t receiving;
 static volatile uint8_t probing;
+enum { REPLY_ANY, REPLY_POSITION, REPLY_MODE };
+static volatile uint8_t expected_reply;
+static volatile uint16_t expected_id;
 static volatile uint32_t diag_irq_count, diag_byte_count, diag_error_count;
 static volatile uint32_t diag_error_flags, diag_last_status;
 static volatile uint16_t rx_budget;
@@ -44,6 +50,7 @@ void Servo_ClearRx(void)
     __disable_irq();
     if (initialized) stop_rx();
     probing = 0;
+    expected_reply = REPLY_ANY;
     rx_length = 0;
     frame_length = 0;
     __set_PRIMASK(mask);
@@ -79,7 +86,9 @@ void Servo_Init(void)
     Servo_ClearRx();
     sending = 0;
     irq.NVIC_IRQChannel = UART4_IRQn;
-    irq.NVIC_IRQChannelPreemptionPriority = 6;
+    /* Above FreeRTOS syscall threshold 5: RX ISR must not call RTOS APIs.
+     * Shared RX state is protected with PRIMASK, not task critical sections. */
+    irq.NVIC_IRQChannelPreemptionPriority = 2;
     irq.NVIC_IRQChannelSubPriority = 0;
     irq.NVIC_IRQChannelCmd = SERVO_RX_IRQ_ENABLED ? ENABLE : DISABLE;
     NVIC_Init(&irq);
@@ -110,6 +119,7 @@ Servo_Result Servo_StartRxProbe(void)
     diag_irq_count = diag_byte_count = diag_error_count = 0;
     diag_error_flags = diag_last_status = 0;
     probing = receiving = 1;
+    expected_reply = REPLY_ANY;
     rx_budget = 2U * SERVO_FRAME_CAPACITY;
     UART4->CR1 |= USART_CR1_RE;
     USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
@@ -142,10 +152,54 @@ static uint8_t wait_flag(uint16_t flag)
     return 1;
 }
 
+/* Called with IRQs masked, before the receive window is opened. */
+static void select_reply(const char *command, uint16_t length)
+{
+    unsigned i, id = 0;
+    expected_reply = REPLY_ANY;
+    if (length != 9U) return;
+    for (i = 1; i <= 3; ++i) {
+        if (command[i] < '0' || command[i] > '9') return;
+        id = id * 10U + (unsigned)(command[i] - '0');
+    }
+    expected_id = (uint16_t)id;
+    if (memcmp(command + 4, "PRAD", 4) == 0) expected_reply = REPLY_POSITION;
+    else if (memcmp(command + 4, "PMOD", 4) == 0) expected_reply = REPLY_MODE;
+}
+
+/* Reject ACKs, query echoes and unrelated frames without closing RX.
+ * The existing byte budget still bounds noise and repeated invalid frames. */
+static uint8_t reply_matches(void)
+{
+    unsigned i, id = 0, pulse = 0, offset;
+    if (expected_reply == REPLY_ANY) return 1;
+    if (rx_length < 5U) return 0;
+    for (i = 1; i <= 3; ++i) {
+        if (rx_buffer[i] < '0' || rx_buffer[i] > '9') return 0;
+        id = id * 10U + (unsigned)(rx_buffer[i] - '0');
+    }
+    if (id != expected_id) return 0;
+    if (expected_reply == REPLY_POSITION) {
+        if (rx_length != 10U || rx_buffer[4] != 'P') return 0;
+        for (i = 5; i <= 8; ++i) {
+            if (rx_buffer[i] < '0' || rx_buffer[i] > '9') return 0;
+            pulse = pulse * 10U + (unsigned)(rx_buffer[i] - '0');
+        }
+        return pulse >= 500U && pulse <= 2500U;
+    }
+    if (rx_length == 9U && rx_buffer[4] == 'M' &&
+        rx_buffer[5] == 'O' && rx_buffer[6] == 'D') offset = 7;
+    else if (rx_length == 10U && rx_buffer[4] == 'P' && rx_buffer[5] == 'M' &&
+             rx_buffer[6] == 'O' && rx_buffer[7] == 'D') offset = 8;
+    else return 0;
+    return rx_buffer[offset] >= '1' && rx_buffer[offset] <= '8';
+}
+
 Servo_Result Servo_SendCommand(const char *command)
 {
     uint32_t mask;
     uint16_t length = 0, i;
+    uint8_t scheduler_locked = 0;
     Servo_Result result = SERVO_OK;
     volatile uint32_t discard;
     if (command == NULL || __get_IPSR() != 0U) return SERVO_INVALID_ARGUMENT;
@@ -153,10 +207,17 @@ Servo_Result Servo_SendCommand(const char *command)
     if (length < 2U || length > SERVO_COMMAND_LIMIT ||
         command[0] != '#' || command[length - 1U] != '!') return SERVO_INVALID_ARGUMENT;
     if (!initialized) return SERVO_NOT_INITIALIZED;
+    /* Keep the whole frame in one task execution slice. IRQs remain enabled
+     * except for the existing short direction-switch critical section. */
+    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+        vTaskSuspendAll();
+        scheduler_locked = 1;
+    }
     mask = __get_PRIMASK();
     __disable_irq();
     if (sending || probing) {
         __set_PRIMASK(mask);
+        if (scheduler_locked) (void)xTaskResumeAll();
         return SERVO_BUSY;
     }
     sending = 1;
@@ -166,6 +227,7 @@ Servo_Result Servo_SendCommand(const char *command)
     discard = UART4->DR;
     (void)discard;
     rx_length = 0;
+    select_reply(command, length);
     UART4->CR1 |= USART_CR1_TE;
     __set_PRIMASK(mask);
     for (i = 0; i < length - 1U; ++i) {
@@ -194,6 +256,7 @@ Servo_Result Servo_SendCommand(const char *command)
     }
     sending = 0;
     __set_PRIMASK(mask);
+    if (scheduler_locked) (void)xTaskResumeAll();
     return result;
 }
 
@@ -282,6 +345,10 @@ void Servo_RxByteHandler(uint8_t byte)
     rx_buffer[rx_length++] = (char)byte;
     if (byte == '!') {
         rx_buffer[rx_length] = '\0';
+        if (!reply_matches()) {
+            rx_length = 0;
+            return;
+        }
         frame_length = rx_length;
         rx_length = 0;
         stop_rx();

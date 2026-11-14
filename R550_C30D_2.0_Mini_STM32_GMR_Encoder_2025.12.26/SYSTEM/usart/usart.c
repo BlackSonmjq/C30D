@@ -1,4 +1,5 @@
-#include "usart.h"	
+#include "usart.h"
+#include <string.h>
 ////////////////////////////////////////////////////////////////////////////////// 	 
 //如果使用ucos,则包括下面的头文件即可.
 #if SYSTEM_SUPPORT_OS
@@ -26,7 +27,11 @@ void _sys_exit(int x)
 int fputc(int ch, FILE *f)
 {
     (void)f;
+#if USART1_SERVO_LOG_ONLY
+    return ch; /* Suppress legacy printf telemetry. */
+#else
     return USART_WriteByte(USART1, (uint8_t)ch) ? ch : EOF;
+#endif
 }
 
 //任意串口printf
@@ -67,6 +72,10 @@ void any_printf(USART_TypeDef *USARTx, char *format, ...)
     unsigned int i;
     int length;
     va_list args;
+#if USART1_SERVO_LOG_ONLY
+    if (USARTx == USART1 && strncmp(format, "SERVO ", 6U) != 0 &&
+        strncmp(format, "servo ", 6U) != 0) return;
+#endif
     va_start(args, format);
     length = vsnprintf(buffer, sizeof(buffer), format, args);
     va_end(args);

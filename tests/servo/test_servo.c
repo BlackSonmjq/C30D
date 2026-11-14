@@ -10,7 +10,19 @@ static unsigned tx_size, checks, tc_checks, tc_delay, fail_flag, nested, isr;
 static uint32_t irq_mask;
 static unsigned rx_irq_enabled, nvic_enabled, cleared_pending;
 static uint8_t pc10_high = 1;
+static BaseType_t scheduler_state = taskSCHEDULER_NOT_STARTED;
+static unsigned scheduler_depth, suspend_calls, resume_calls;
 #define CHECK(e) do { ++checks; if (!(e)) { printf("FAIL line %u: %s\n", (unsigned)__LINE__, #e); exit(1); } } while (0)
+BaseType_t xTaskGetSchedulerState(void) {
+    return scheduler_depth ? taskSCHEDULER_SUSPENDED : scheduler_state;
+}
+void vTaskSuspendAll(void) { ++scheduler_depth; ++suspend_calls; }
+BaseType_t xTaskResumeAll(void) {
+    CHECK(scheduler_depth > 0 && !irq_mask);
+    --scheduler_depth; ++resume_calls;
+    if (!scheduler_depth) CHECK(!(UART4->CR1 & USART_CR1_TE));
+    return 0;
+}
 uint32_t mock_primask(void) { return irq_mask; }
 void mock_disable_irq(void) { irq_mask = 1; }
 void mock_set_primask(uint32_t value) { irq_mask = value; }
@@ -28,6 +40,7 @@ void RCC_AHB1PeriphClockCmd(uint32_t p, FunctionalState e) { CHECK(p == RCC_AHB1
 void RCC_APB1PeriphClockCmd(uint32_t p, FunctionalState e) { CHECK(p == RCC_APB1Periph_UART4 && e == ENABLE); }
 void NVIC_Init(NVIC_InitTypeDef *irq) {
     CHECK(irq->NVIC_IRQChannel == UART4_IRQn);
+    CHECK(irq->NVIC_IRQChannelPreemptionPriority == 2U);
     nvic_enabled = irq->NVIC_IRQChannelCmd == ENABLE;
 }
 void NVIC_ClearPendingIRQ(int irq) { CHECK(irq == UART4_IRQn); ++cleared_pending; }
@@ -41,6 +54,7 @@ void USART_ITConfig(USART_TypeDef *p, uint16_t i, FunctionalState e) {
     rx_irq_enabled = e == ENABLE;
 }
 FlagStatus USART_GetFlagStatus(USART_TypeDef *p, uint16_t f) {
+    CHECK(scheduler_state == taskSCHEDULER_NOT_STARTED || scheduler_depth > 0);
     if (f == USART_FLAG_TC) {
         ++tc_checks;
         if (tc_delay) { --tc_delay; return RESET; }
@@ -48,6 +62,8 @@ FlagStatus USART_GetFlagStatus(USART_TypeDef *p, uint16_t f) {
     return f == fail_flag ? RESET : SET;
 }
 void USART_SendData(USART_TypeDef *p, uint16_t data) {
+    CHECK(scheduler_state == taskSCHEDULER_NOT_STARTED || scheduler_depth > 0);
+    CHECK(data == '!' ? irq_mask == 1U : irq_mask == 0U);
     CHECK((p->CR1 & (USART_CR1_TE | USART_CR1_RE)) == USART_CR1_TE);
     CHECK(tx_size < sizeof(tx) - 1);
     tx[tx_size++] = (char)data;
@@ -59,6 +75,7 @@ static void expect(const char *command) {
     CHECK((UART4->CR1 & (USART_CR1_TE | USART_CR1_RE)) == (receiving ? USART_CR1_RE : 0U));
     CHECK(rx_irq_enabled == receiving);
     CHECK(!sending && !irq_mask);
+    CHECK(!scheduler_depth && suspend_calls == resume_calls);
     tx_size = 0; tx[0] = 0;
 }
 static void receive(const char *frame) {
@@ -75,6 +92,10 @@ static void arm_reply(void) {
     CHECK(Servo_ReadPosition(1) == SERVO_OK); expect("#001PRAD!");
     CHECK(receiving && rx_irq_enabled);
 }
+static void arm_any_reply(void) {
+    Servo_ClearRx();
+    CHECK(Servo_Stop(1) == SERVO_OK); expect("#001PDST!");
+}
 static void check_idle(void) {
     CHECK(!receiving && !rx_irq_enabled);
     CHECK(!(UART4->CR1 & (USART_CR1_TE | USART_CR1_RE)));
@@ -87,6 +108,9 @@ int main(void) {
     UART4->CR1 = 0xFFFFFFFFU; /* Simulate peripheral state left by a bootloader. */
     Servo_Init(); CHECK(tx_size == 0 && nvic_enabled && cleared_pending == 1);
     check_idle();
+    CHECK(Servo_Home(1, 500) == SERVO_OK); expect("#001P0500T0500!");
+    CHECK(!suspend_calls && !resume_calls); /* Supported before scheduler startup. */
+    Servo_ClearRx(); scheduler_state = taskSCHEDULER_RUNNING;
     receive("noise#OK!"); CHECK(frame_length == 0); check_idle();
     CHECK(Servo_StartRxProbe() == SERVO_OK && tx_size == 0);
     CHECK(receiving && rx_irq_enabled);
@@ -150,11 +174,11 @@ int main(void) {
     receive("#OK!"); /* Pending frame must not be overwritten. */
     CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK && strcmp(reply, "#001P1833!") == 0);
     CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_NO_FRAME && length == 0);
-    arm_reply(); receive("#bad#OK!"); CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK && strcmp(reply, "#OK!") == 0);
+    arm_any_reply(); receive("#bad#OK!"); CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK && strcmp(reply, "#OK!") == 0);
     arm_reply();
     memset(too_long, 'x', sizeof(too_long)); too_long[0] = '#'; too_long[69] = 0; receive(too_long);
     check_idle(); CHECK(frame_length == 0);
-    arm_reply(); receive("#OK!"); CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK);
+    arm_any_reply(); receive("#OK!"); CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK);
     for (unsigned error = USART_SR_PE; error <= USART_SR_ORE; error <<= 1) {
         arm_reply(); receive("#partial");
         UART4->SR = error | USART_SR_RXNE; UART4->DR = '!'; UART4_IRQHandler();
@@ -171,11 +195,32 @@ int main(void) {
     UART4->SR = USART_SR_RXNE;
     UART4->DR = '#'; UART4_IRQHandler(); UART4->DR = 'O'; UART4_IRQHandler();
     UART4->DR = 'K'; UART4_IRQHandler(); UART4->DR = '!'; UART4_IRQHandler();
-    CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK && strcmp(reply, "#OK!") == 0);
+    CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_NO_FRAME);
+    CHECK(receiving && rx_irq_enabled);
+    receive("#001P0541!");
+    CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK && strcmp(reply, "#001P0541!") == 0);
     check_idle();
     arm_reply(); receive("#partial"); Servo_ClearRx(); check_idle();
     receive("#OK!"); CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_NO_FRAME);
     arm_reply(); receive("#OK!"); Servo_ClearRx(); CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_NO_FRAME);
+    /* An ACK/echo/wrong-ID/malformed frame must not hide the valid position. */
+    arm_reply();
+    receive("#OK!#001PRAD!#002P1833!#001P18x3!#001P0499!#001P2501!#001P1833!");
+    CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK && strcmp(reply, "#001P1833!") == 0);
+    check_idle();
+    CHECK(Servo_SendCommand("#002PMOD!") == SERVO_OK); expect("#002PMOD!");
+    receive("#OK!#002PMOD!#001PMOD2!#002PMOD0!#002PMOD9!#002PMOD2!");
+    CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK && strcmp(reply, "#002PMOD2!") == 0);
+    CHECK(Servo_SendCommand("#002PMOD!") == SERVO_OK); expect("#002PMOD!");
+    receive("#OK!#002MOD4!");
+    CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK && strcmp(reply, "#002MOD4!") == 0);
+    CHECK(Servo_SendCommand("#002PMOD!") == SERVO_OK); expect("#002PMOD!");
+    receive("#002PMOD7!"); /* Report unsupported modes so the caller can reject them. */
+    CHECK(Servo_GetFrame(reply, sizeof(reply), &length) == SERVO_OK && strcmp(reply, "#002PMOD7!") == 0);
+    arm_reply();
+    for (unsigned n = 0; n < 40U; ++n) receive("#OK!");
+    check_idle(); CHECK(!frame_length); /* Filtering still has a bounded noise budget. */
+    CHECK(suspend_calls == resume_calls && !scheduler_depth);
     printf("PASS: servo transport, four IDs, half-turn mapping, TC/timeout, parser/error boundaries (%u checks)\n", checks);
     return 0;
 }

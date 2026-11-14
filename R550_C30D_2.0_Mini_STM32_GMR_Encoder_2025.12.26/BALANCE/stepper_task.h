@@ -13,8 +13,12 @@
  * 前进、返程共用对应电机的速度配置，底层保留加减速。 */
 #define MANGO_LEFT_SPEED_ARR     199U
 #define MANGO_RIGHT_SPEED_ARR    199U
-#define MANGO_TARGET_MM          150U      /* 有效距离不大于此值时停止靠近，允许击打。 */
-#define MANGO_MAX_PULSES         70000UL   /* 前进脉冲上限，达到上限但未到位时只返程。 */
+/* 各编号的击打阈值，单位 mm；有效距离严格小于对应值时才允许击打。 */
+#define MANGO_TARGET_1_MM        108U
+#define MANGO_TARGET_2_MM        60U
+#define MANGO_TARGET_3_MM        45U
+#define MANGO_TARGET_4_MM        35U
+#define MANGO_MAX_PULSES         26000UL   /* 前进 STEP 脉冲上限，含细分；达到即跳过击打并返程。 */
 #define MANGO_RANGE_WAIT_MS      5000UL    /* 首次有效测距最长等待时间。 */
 #define MANGO_MOTION_TIMEOUT_MS  420000UL  /* 前进或返程单段运动最长时间。 */
 
@@ -22,7 +26,7 @@ typedef enum {
     STEPPER_WAITING_COMMAND = 0, /* 上电等待串口芒果编号。 */
     STEPPER_WAITING_DISTANCE,    /* 等待选中激光完成初始化并提供有效距离。 */
     STEPPER_MOVING,              /* 对应步进前进，循环判断距离、脉冲上限和超时。 */
-    STEPPER_STRIKING,            /* 步进保持停止，等待对应推杆完成 5 秒击打。 */
+    STEPPER_STRIKING,            /* 步进保持停止，等待对应舵机完成 180 度转动并回零。 */
     STEPPER_RETURNING,           /* 按实际前进脉冲数反向返回，不依赖测距。 */
     STEPPER_FINISHING,           /* 等待激光实际关闭后释放任务占用。 */
     STEPPER_RETURNED,            /* 本轮已结束，可以接受下一个编号。 */
@@ -35,7 +39,7 @@ typedef enum {
     MANGO_SENSOR_LOST,     /* 前进中距离无效、过期或通道不符。 */
     MANGO_PULSE_LIMIT,     /* 未到目标距离即达到脉冲上限或检测到前进停止。 */
     MANGO_MOVE_FAILED,     /* 前进启动失败。 */
-    MANGO_PUSHROD_FAILED,  /* 推杆请求失败、执行异常或完成等待超时。 */
+    MANGO_PUSHROD_FAILED,  /* 舵机请求失败、执行异常或完成等待超时；保留原结果码。 */
     MANGO_MOTION_TIMEOUT,  /* 前进超时，停止靠近并尝试返程。 */
     MANGO_RETURN_FAILED    /* 返程启动失败、异常停止或最终脉冲数不符。 */
 } Mango_Result;

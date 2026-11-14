@@ -18,7 +18,7 @@ All rights reserved
 ***********************************************/
 #include "system.h"
 #include "pushrod.h"
-#include "pushrod_task.h"
+#include "servo_task.h"
 #include "stepper_task.h"
 #include "distance_task.h"
 //Task priority    //�������ȼ�
@@ -53,6 +53,7 @@ int main(void)
 //Start task task function //��ʼ����������
 void start_task(void *pvParameters)
 {
+    BaseType_t servo_created, stepper_created, distance_created;
     any_printf(USART1, "boot: start task running\r\n");
     taskENTER_CRITICAL(); //Enter the critical area //�����ٽ���
     //Create the task //��������
@@ -68,9 +69,12 @@ void start_task(void *pvParameters)
 	xTaskCreate(led_task,      "led_task",      LED_STK_SIZE,      NULL, LED_TASK_PRIO,      NULL);	//LED light flashing task //LED����˸����
 	xTaskCreate(pstwo_task,    "PSTWO_task",    PS2_STK_SIZE,      NULL, PS2_TASK_PRIO,      NULL);	//Read the PS2 controller task //��ȡPS2�ֱ�����
 	xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //����3������1��CAN������������
-    xTaskCreate(pushrod_task,      "pushrod_task",      PUSHROD_STK_SIZE,      NULL, PUSHROD_TASK_PRIO,      NULL);	//Pushrod control task //??????
-    xTaskCreate(stepper_Task,      "stepper_task",      STEPPER_STK_SIZE,      NULL, STEPPER_TASK_PRIO,      NULL);	//Stepper motor control task //????????
-    xTaskCreate(distance_task,     "distance_task",     DISTANCE_STK_SIZE,     NULL, DISTANCE_TASK_PRIO,     NULL);
+    servo_created = xTaskCreate(servo_task,      "servo_task",      SERVO_STK_SIZE,      NULL, SERVO_TASK_PRIO,      NULL);	//Servo actuator task //??????
+    stepper_created = xTaskCreate(stepper_Task,      "stepper_task",      STEPPER_STK_SIZE,      NULL, STEPPER_TASK_PRIO,      NULL);	//Stepper motor control task //????????
+    distance_created = xTaskCreate(distance_task,     "distance_task",     DISTANCE_STK_SIZE,     NULL, DISTANCE_TASK_PRIO,     NULL);
+    any_printf(USART1, "boot: tasks servo=%ld stepper=%ld distance=%ld heap_free=%lu\r\n",
+               (long)servo_created, (long)stepper_created, (long)distance_created,
+               (unsigned long)xPortGetFreeHeapSize());
 	vTaskDelete(StartTask_Handler); //Delete the start task //ɾ����ʼ����
 
     taskEXIT_CRITICAL();            //Exit the critical section//�˳��ٽ���

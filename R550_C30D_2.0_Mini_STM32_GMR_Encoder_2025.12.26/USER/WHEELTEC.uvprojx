@@ -682,9 +682,9 @@
               <FilePath>..\BALANCE\balance.c</FilePath>
             </File>
             <File>
-              <FileName>pushrod_task.c</FileName>
+              <FileName>servo_task.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\BALANCE\pushrod_task.c</FilePath>
+              <FilePath>..\BALANCE\servo_task.c</FilePath>
             </File>
             <File>
               <FileName>stepper_task.c</FileName>
