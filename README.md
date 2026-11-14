@@ -1,4 +1,4 @@
-> Servo UART4/PC10 now uses 9600 baud (upper USART1 remains 115200). After flashing, send B0 while idle; wait for confirmed_mask=0x0F before S/K tests. B0 explicitly migrates IDs 1-4 using PBD0 and verifies each at 9600, without changing ID/mode. Prior fault latch/travel guard removed; original feedback/retry flow restored.
+> Servo UART4 now starts at 115200 for recovery (upper USART1 remains 115200). Send B? to read-only scan 9600/115200 and learn each ID rate before K tests. B0 attempts PBD0 migration, captures the old-rate reply and checks 115200 again if 9600 verification fails. S commands also probe both rates. No forced 9600 bus after failed migration.
 
 # C30D 底盘与外设固件
 

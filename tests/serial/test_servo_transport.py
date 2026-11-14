@@ -120,7 +120,7 @@ m,l,t,c=simulate(ignore_outward=1); assert m==normal[:2]+normal[1:],m
 m,l,t,c=simulate(ignore_outward=99); assert m==normal[:1]+[normal[1]]*3+normal[-1:],m
 assert any('POSITION TIMEOUT' in f for f in l)
 print('PASS: P0541 retry recovery, retry limit and timeout return using the real UART driver')
-m,l,t,c=simulate(mode=None); assert m==normal and any('mode unknown' in f for f in l)
+m,l,t,c=simulate(mode=None); assert m==normal and any('mode unknown' in f for f in l),(m,l,t)
 m,l,t,c=simulate(miss_mode_queries=2); assert m==normal,m
 m,l,t,c=simulate(mode=7); assert m==[] and any('not position mode' in f for f in l)
 print('PASS: mode confirmed before motion, three missing-mode reads fall back, later reply recovers')

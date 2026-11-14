@@ -73,7 +73,7 @@ static void ServoDebug_Process(void)
     static TickType_t move_started, query_started, last_motion_sent;
     static u8 motion_retries, stalled_samples, position_seen;
     static uint16_t last_position, half_turn_target;
-    static u8 baud_ok;
+    static u8 baud_ok, baud_old, baud_scan_only;
     static Servo_Diagnostics mode_rx_start;
     Servo_Diagnostics mode_rx_end;
     u8 request, mode, arrived=0;
@@ -88,50 +88,77 @@ static void ServoDebug_Process(void)
         phase=all_home?3U:1U; stage=all_home?0U:10U; attempts=stable=failed=0; last_position=0;
         half_turn_target=SERVO_HALF_TURN_PULSE;
         mode_reads=0;
-        any_printf(USART1,"SERVO debug=baud9600-6 request=%u\r\n",(unsigned)request);
+        any_printf(USART1,"SERVO debug=baud-probe-7 request=%u\r\n",(unsigned)request);
     }
     if (request>=6U && request<=9U) {
         id=request-5U; requested_mode=id<=2U?2U:1U; phase=1; stage=20;
     }
-    if (request==10U) { id=1; phase=1; stage=30; baud_ok=0; mode_reads=0; }
+    if (request==10U || request==11U) { id=1; phase=1; stage=30; baud_ok=baud_old=0; mode_reads=0; baud_scan_only=request==11U; }
     if (!phase) return;
-    /* B0 probes first. Already migrated devices are never rewritten. */
+    /* B? only reads. B0 writes PBD0 only after a valid old-rate reply.
+     * Failed migrations re-probe 115200 and retain each ID's proven rate. */
     if (stage>=30U) {
         u8 confirmed=0, next_id=0;
         if (stage==30U) {
             Servo_SetBusBaud(9600UL);
+            Servo_GetDiagnostics(&mode_rx_start);
             snprintf(frame,sizeof(frame),"#%03uPMOD!",(unsigned)id);
             Servo_SendCommand(frame); query_started=now; stage=31; return;
         }
-        if (stage==33U) {
+        if (stage==35U) {
             if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK)
-                any_printf(USART1,"SERVO %u baud setup reply: %s\r\n",(unsigned)id,frame);
+                any_printf(USART1,"SERVO %u PBD reply at115200: %s\r\n",(unsigned)id,frame);
+            if ((TickType_t)(now-query_started)<pdMS_TO_TICKS(200U)) return;
+            Servo_SetBusBaud(9600UL); stage=33; query_started=now; return;
+        }
+        if (stage==33U) {
             if ((TickType_t)(now-query_started)<pdMS_TO_TICKS(300U)) return;
-            Servo_ClearRx(); snprintf(frame,sizeof(frame),"#%03uPMOD!",(unsigned)id);
+            Servo_ClearRx(); Servo_GetDiagnostics(&mode_rx_start);
+            snprintf(frame,sizeof(frame),"#%03uPMOD!",(unsigned)id);
             Servo_SendCommand(frame); query_started=now; stage=34; mode_reads=1; return;
         }
-        if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK)
+        if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK) {
+            any_printf(USART1,"SERVO %u probe baud=%lu raw=%s\r\n",(unsigned)id,(unsigned long)Servo_GetBusBaud(),frame);
             confirmed=ServoDebug_Mode(frame,length,id,&mode);
+        }
         if (confirmed && (stage==31U || stage==34U)) {
             baud_ok |= (u8)(1U<<(id-1U)); next_id=1;
+            Servo_SetDeviceBaud(id,9600UL);
             any_printf(USART1,"SERVO %u baud=9600 CONFIRMED mode=%u\r\n",(unsigned)id,(unsigned)mode);
-        } else if (confirmed && stage==32U) {
-            Servo_ClearRx(); snprintf(frame,sizeof(frame),"#%03uPBD0!",(unsigned)id);
-            result=Servo_SendCommand(frame);
-            any_printf(USART1,"SERVO %u baud cmd=%s old=115200 tx=%u\r\n",(unsigned)id,frame,(unsigned)result);
-            Servo_SetBusBaud(9600UL); query_started=now; stage=33; return;
+        } else if (confirmed && (stage==32U || stage==36U)) {
+            Servo_SetDeviceBaud(id,115200UL);
+            if (baud_scan_only || stage==36U) {
+                baud_old |= (u8)(1U<<(id-1U)); next_id=1;
+                any_printf(USART1,"SERVO %u baud=115200 CONFIRMED mode=%u\r\n",(unsigned)id,(unsigned)mode);
+            } else {
+                Servo_ClearRx(); snprintf(frame,sizeof(frame),"#%03uPBD0!",(unsigned)id);
+                result=Servo_SendCommand(frame);
+                any_printf(USART1,"SERVO %u baud cmd=%s old=115200 tx=%u\r\n",(unsigned)id,frame,(unsigned)result);
+                query_started=now; stage=35; return;
+            }
         } else if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(600U)) {
-            if (stage==31U) { Servo_SetBusBaud(115200UL); stage=32; mode_reads=0; }
+            if (stage==31U || (stage==34U && mode_reads>=3U)) {
+                if (stage==34U) {
+                    Servo_GetDiagnostics(&mode_rx_end);
+                    any_printf(USART1,"SERVO %u 9600 unconfirmed bytes=%lu errors=%lu; recheck115200\r\n",(unsigned)id,
+                               (unsigned long)(mode_rx_end.byte_count-mode_rx_start.byte_count),
+                               (unsigned long)(mode_rx_end.error_count-mode_rx_start.error_count));
+                }
+                stage=stage==31U?32U:36U; Servo_SetBusBaud(115200UL); mode_reads=0;
+            }
             if (mode_reads<3U) {
-                Servo_ClearRx(); snprintf(frame,sizeof(frame),"#%03uPMOD!",(unsigned)id);
+                Servo_ClearRx(); Servo_GetDiagnostics(&mode_rx_start);
+                snprintf(frame,sizeof(frame),"#%03uPMOD!",(unsigned)id);
                 Servo_SendCommand(frame); ++mode_reads; query_started=now; return;
             }
-            any_printf(USART1,"SERVO %u baud=9600 NOT CONFIRMED\r\n",(unsigned)id); next_id=1;
+            any_printf(USART1,"SERVO %u NO CONFIRMED BAUD (9600/115200)\r\n",(unsigned)id); next_id=1;
         }
         if (!next_id) return;
-        Servo_ClearRx(); Servo_SetBusBaud(9600UL);
+        Servo_ClearRx();
         if (id<SERVO_COUNT) { ++id; stage=30; mode_reads=0; return; }
-        any_printf(USART1,"SERVO B0 done confirmed_mask=0x%02X expected=0x0F bus=9600\r\n",(unsigned)baud_ok);
+        Servo_SetBusBaud(baud_ok==0x0FU?9600UL:115200UL);
+        any_printf(USART1,"SERVO B%c done mask9600=0x%02X mask115200=0x%02X bus=%lu\r\n",baud_scan_only?'?':'0',
+                   (unsigned)baud_ok,(unsigned)baud_old,(unsigned long)Servo_GetBusBaud());
         stage=24;
     }
     /* M1/M2 set mode 2; M3/M4 set mode 1. Write once, then read back. */
@@ -183,6 +210,7 @@ static void ServoDebug_Process(void)
     }
     /* Read existing mode only: never send a mode-setting command. */
     if (stage==10U) {
+        if (!mode_reads) Servo_SelectDevice(id);
         snprintf(frame,sizeof(frame),"#%03uPMOD!",(unsigned)id);
         Servo_ClearRx(); result=Servo_SendCommand(frame);
         query_started=now; stage=11; ++mode_reads;
@@ -195,6 +223,7 @@ static void ServoDebug_Process(void)
             any_printf(USART1,"SERVO %u mode reply: %s\r\n",(unsigned)id,frame);
         if (result==SERVO_OK && ServoDebug_Mode(frame,length,id,&mode)) {
             if (mode<=4U) {
+                Servo_SetDeviceBaud(id,Servo_GetBusBaud());
                 half_turn_target=mode>=3U ? 2500U : SERVO_HALF_TURN_PULSE;
                 any_printf(USART1,"SERVO %u mode=%u target180=%u\r\n",(unsigned)id,(unsigned)mode,(unsigned)half_turn_target);
                 Servo_ClearRx(); stage=0;
@@ -206,7 +235,10 @@ static void ServoDebug_Process(void)
                 __set_PRIMASK(mask); return;
             }
         } else if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(600U)) {
-            if (mode_reads<3U) { stage=10; return; }
+            if (mode_reads<3U) {
+                if (mode_reads==1U) Servo_SetBusBaud(Servo_GetBusBaud()==9600UL?115200UL:9600UL);
+                stage=10; return;
+            }
             any_printf(USART1,"SERVO %u mode unknown: assuming 270deg target180=%u\r\n",(unsigned)id,(unsigned)half_turn_target);
             Servo_ClearRx(); stage=0;
         }
@@ -1318,8 +1350,8 @@ int USART1_IRQHandler(void)
     if (byte=='B') { servo_debug_prefix=4U; return 0; }
     if (servo_debug_prefix==4U) {
         servo_debug_prefix=0;
-        if (byte=='0' && !servo_debug_busy && !servo_probe_active && !StepperTask_IsBusy() && !ServoTask_IsBusy()) {
-            servo_debug_busy=1; servo_debug_pending=10U;
+        if ((byte=='0' || byte=='?') && !servo_debug_busy && !servo_probe_active && !StepperTask_IsBusy() && !ServoTask_IsBusy()) {
+            servo_debug_busy=1; servo_debug_pending=byte=='?'?11U:10U;
         }
         return 0;
     }

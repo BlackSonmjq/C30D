@@ -1,4 +1,4 @@
-Send B0 once after flashing to migrate servo IDs 1-4 from 115200 to 9600; wait for confirmed_mask=0x0F. Upper USART1 stays 115200. Repeating B0 resumes partial migrations without rewriting confirmed devices. Fault latch/travel guard are removed; the previous bounded feedback/retry flow is restored.
+Upper USART1 remains 115200. New firmware starts servo UART4 at 115200. Send B? for read-only 9600/115200 discovery and per-ID rate learning; run it before K jobs after reboot if rates are mixed. B0 attempts migration but now verifies the old rate on failure and retains usable communication. Logs show mask9600 and mask115200.
 
 > Current console: USART1 RX (PA10) accepts local task/servo commands; USART3 PD8/PD9 is reserved for the camera protocol. USART1 TX (PA9) prints servo logs only at 115200 8N1. Laser, APP and boot prints are disabled. The distance/rx3 examples below describe earlier configurations.
 

@@ -11,28 +11,27 @@
 - 出厂 ID 通常为 0：一次只接一只舵机，依次调用 `Servo_SetID(0, 1)` 至 `Servo_SetID(0, 4)`。确认回包 `#001P!` 等，再接下一只，最后并联总线。
 - 按当前机构方向配置：1/2 号使用模式 2，3/4 号使用模式 1。可分别发送 `M1`～`M4` 设置，并等待 `CONFIRMED` 回读确认。不要每次启动重复写 ID 或模式。实际安装方向先空载核对。
 
-## 9600-baud migration (baud9600-6)
+## Baud discovery and recovery (baud-probe-7)
 
-UART4/PC10 now starts at 9600 8N1. The upper-computer USART1 stays at
-115200 8N1. After flashing, send B0 once while idle. It probes IDs 1-4
-at 9600 first; if needed it probes at 115200 and sends #001PBD0! (or the
-matching ID), then switches back to 9600 and verifies a mode reply.
-The supplied device protocol defines PBD0 as 9600 baud. No ID or mode
-is rewritten and startup does not write device configuration.
+UART4 starts at 115200 for recovery. Upper USART1 stays at 115200 8N1.
+Send B? first: it only queries modes at 9600/115200, prints raw replies,
+and records the confirmed rate for each ID in MCU RAM. Example:
+mask9600=0x00 mask115200=0x0F means all four responded at 115200.
+No ID, mode or baud configuration is written by B?. S1-S4 also try both
+rates for the selected ID and retain the successful rate. For automatic K
+jobs with mixed rates, run B? after boot before the first job.
 
-Wait for four baud=9600 CONFIRMED lines and final confirmed_mask=0x0F
-before S2 or K commands. A partial run leaves the MCU bus at 9600. Repeat B0
-to retry unconfirmed IDs; already migrated devices are only read. Never
-assume tx=0 or a baud-write ACK alone confirms the new communication rate.
+B0 still attempts migration: only an ID confirmed at 115200 gets PBD0.
+It now captures any old-rate ACK before switching, verifies at 9600, then
+re-checks 115200 after a failed verification. The final log reports both
+masks. Failure no longer leaves all communication forced to 9600. Typed
+motion, position query and stop APIs select each ID's confirmed rate.
+No repeated writes occur for IDs already confirmed at 9600.
 
-The previous fault latch and travel guard have been removed as requested.
-Original feedback/retry behavior is restored: +/-100 units, 500 ms moves,
-two valid arrival samples, at most two motion retries inside each 3-second
-phase, and return-to-zero attempt after outward timeout.
-
-DMA transmits continuously. UART TC completion switches to RX in the ISR;
-no byte-duration wait runs with global interrupts masked at 9600. Normal
-stop/query semantics and transport error timeouts remain unchanged.
+The prior fault latch and travel guard remain removed as requested.
+Original feedback/retry behavior remains: +/-100 units, 500 ms moves,
+two valid arrival samples, bounded motion retries and return attempt.
+DMA/TC interrupt turnaround avoids slow-byte waits with IRQs masked.
 
 ## 动作含义
 

@@ -10,7 +10,7 @@ static DMA_Stream_TypeDef mock_stream;
 static unsigned dma_offset;
 static char tx[128];
 static unsigned tx_size, checks, tc_checks, tc_delay, fail_flag, nested, isr;
-static uint32_t bus_baud;
+static uint32_t observed_uart_baud;
 static unsigned complete_via_irq;
 static uint32_t irq_mask;
 static unsigned rx_irq_enabled, nvic_enabled, cleared_pending;
@@ -50,7 +50,7 @@ void NVIC_Init(NVIC_InitTypeDef *irq) {
 }
 void NVIC_ClearPendingIRQ(int irq) { CHECK(irq == UART4_IRQn); ++cleared_pending; }
 void USART_StructInit(USART_InitTypeDef *uart) { memset(uart, 0, sizeof(*uart)); }
-void USART_Init(USART_TypeDef *p, USART_InitTypeDef *uart) { CHECK(uart->USART_BaudRate == 9600 || uart->USART_BaudRate == 115200); bus_baud=uart->USART_BaudRate; p->CR1 = uart->USART_Mode; }
+void USART_Init(USART_TypeDef *p, USART_InitTypeDef *uart) { CHECK(uart->USART_BaudRate == 9600 || uart->USART_BaudRate == 115200); observed_uart_baud=uart->USART_BaudRate; p->CR1 = uart->USART_Mode; }
 void USART_DeInit(USART_TypeDef *p) { CHECK(p == UART4); memset(p, 0, sizeof(*p)); rx_irq_enabled = 0; }
 void USART_Cmd(USART_TypeDef *p, FunctionalState e) { CHECK(p == UART4); (void)e; }
 void USART_HalfDuplexCmd(USART_TypeDef *p, FunctionalState e) { CHECK(p == UART4 && e == ENABLE); }
@@ -134,10 +134,10 @@ int main(void) {
     CHECK(Servo_Home(1, 1500) == SERVO_NOT_INITIALIZED);
     UART4->CR1 = 0xFFFFFFFFU; /* Simulate peripheral state left by a bootloader. */
     Servo_Init(); CHECK(tx_size == 0 && nvic_enabled && cleared_pending == 1);
-    CHECK(bus_baud==9600);
-    CHECK(Servo_SetBusBaud(115200)==SERVO_OK && bus_baud==115200);
-    CHECK(Servo_SetBusBaud(9600)==SERVO_OK && bus_baud==9600);
-    CHECK(Servo_SetBusBaud(12345)==SERVO_INVALID_ARGUMENT && bus_baud==9600);
+    CHECK(observed_uart_baud==115200);
+    CHECK(Servo_SetBusBaud(115200)==SERVO_OK && observed_uart_baud==115200);
+    CHECK(Servo_SetBusBaud(9600)==SERVO_OK && observed_uart_baud==9600);
+    CHECK(Servo_SetBusBaud(12345)==SERVO_INVALID_ARGUMENT && observed_uart_baud==9600);
     check_idle();
     CHECK(Servo_Home(1, 500) == SERVO_OK); expect("#001P0500T0500!");
     CHECK(!suspend_calls && !resume_calls); /* Supported before scheduler startup. */
@@ -255,6 +255,16 @@ int main(void) {
     for (unsigned n = 0; n < 40U; ++n) receive("#OK!");
     check_idle(); CHECK(!frame_length); /* Filtering still has a bounded noise budget. */
     CHECK(suspend_calls == resume_calls && !scheduler_depth);
-    printf("PASS: servo transport, four IDs, half-turn mapping, TC/timeout, parser/error boundaries (%u checks)\n", checks);
+    CHECK(Servo_SetDeviceBaud(2,9600)==SERVO_OK);
+    CHECK(Servo_Home(2,500)==SERVO_OK); expect("#002P0500T0500!");
+    CHECK(Servo_GetBusBaud()==9600 && observed_uart_baud==9600);
+    CHECK(Servo_Home(1,500)==SERVO_OK); expect("#001P0500T0500!");
+    CHECK(Servo_GetBusBaud()==115200 && observed_uart_baud==115200);
+    CHECK(Servo_ReadPosition(2)==SERVO_OK); expect("#002PRAD!");
+    CHECK(Servo_GetBusBaud()==9600);
+    CHECK(Servo_Stop(1)==SERVO_OK); expect("#001PDST!");
+    CHECK(Servo_GetBusBaud()==115200);
+    CHECK(Servo_SetDeviceBaud(5,9600)==SERVO_INVALID_ARGUMENT);
+    printf("PASS: servo transport, per-ID mixed bauds, TC/timeout, parser/error boundaries (%u checks)\n", checks);
     return 0;
 }

@@ -8,9 +8,10 @@
  * ?????? MCU ?????????????
  * ????????? M1/M2/M3/M4 ????????? 2/2/1/1???????
  */
-/* ZP10S: UART4, PC10 (single-wire half duplex), 9600 8N1.
- * B0 on the 115200-baud upper UART explicitly migrates IDs 1..4 from
- * their former 115200 device rate to 9600; no startup EEPROM writes.
+/* ZP10S: UART4, PC10 (single-wire half duplex), recovery startup 115200 8N1.
+ * B? probes 9600/115200 without writing. B0 explicitly attempts PBD0 migration.
+ * Each ID retains its confirmed rate in MCU RAM; failed migration keeps the
+ * confirmed old rate. No startup EEPROM writes; upper UART stays at 115200.
  * IDs 1..4 match the former pushrod IDs. No broadcast motion API.
  * Mode 1: 270 degrees, P0500 = 0 degrees, P1833 ~= 180 degrees.
  */
@@ -18,7 +19,7 @@
 #define SERVO_HOME_PULSE        500U
 #define SERVO_HALF_TURN_PULSE   1833U
 #define SERVO_MOVE_MS           500U
-#define SERVO_BAUDRATE          9600UL
+#define SERVO_BAUDRATE          115200UL /* Recovery default; per-ID rates are learned by B?. */
 #define SERVO_POSITION_TOLERANCE 100U /* All IDs and targets: +/-100 feedback units. */
 #define SERVO_FRAME_CAPACITY    64U
 
@@ -69,6 +70,9 @@ void Servo_Init(void);
 Servo_Result Servo_SendCommand(const char *command);
 /* Change only the MCU UART. B0 explicitly migrates devices from 115200. */
 Servo_Result Servo_SetBusBaud(uint32_t baud);
+uint32_t Servo_GetBusBaud(void);
+Servo_Result Servo_SetDeviceBaud(uint8_t id, uint32_t baud);
+Servo_Result Servo_SelectDevice(uint8_t id);
 /* Explicit persistent setup; allow servo processing/ACK before next command.
  * SetMode accepts position modes 1..4 only. Home/Twist assume mode 1.
  * SetID accepts old ID 0..254, new ID 1..4: connect ONE servo when assigning.

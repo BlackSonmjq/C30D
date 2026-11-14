@@ -16,6 +16,8 @@
 #endif
 #define SERVO_COMMAND_LIMIT 63U
 static uint8_t initialized;
+static uint32_t bus_baud=SERVO_BAUDRATE;
+static uint32_t device_baud[SERVO_COUNT]; /* Initialized by Servo_Init, then learned by ID. */
 /* DMA1 stream 4/channel 4 is UART4_TX (RM0090). Keep this buffer in SRAM,
  * not on a caller's possibly CCM-backed stack. No other driver owns stream 4. */
 static uint8_t tx_buffer[SERVO_COMMAND_LIMIT];
@@ -63,6 +65,7 @@ void Servo_ClearRx(void)
 
 void Servo_Init(void)
 {
+    uint8_t index;
     GPIO_InitTypeDef gpio;
     USART_InitTypeDef uart;
     NVIC_InitTypeDef irq;
@@ -81,8 +84,10 @@ void Servo_Init(void)
     GPIO_Init(GPIOC, &gpio);
     USART_StructInit(&uart);
     uart.USART_BaudRate = SERVO_BAUDRATE;
+    bus_baud=SERVO_BAUDRATE;
     uart.USART_Mode = USART_Mode_Rx;
     USART_Init(UART4, &uart);
+    for (index=0;index<SERVO_COUNT;++index) device_baud[index]=SERVO_BAUDRATE;
     USART_HalfDuplexCmd(UART4, ENABLE);
     stop_rx();
     discard = UART4->SR;
@@ -184,8 +189,25 @@ Servo_Result Servo_SetBusBaud(uint32_t baud)
     USART_Init(UART4,&uart);
     stop_rx();
     USART_Cmd(UART4,ENABLE);
+    bus_baud=baud;
     __set_PRIMASK(mask);
     return SERVO_OK;
+}
+
+uint32_t Servo_GetBusBaud(void) { return bus_baud; }
+
+Servo_Result Servo_SetDeviceBaud(uint8_t id, uint32_t baud)
+{
+    if (!valid_id(id) || (baud!=9600UL && baud!=115200UL)) return SERVO_INVALID_ARGUMENT;
+    device_baud[id-1U]=baud; /* MCU RAM only; never sends a device setup command. */
+    return SERVO_OK;
+}
+
+Servo_Result Servo_SelectDevice(uint8_t id)
+{
+    if (!valid_id(id)) return SERVO_INVALID_ARGUMENT;
+    if (!initialized) return SERVO_NOT_INITIALIZED;
+    return bus_baud==device_baud[id-1U] ? SERVO_OK : Servo_SetBusBaud(device_baud[id-1U]);
 }
 
 /* Called with IRQs masked, before the receive window is opened. */
@@ -310,17 +332,23 @@ Servo_Result Servo_SetID(uint8_t old_id, uint8_t new_id)
 
 Servo_Result Servo_SetMode(uint8_t id, uint8_t mode)
 {
+    Servo_Result selected;
     char command[20];
     if (!valid_id(id) || mode < 1U || mode > 4U) return SERVO_INVALID_ARGUMENT;
+    selected=Servo_SelectDevice(id);
+    if (selected!=SERVO_OK) return selected;
     snprintf(command, sizeof(command), "#%03uPMOD%u!", (unsigned)id, (unsigned)mode);
     return Servo_SendCommand(command);
 }
 
 Servo_Result Servo_MovePulse(uint8_t id, uint16_t pulse, uint16_t time_ms)
 {
+    Servo_Result selected;
     char command[24];
     if (!valid_id(id) || pulse < 500U || pulse > 2500U || time_ms > 9999U)
         return SERVO_INVALID_ARGUMENT;
+    selected=Servo_SelectDevice(id);
+    if (selected!=SERVO_OK) return selected;
     snprintf(command, sizeof(command), "#%03uP%04uT%04u!",
              (unsigned)id, (unsigned)pulse, (unsigned)time_ms);
     return Servo_SendCommand(command);
@@ -345,16 +373,22 @@ Servo_Result Servo_Twist(uint8_t id, uint16_t time_ms)
 
 Servo_Result Servo_Stop(uint8_t id)
 {
+    Servo_Result selected;
     char command[16];
     if (!valid_id(id)) return SERVO_INVALID_ARGUMENT;
+    selected=Servo_SelectDevice(id);
+    if (selected!=SERVO_OK) return selected;
     snprintf(command, sizeof(command), "#%03uPDST!", (unsigned)id);
     return Servo_SendCommand(command);
 }
 
 Servo_Result Servo_ReadPosition(uint8_t id)
 {
+    Servo_Result selected;
     char command[16];
     if (!valid_id(id)) return SERVO_INVALID_ARGUMENT;
+    selected=Servo_SelectDevice(id);
+    if (selected!=SERVO_OK) return selected;
     snprintf(command, sizeof(command), "#%03uPRAD!", (unsigned)id);
     return Servo_SendCommand(command);
 }

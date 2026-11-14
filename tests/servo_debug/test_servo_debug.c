@@ -12,6 +12,7 @@ static unsigned scenario, outward_commands, home_commands, failures, mode_writes
 static unsigned position_queries;
 static unsigned stalled_queries;
 static uint32_t bus_baud=SERVO_BAUDRATE, device_baud[5];
+static uint32_t known_baud[5];
 static unsigned baud_writes;
 static uint16_t current_position=543;
 static char reply[64];
@@ -23,11 +24,15 @@ static void any_printf(void *port,const char *format,...) { (void)port; (void)fo
 void Servo_GetDiagnostics(Servo_Diagnostics *data) { memset(data,0,sizeof(*data)); }
 void Servo_ClearRx(void) { reply[0]=0; }
 Servo_Result Servo_SetBusBaud(uint32_t baud) { bus_baud=baud; reply[0]=0; return SERVO_OK; }
+uint32_t Servo_GetBusBaud(void) { return bus_baud; }
+Servo_Result Servo_SetDeviceBaud(uint8_t id,uint32_t baud) { known_baud[id]=baud; return SERVO_OK; }
+Servo_Result Servo_SelectDevice(uint8_t id) { bus_baud=known_baud[id]; return SERVO_OK; }
 Servo_Result Servo_SendCommand(const char *command) {
     unsigned id=(unsigned)(command[3]-'0');
     if (scenario>=8 && bus_baud!=device_baud[id]) return SERVO_OK;
     if (memcmp(command+4,"PBD0",4)==0) {
-        device_baud[id]=9600; ++baud_writes;
+        if (scenario!=10) device_baud[id]=9600;
+        ++baud_writes;
         snprintf(reply,sizeof(reply),"#%03uPBD9600!",id); return SERVO_OK;
     }
     snprintf(reply,sizeof(reply),"#%03uMOD%u!",id,id<=2?2:1);
@@ -38,7 +43,7 @@ Servo_Result Servo_SetMode(uint8_t id,uint8_t mode) {
     ++mode_writes; strcpy(reply,"#OK!"); return SERVO_OK;
 }
 Servo_Result Servo_MovePulse(uint8_t id,uint16_t pulse,uint16_t ms) {
-    (void)id;
+    Servo_SelectDevice(id);
     if (ms!=500) ++failures;
     if (pulse==1833) {
         ++outward_commands;
@@ -53,6 +58,8 @@ Servo_Result Servo_MovePulse(uint8_t id,uint16_t pulse,uint16_t ms) {
     return SERVO_OK;
 }
 Servo_Result Servo_ReadPosition(uint8_t id) {
+    Servo_SelectDevice(id);
+    if (scenario>=8 && bus_baud!=device_baud[id]) return SERVO_OK;
     ++position_queries;
     if (scenario==6 && outward_commands==1 && ++stalled_queries>1U) return SERVO_OK;
     if (scenario==4 && outward_commands==1 && position_queries%2U==0U) return SERVO_OK;
@@ -72,18 +79,29 @@ static void run(unsigned test_case,unsigned request) {
     scenario=test_case; outward_commands=home_commands=mode_writes=0;
     first_out=return_time=position_queries=stalled_queries=0; current_position=543; reply[0]=0;
     servo_debug_pending=(u8)request; servo_debug_busy=1;
-    for (now_ms=0;now_ms<12000 && servo_debug_busy;now_ms+=50) ServoDebug_Process();
+    for (now_ms=0;now_ms<30000 && servo_debug_busy;now_ms+=50) ServoDebug_Process();
     CHECK(!servo_debug_busy);
 }
 int main(void) {
     unsigned id;
-    for (id=1;id<=4;++id) device_baud[id]=115200;
+    for (id=1;id<=4;++id) device_baud[id]=known_baud[id]=115200;
+    baud_writes=0; run(8,11); /* Read-only scan never writes. */
+    CHECK(!baud_writes && bus_baud==115200 && !home_commands && !outward_commands);
+    run(10,10); /* Device accepts traffic but ignores PBD0. */
+    CHECK(baud_writes==4 && bus_baud==115200);
+    for (id=1;id<=4;++id) CHECK(device_baud[id]==115200 && known_baud[id]==115200);
+    run(10,1); CHECK(outward_commands==1 && home_commands==2); /* S1 still works. */
+    device_baud[2]=9600; baud_writes=0; run(8,11);
+    CHECK(!baud_writes && known_baud[2]==9600 && known_baud[1]==115200);
+    run(8,1); CHECK(outward_commands==1 && home_commands==2 && bus_baud==115200);
+    run(8,2); CHECK(outward_commands==1 && home_commands==2 && bus_baud==9600);
+    for (id=1;id<=4;++id) device_baud[id]=known_baud[id]=115200;
     baud_writes=0; run(8,10);
     CHECK(baud_writes==4 && !home_commands && !outward_commands && bus_baud==9600);
     for (id=1;id<=4;++id) CHECK(device_baud[id]==9600);
     baud_writes=0; run(8,10); CHECK(baud_writes==0); /* No repeated writes. */
     device_baud[2]=115200; device_baud[3]=38400; baud_writes=0; run(9,10);
-    CHECK(baud_writes==1 && device_baud[2]==9600 && device_baud[3]==38400 && bus_baud==9600);
+    CHECK(baud_writes==1 && device_baud[2]==9600 && device_baud[3]==38400 && bus_baud==115200);
     device_baud[3]=115200; baud_writes=0; run(8,10);
     CHECK(baud_writes==1 && device_baud[3]==9600);
     run(6,2); /* Only ONE off-target reply, then silence until motion is resent. */
