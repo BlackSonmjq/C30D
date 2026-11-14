@@ -14,6 +14,8 @@ static unsigned stalled_queries;
 static uint32_t bus_baud=SERVO_BAUDRATE, device_baud[5];
 static uint32_t known_baud[5];
 static unsigned baud_writes;
+static unsigned version_queries;
+static char delayed_reply[64];
 static uint16_t current_position=543;
 static char reply[64];
 uint32_t mock_primask(void) { return 0; }
@@ -27,9 +29,19 @@ Servo_Result Servo_SetBusBaud(uint32_t baud) { bus_baud=baud; reply[0]=0; return
 uint32_t Servo_GetBusBaud(void) { return bus_baud; }
 Servo_Result Servo_SetDeviceBaud(uint8_t id,uint32_t baud) { known_baud[id]=baud; return SERVO_OK; }
 Servo_Result Servo_SelectDevice(uint8_t id) { bus_baud=known_baud[id]; return SERVO_OK; }
+Servo_Result Servo_StartRxProbe(void) {
+    if (delayed_reply[0]) { strcpy(reply,delayed_reply); delayed_reply[0]=0; }
+    return SERVO_OK;
+}
 Servo_Result Servo_SendCommand(const char *command) {
     unsigned id=(unsigned)(command[3]-'0');
+    if (memcmp(command+4,"PVER",4)==0) ++version_queries;
     if (scenario>=8 && bus_baud!=device_baud[id]) return SERVO_OK;
+    if (memcmp(command+4,"PVER",4)==0) {
+        snprintf(reply,sizeof(reply),"#%03uPV0.97!",id);
+        if (scenario==11) { strcpy(delayed_reply,reply); strcpy(reply,"#OK!"); }
+        return SERVO_OK;
+    }
     if (memcmp(command+4,"PBD0",4)==0) {
         if (scenario!=10) device_baud[id]=9600;
         ++baud_writes;
@@ -78,12 +90,23 @@ Servo_Result Servo_GetFrame(char *buffer,uint16_t capacity,uint16_t *length) {
 static void run(unsigned test_case,unsigned request) {
     scenario=test_case; outward_commands=home_commands=mode_writes=0;
     first_out=return_time=position_queries=stalled_queries=0; current_position=543; reply[0]=0;
+    delayed_reply[0]=0;
     servo_debug_pending=(u8)request; servo_debug_busy=1;
     for (now_ms=0;now_ms<30000 && servo_debug_busy;now_ms+=50) ServoDebug_Process();
     CHECK(!servo_debug_busy);
 }
 int main(void) {
     unsigned id;
+    CHECK(ServoDebug_Version("#002PV0.97!",11,2));
+    CHECK(!ServoDebug_Version("#003PV0.97!",11,2));
+    CHECK(!ServoDebug_Version("#002PVER!",9,2));
+    CHECK(!ServoDebug_Version("#OK!",4,2));
+    for (id=1;id<=4;++id) device_baud[id]=known_baud[id]=115200;
+    version_queries=baud_writes=0; run(8,12);
+    CHECK(version_queries==4 && !baud_writes && !home_commands && !outward_commands);
+    device_baud[2]=9600; known_baud[2]=115200;
+    version_queries=0; run(11,14);
+    CHECK(version_queries==2 && known_baud[2]==9600 && !baud_writes && !home_commands && !outward_commands);
     for (id=1;id<=4;++id) device_baud[id]=known_baud[id]=115200;
     baud_writes=0; run(8,11); /* Read-only scan never writes. */
     CHECK(!baud_writes && bus_baud==115200 && !home_commands && !outward_commands);
@@ -132,6 +155,6 @@ int main(void) {
     run(3,7); CHECK(mode_writes==1 && !home_commands && !outward_commands);
     run(3,8); CHECK(mode_writes==1 && !home_commands && !outward_commands);
     run(3,9); CHECK(mode_writes==1 && !home_commands && !outward_commands);
-    if (!failures) printf("PASS: lost motion retry, bounded stall, missing replies, normal motion, all-home, modes\n");
+    if (!failures) printf("PASS: PVER, baud discovery/recovery, feedback sequence, all-home and modes\n");
     return failures;
 }

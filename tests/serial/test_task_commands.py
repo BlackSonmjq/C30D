@@ -119,4 +119,16 @@ receive(cpu,"B?")
 check(read(cpu,"servo_debug_pending")==11)
 check(read(cpu,"servo_debug_busy")==1)
 
+cpu = fresh()
+receive(cpu,"V2")
+check(read(cpu,"servo_debug_pending")==14)
+check(read(cpu,"servo_debug_busy")==1)
+receive(cpu,"K1S1B0")
+check(read(cpu,"servo_debug_pending")==14)
+check(read(cpu,"job_busy")==0)
+
+cpu = fresh()
+receive(cpu,"V0")
+check(read(cpu,"servo_debug_pending")==12)
+
 print(f"PASS: compiled USART1 K1-K4 commands, busy/error recovery, existing controls ({checks} checks)")

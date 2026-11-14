@@ -98,3 +98,18 @@ uv run --with unicorn --with pyelftools python tests/serial/test_servo_transport
 ```
 
 测试编译生产驱动并模拟 UART/GPIO，覆盖四个 ID、角度换算、命令格式、TC 等待、发送超时、并发拒绝、启动关闭接收、旧外设状态复位、回包容量、连续噪声、溢出、串口错误关闭接收及下一请求恢复。不能替代电气及实物运动验证。
+
+## Firmware version query (baud-version-8)
+
+The supplied Zhongling PWM servo manual, revision 250508, includes ZP10S
+in the bus-servo table (p12). Pages 25-27 define PVER, MOD2 and PBD0:
+MOD2 is 270-degree reverse position control; PBD0 requests 9600 with a
+PBD9600 response. The relevant command descriptions do not state a separate
+save/restart requirement. Observed generic OK plus continued 115200 mode
+readback differs from this description; do not infer a firmware version.
+
+V0 reads versions of IDs 1-4; V1-V4 read one. These commands send only
+#002PVER! (matching ID), trying known and alternate rates. They never move
+a servo or write ID/mode/baud. A valid version looks like #002PV0.97!.
+Raw replies are logged; OK, echoes and wrong IDs do not count as a version.
+The receiver continues listening for a trailing version after an ACK.

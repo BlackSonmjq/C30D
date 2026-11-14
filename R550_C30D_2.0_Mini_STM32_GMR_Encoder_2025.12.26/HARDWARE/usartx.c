@@ -67,6 +67,20 @@ static u8 ServoDebug_Mode(const char *frame, uint16_t length, u8 id, u8 *mode)
     *mode=(u8)(frame[offset]-'0'); return 1;
 }
 
+/* PVER readback per the ZP10S manual p25: #002PV0.97!.
+ * Never mistake #OK!, query echoes or another ID for a version. */
+static u8 ServoDebug_Version(const char *frame, uint16_t length, u8 id)
+{
+    unsigned i, reply_id=0;
+    if (length<8U || frame[0]!='#' || frame[4]!='P' || frame[5]!='V' ||
+        frame[6]<'0' || frame[6]>'9' || frame[length-1U]!='!') return 0;
+    for (i=1;i<=3;++i) {
+        if (frame[i]<'0' || frame[i]>'9') return 0;
+        reply_id=reply_id*10U+(unsigned)(frame[i]-'0');
+    }
+    return reply_id==id;
+}
+
 static void ServoDebug_Process(void)
 {
     static u8 id, phase, all_home, stage, attempts, stable, failed, mode_reads, requested_mode;
@@ -88,16 +102,51 @@ static void ServoDebug_Process(void)
         phase=all_home?3U:1U; stage=all_home?0U:10U; attempts=stable=failed=0; last_position=0;
         half_turn_target=SERVO_HALF_TURN_PULSE;
         mode_reads=0;
-        any_printf(USART1,"SERVO debug=baud-probe-7 request=%u\r\n",(unsigned)request);
+        any_printf(USART1,"SERVO debug=baud-version-8 request=%u\r\n",(unsigned)request);
     }
     if (request>=6U && request<=9U) {
         id=request-5U; requested_mode=id<=2U?2U:1U; phase=1; stage=20;
     }
     if (request==10U || request==11U) { id=1; phase=1; stage=30; baud_ok=baud_old=0; mode_reads=0; baud_scan_only=request==11U; }
+    if (request>=12U && request<=16U) {
+        all_home=request==12U; id=all_home?1U:request-12U; phase=1; stage=40;
+    }
     if (!phase) return;
+    /* V0 reads all firmware versions; V1..V4 read one. No parameter writes. */
+    if (stage>=40U && stage<=43U) {
+        u8 version_done=0;
+        if (stage==40U || stage==42U) {
+            if (stage==40U) Servo_SelectDevice(id);
+            else Servo_SetBusBaud(Servo_GetBusBaud()==115200UL?9600UL:115200UL);
+            Servo_ClearRx(); snprintf(frame,sizeof(frame),"#%03uPVER!",(unsigned)id);
+            result=Servo_SendCommand(frame);
+            any_printf(USART1,"SERVO %u version query baud=%lu tx=%u\r\n",(unsigned)id,(unsigned long)Servo_GetBusBaud(),(unsigned)result);
+            ++stage; query_started=now; return;
+        }
+        if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK) {
+            any_printf(USART1,"SERVO %u version raw baud=%lu: %s\r\n",(unsigned)id,(unsigned long)Servo_GetBusBaud(),frame);
+            if (ServoDebug_Version(frame,length,id)) {
+                Servo_SetDeviceBaud(id,Servo_GetBusBaud()); version_done=1;
+                any_printf(USART1,"SERVO %u VERSION CONFIRMED\r\n",(unsigned)id);
+            } else {
+                /* An ACK can precede a version. Keep listening without writing
+                 * configuration or re-sending the command in the same window. */
+                Servo_StartRxProbe();
+            }
+        }
+        if (!version_done && (TickType_t)(now-query_started)>=pdMS_TO_TICKS(600U)) {
+            Servo_ClearRx();
+            if (stage==41U) { stage=42; return; }
+            any_printf(USART1,"SERVO %u VERSION NOT CONFIRMED\r\n",(unsigned)id); version_done=1;
+        }
+        if (!version_done) return;
+        Servo_ClearRx(); Servo_SelectDevice(id);
+        if (all_home && id<SERVO_COUNT) { ++id; stage=40; return; }
+        stage=24;
+    }
     /* B? only reads. B0 writes PBD0 only after a valid old-rate reply.
      * Failed migrations re-probe 115200 and retain each ID's proven rate. */
-    if (stage>=30U) {
+    if (stage>=30U && stage<=36U) {
         u8 confirmed=0, next_id=0;
         if (stage==30U) {
             Servo_SetBusBaud(9600UL);
@@ -1345,6 +1394,14 @@ int USART1_IRQHandler(void)
         servo_debug_prefix = 0;
         if (byte >= '1' && byte <= '4' && !USART_ServoControlBusy() && !ServoTask_IsBusy())
             StepperTask_RequestMangoFromISR((u8)(byte - '0'));
+        return 0;
+    }
+    if (byte=='V') { servo_debug_prefix=5U; return 0; }
+    if (servo_debug_prefix==5U) {
+        servo_debug_prefix=0;
+        if (byte>='0' && byte<='4' && !servo_debug_busy && !servo_probe_active && !StepperTask_IsBusy() && !ServoTask_IsBusy()) {
+            servo_debug_busy=1; servo_debug_pending=(u8)(12U+byte-'0');
+        }
         return 0;
     }
     if (byte=='B') { servo_debug_prefix=4U; return 0; }
