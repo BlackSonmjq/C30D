@@ -16,6 +16,7 @@
 #endif
 #define SERVO_COMMAND_LIMIT 63U
 static uint8_t initialized;
+static volatile uint8_t fault_latched;
 /* DMA1 stream 4/channel 4 is UART4_TX (RM0090). Keep this buffer in SRAM,
  * not on a caller's possibly CCM-backed stack. No other driver owns stream 4. */
 static uint8_t tx_buffer[SERVO_COMMAND_LIMIT];
@@ -213,6 +214,8 @@ Servo_Result Servo_SendCommand(const char *command)
     if (length < 2U || length > SERVO_COMMAND_LIMIT ||
         command[0] != '#' || command[length - 1U] != '!') return SERVO_INVALID_ARGUMENT;
     if (!initialized) return SERVO_NOT_INITIALIZED;
+    /* Block raw position frames as well as the typed movement API after fault. */
+    if (fault_latched && length==15U && command[4]=='P' && command[9]=='T') return SERVO_BUSY;
     /* Keep the whole frame in one task execution slice. IRQs remain enabled
      * except for the existing short direction-switch critical section. */
     if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
@@ -303,6 +306,7 @@ Servo_Result Servo_SetMode(uint8_t id, uint8_t mode)
 Servo_Result Servo_MovePulse(uint8_t id, uint16_t pulse, uint16_t time_ms)
 {
     char command[24];
+    if (fault_latched) return SERVO_BUSY;
     if (!valid_id(id) || pulse < 500U || pulse > 2500U || time_ms > 9999U)
         return SERVO_INVALID_ARGUMENT;
     snprintf(command, sizeof(command), "#%03uP%04uT%04u!",
@@ -333,6 +337,18 @@ Servo_Result Servo_Stop(uint8_t id)
     if (!valid_id(id)) return SERVO_INVALID_ARGUMENT;
     snprintf(command, sizeof(command), "#%03uPDST!", (unsigned)id);
     return Servo_SendCommand(command);
+}
+
+uint8_t Servo_IsFaulted(void)
+{
+    return fault_latched;
+}
+
+Servo_Result Servo_FaultStop(uint8_t id)
+{
+    fault_latched=1;
+    Servo_ClearRx();
+    return Servo_Stop(id);
 }
 
 Servo_Result Servo_ReadPosition(uint8_t id)

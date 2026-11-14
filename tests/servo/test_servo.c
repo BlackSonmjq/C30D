@@ -242,6 +242,14 @@ int main(void) {
     for (unsigned n = 0; n < 40U; ++n) receive("#OK!");
     check_idle(); CHECK(!frame_length); /* Filtering still has a bounded noise budget. */
     CHECK(suspend_calls == resume_calls && !scheduler_depth);
-    printf("PASS: servo transport, four IDs, half-turn mapping, TC/timeout, parser/error boundaries (%u checks)\n", checks);
+    CHECK(!Servo_IsFaulted());
+    CHECK(Servo_FaultStop(2)==SERVO_OK); expect("#002PDST!");
+    CHECK(Servo_IsFaulted());
+    CHECK(Servo_Home(2,500)==SERVO_BUSY); expect("");
+    CHECK(Servo_SendCommand("#002P1833T0500!")==SERVO_BUSY); expect("");
+    CHECK(Servo_ReadPosition(2)==SERVO_OK); expect("#002PRAD!");
+    Servo_ClearRx();
+    CHECK(Servo_Stop(2)==SERVO_OK); expect("#002PDST!");
+    printf("PASS: servo transport, fault latch blocks motion but allows stop/query (%u checks)\n", checks);
     return 0;
 }

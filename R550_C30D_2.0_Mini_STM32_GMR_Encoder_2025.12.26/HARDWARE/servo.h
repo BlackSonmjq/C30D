@@ -75,6 +75,10 @@ Servo_Result Servo_MoveAngle(uint8_t id, uint16_t degrees, uint16_t time_ms);
 Servo_Result Servo_Home(uint8_t id, uint16_t time_ms);
 Servo_Result Servo_Twist(uint8_t id, uint16_t time_ms);
 Servo_Result Servo_Stop(uint8_t id);
+/* Fault-stop latches out motion until MCU restart; it never writes ID/mode.
+ * A sent stop is not a guarantee of physical stopping on a faulty link. */
+Servo_Result Servo_FaultStop(uint8_t id);
+uint8_t Servo_IsFaulted(void);
 Servo_Result Servo_ReadPosition(uint8_t id);
 
 /* Single-frame mailbox, including terminating NUL. Generic commands/probes

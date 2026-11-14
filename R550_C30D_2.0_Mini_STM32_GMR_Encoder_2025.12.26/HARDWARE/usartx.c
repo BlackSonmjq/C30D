@@ -69,9 +69,8 @@ static u8 ServoDebug_Mode(const char *frame, uint16_t length, u8 id, u8 *mode)
 
 static void ServoDebug_Process(void)
 {
-    static u8 id, phase, all_home, stage, attempts, stable, failed, mode_reads, requested_mode;
-    static TickType_t move_started, query_started, last_motion_sent;
-    static u8 motion_retries, stalled_samples, position_seen;
+    static u8 id, phase, all_home, stage, stable, mode_reads, requested_mode;
+    static TickType_t move_started, query_started;
     static uint16_t last_position, half_turn_target;
     static Servo_Diagnostics mode_rx_start;
     Servo_Diagnostics mode_rx_end;
@@ -84,15 +83,22 @@ static void ServoDebug_Process(void)
     __disable_irq(); request=servo_debug_pending; servo_debug_pending=0; __set_PRIMASK(mask);
     if (request == 5U || (!phase && request)) {
         Servo_ClearRx(); all_home=(request==5U); id=all_home?1U:request;
-        phase=all_home?3U:1U; stage=all_home?0U:10U; attempts=stable=failed=0; last_position=0;
+        phase=all_home?3U:1U; stage=all_home?0U:10U; stable=0; last_position=0;
         half_turn_target=SERVO_HALF_TURN_PULSE;
         mode_reads=0;
-        any_printf(USART1,"SERVO debug=dma-feedback-4 request=%u\r\n",(unsigned)request);
+        any_printf(USART1,"SERVO debug=fault-stop-5 request=%u\r\n",(unsigned)request);
     }
     if (request>=6U && request<=9U) {
         id=request-5U; requested_mode=id<=2U?2U:1U; phase=1; stage=20;
     }
     if (!phase) return;
+    if (Servo_IsFaulted()) {
+        any_printf(USART1,"SERVO FAULT LATCHED; motion blocked until MCU reset\r\n");
+        phase=0; Servo_ClearRx();
+        mask=__get_PRIMASK(); __disable_irq();
+        if (!servo_debug_pending) servo_debug_busy=0;
+        __set_PRIMASK(mask); return;
+    }
     /* M1/M2 set mode 2; M3/M4 set mode 1. Write once, then read back. */
     if (stage==20U) {
         Servo_ClearRx(); result=Servo_SetMode(id,requested_mode); mode_reads=0;
@@ -166,8 +172,11 @@ static void ServoDebug_Process(void)
             }
         } else if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(600U)) {
             if (mode_reads<3U) { stage=10; return; }
-            any_printf(USART1,"SERVO %u mode unknown: assuming 270deg target180=%u\r\n",(unsigned)id,(unsigned)half_turn_target);
-            Servo_ClearRx(); stage=0;
+            any_printf(USART1,"SERVO %u MODE NOT CONFIRMED; motion cancelled\r\n",(unsigned)id);
+            Servo_ClearRx(); phase=0;
+            mask=__get_PRIMASK(); __disable_irq();
+            if (!servo_debug_pending) servo_debug_busy=0;
+            __set_PRIMASK(mask);
         }
         return;
     }
@@ -177,13 +186,18 @@ static void ServoDebug_Process(void)
         result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
         any_printf(USART1,"SERVO cmd=#%03uP%04uT%04u! tx=%u\r\n",
                    (unsigned)id,(unsigned)target,(unsigned)SERVO_MOVE_MS,(unsigned)result);
-        ++attempts; stable=0; move_started=last_motion_sent=now; stage=1;
-        motion_retries=0; stalled_samples=0; position_seen=0;
-        any_printf(USART1,"SERVO %u target=%u attempt=%u tx=%u\r\n",(unsigned)id,(unsigned)target,(unsigned)attempts,(unsigned)result);
+        stable=0; move_started=now; stage=1;
+        any_printf(USART1,"SERVO %u target=%u attempt=%u tx=%u\r\n",(unsigned)id,(unsigned)target,1U,(unsigned)result);
+        if (result!=SERVO_OK) {
+            Servo_FaultStop(id); phase=0;
+            mask=__get_PRIMASK(); __disable_irq();
+            if (!servo_debug_pending) servo_debug_busy=0;
+            __set_PRIMASK(mask);
+        }
         return;
     }
     if (stage==1U) {
-        if ((TickType_t)(now-last_motion_sent)<pdMS_TO_TICKS(SERVO_MOVE_MS)) return;
+        if ((TickType_t)(now-move_started)<pdMS_TO_TICKS(SERVO_MOVE_MS)) return;
         Servo_ClearRx(); result=Servo_ReadPosition(id);
         query_started=now; stage=2;
         return;
@@ -191,20 +205,17 @@ static void ServoDebug_Process(void)
     if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK) {
         if (ServoDebug_Position(frame,length,id,&position)) {
             int error=(int)position-(int)target;
+            if (position>half_turn_target+SERVO_POSITION_TOLERANCE) {
+                Servo_FaultStop(id);
+                any_printf(USART1,"SERVO %u unexpected position=%u; STOP AND LOCK\r\n",(unsigned)id,(unsigned)position);
+                phase=0; Servo_ClearRx();
+                mask=__get_PRIMASK(); __disable_irq();
+                if (!servo_debug_pending) servo_debug_busy=0;
+                __set_PRIMASK(mask); return;
+            }
             /* Use the same arrival tolerance for every servo and target. */
             int tolerance=(int)SERVO_POSITION_TOLERANCE;
-            /* A valid but unchanged position far from the target can indicate
-             * a lost motion command. Retry the same absolute target at most
-             * twice, while retaining the original 3 s phase deadline. */
-            if (position_seen && (error < -tolerance || error > tolerance) &&
-                (int)position-(int)last_position >= -5 &&
-                (int)position-(int)last_position <= 5) {
-                ++stalled_samples;
-            } else {
-                stalled_samples=0;
-            }
             last_position=position;
-            position_seen=1;
             stable=(error>=-tolerance && error<=tolerance) ? stable+1U : 0U;
             any_printf(USART1,"SERVO %u pos=%u target=%u stable=%u\r\n",(unsigned)id,(unsigned)position,(unsigned)target,(unsigned)stable);
             arrived=stable>=2U;
@@ -212,38 +223,16 @@ static void ServoDebug_Process(void)
         }
         /* UART mailbox stops after one frame. Wait before the next query. */
     }
-    /* One off-target reply followed by lost queries must still allow retry.
-     * Retain two valid arrival confirmations and the original phase deadline. */
-        if (!arrived && position_seen && stable==0U && motion_retries<2U &&
-            ((int)last_position-(int)target < -(int)SERVO_POSITION_TOLERANCE ||
-             (int)last_position-(int)target > (int)SERVO_POSITION_TOLERANCE) &&
-            (stalled_samples>=1U || (TickType_t)(now-last_motion_sent)>=pdMS_TO_TICKS(1000U)) &&
-            (TickType_t)(now-move_started)+pdMS_TO_TICKS(SERVO_MOVE_MS+300U)<pdMS_TO_TICKS(3000U)) {
-            Servo_ClearRx();
-            result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
-            ++motion_retries;
-            stalled_samples=0;
-            stable=0;
-            last_motion_sent=now;
-            stage=1;
-            any_printf(USART1,"SERVO %u motion retry=%u pos=%u target=%u tx=%u\r\n",
-                       (unsigned)id,(unsigned)motion_retries,(unsigned)last_position,
-                       (unsigned)target,(unsigned)result);
-            return;
-        }
     if (arrived) {
         Servo_ClearRx();
-        if (all_home && id<SERVO_COUNT) { ++id; stage=0; attempts=stable=0; last_position=0; return; }
-        if (!all_home && phase<3U) { ++phase; stage=0; attempts=stable=0; last_position=0; return; }
-        any_printf(USART1,"SERVO home within tolerance; failures=%u\r\n",(unsigned)failed);
+        if (all_home && id<SERVO_COUNT) { ++id; stage=0; stable=0; last_position=0; return; }
+        if (!all_home && phase<3U) { ++phase; stage=0; stable=0; last_position=0; return; }
+        any_printf(USART1,"SERVO home within tolerance; failures=0\r\n");
     } else if ((TickType_t)(now-move_started)>=pdMS_TO_TICKS(3000U)) {
         Servo_ClearRx();
-        if (phase!=2U && attempts<2U) { stage=0; return; }
-        any_printf(USART1,"SERVO %u POSITION TIMEOUT target=%u last=%u (0=no reply)\r\n",(unsigned)id,(unsigned)target,(unsigned)last_position);
-        failed=1;
-        if (all_home && id<SERVO_COUNT) { ++id; stage=0; attempts=stable=0; last_position=0; return; }
-        /* If outward travel fails, still attempt a verified return to zero. */
-        if (!all_home && phase==2U) { phase=3; stage=0; attempts=stable=0; last_position=0; return; }
+        any_printf(USART1,"SERVO %u POSITION TIMEOUT target=%u last=%u; STOP AND LOCK\r\n",(unsigned)id,(unsigned)target,(unsigned)last_position);
+        result=Servo_FaultStop(id);
+        any_printf(USART1,"SERVO %u fault stop tx=%u; no retry or automatic return\r\n",(unsigned)id,(unsigned)result);
     } else {
         if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(150U)) {
             /* Count successive valid positions across missing replies. An

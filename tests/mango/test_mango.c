@@ -20,7 +20,7 @@ static uint8_t fail_home, fail_query, home_after_twist;
 static uint16_t servo_target;
 static uint16_t physical_position;
 static uint8_t lossy_test, drop_outward, drop_return;
-static uint8_t sparse_lossy, stalled_replies;
+static uint8_t sparse_lossy, stalled_replies, fault;
 static unsigned int move_count, query_count, stops;
 static unsigned int checks, completed_jobs, hits, starts, case_id, stop_partial_edge;
 static u8 in_actuator, sensor, active_motor, output_id, forced_invalid, initial_close;
@@ -75,6 +75,8 @@ void DistanceTask_GetData(DistanceTask_Data *data) {
     if (inject_pulse_limit)
         data->distance_mm = inject_pulse_limit == 2U && count[active_motor] >= MANGO_MAX_PULSES ? threshold - 1U : threshold;
 }
+uint8_t Servo_IsFaulted(void) { return fault; }
+Servo_Result Servo_FaultStop(uint8_t id) { fault=1; return Servo_Stop(id); }
 u8 USART_ServoControlBusy(void) { return manual_busy; }
 void Servo_ClearRx(void) { reply_pending = 0; }
 Servo_Result Servo_MovePulse(uint8_t id, uint16_t pulse, uint16_t duration_ms) {
@@ -206,7 +208,7 @@ static void reset(void) {
     fail_home = fail_query = home_after_twist = 0;
     move_count = query_count = stops = 0; servo_target = 0;
     lossy_test=drop_outward=drop_return=0; physical_position=545;
-    sparse_lossy=stalled_replies=0;
+    fault=0; sparse_lossy=stalled_replies=0;
     ++case_id;
 }
 int main(void) {
@@ -256,23 +258,23 @@ int main(void) {
     reset(); stop_return = 1; run_job(1, MANGO_RETURN_FAILED); CHECK(hits == 1);
     reset(); tick = 0xfffffff0U; run_job(1, MANGO_OK); CHECK(hits == 1);
     reset(); CHECK(!StepperTask_RequestMangoFromISR(0)); CHECK(!StepperTask_RequestMangoFromISR(5));
-    reset(); bad_reply = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && starts == 2);
-    reset(); no_reply = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && query_count);
+    reset(); bad_reply = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
+    reset(); no_reply = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(query_count);
     reset(); fail_strike = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(!hits && starts == 2);
     reset(); fail_home = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
-    reset(); tick = 0xfffffff0U; initial_close = 1; run_job(2, MANGO_OK); CHECK(home_after_twist && query_count);
-    reset(); no_reply = 1; run_job(3, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && starts == 2);
-    reset(); fail_query = 1; run_job(1, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && starts == 2);
+    reset(); tick = 0xfffffff0U; initial_close = 1; run_job(2, MANGO_OK); CHECK(query_count);
+    reset(); no_reply = 1; run_job(3, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
+    reset(); fail_query = 1; run_job(1, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
     reset(); fail_home = 1; run_job(4, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
     reset(); manual_busy = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(!hits && !move_count);
-    reset(); lossy_test=drop_outward=1; run_job(2,MANGO_OK);
-    CHECK(move_count==4 && home_after_twist);
-    reset(); lossy_test=drop_return=1; run_job(2,MANGO_OK);
-    CHECK(move_count==4 && home_after_twist);
-    reset(); sparse_lossy=lossy_test=drop_outward=1; run_job(2,MANGO_OK);
-    CHECK(move_count==4 && home_after_twist);
-    reset(); sparse_lossy=lossy_test=drop_return=1; run_job(2,MANGO_OK);
-    CHECK(move_count==4 && home_after_twist);
+    reset(); lossy_test=drop_outward=1; run_job(2,MANGO_PUSHROD_FAILED);
+    CHECK(fault && stops && move_count<=3);
+    reset(); lossy_test=drop_return=1; run_job(2,MANGO_PUSHROD_FAILED);
+    CHECK(fault && stops && move_count<=3);
+    reset(); sparse_lossy=lossy_test=drop_outward=1; run_job(2,MANGO_PUSHROD_FAILED);
+    CHECK(fault && stops && move_count<=3);
+    reset(); sparse_lossy=lossy_test=drop_return=1; run_job(2,MANGO_PUSHROD_FAILED);
+    CHECK(fault && stops && move_count<=3);
     reset(); CHECK(!ServoTask_Start(0) && !ServoTask_Start(5));
     CHECK(ServoTask_Start(1) && !ServoTask_Start(2));
     ServoTask_Cancel(); CHECK(!ServoTask_IsBusy() && !move_count && !stops);

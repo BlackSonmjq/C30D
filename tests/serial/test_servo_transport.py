@@ -43,13 +43,14 @@ def simulate(mode=2, ignore_outward=0, extra_ack=False, inject_error=False,
             if extra_ack: replies.append('#OK!')
             if noisy: replies.extend(['#002PRAD!','#003P1833!','#002P12x3!','#002P0499!'])
             replies.append(f'#002P{position:04d}!')
-        elif command.startswith('#002P') and 'T' in command:
+        elif command.startswith('#002P') and len(command)==15 and command[9]=='T':
             # '#002P1833T0500!' => pulse indices 5..8.
             target=int(command[5:9])
             if target in (1833,2500):
                 sends+=1
                 if sends>ignore_outward: position=target
             else: position=541
+        elif command=='#002PDST!': pass
         else: raise AssertionError(command)
     def hook(uc,address,size,user):
         nonlocal tick,position,sends,frame,cr1_checks,scheduler_depth,mode_queries
@@ -110,20 +111,20 @@ def simulate(mode=2, ignore_outward=0, extra_ack=False, inject_error=False,
     assert not scheduler_depth
     if mode is None: assert mode_queries==3
     if miss_mode_queries and mode is not None: assert mode_queries==miss_mode_queries+1
-    moves=[cmd for _,cmd in wire if 'T' in cmd]
+    moves=[cmd for _,cmd in wire if len(cmd)==15 and cmd[9]=='T']
     return moves, logs, tick, cr1_checks
 
 normal=['#002P0500T0500!','#002P1833T0500!','#002P0500T0500!']
 m,l,t,c=simulate(); assert m==normal,(m,l)
 print('PASS: real S2 move encoding, UART4 direction and scheduler protection for',c,'bytes')
-m,l,t,c=simulate(ignore_outward=1); assert m==normal[:2]+normal[1:],m
-m,l,t,c=simulate(ignore_outward=99); assert m==normal[:1]+[normal[1]]*3+normal[-1:],m
+m,l,t,c=simulate(ignore_outward=1); assert m==normal[:2],m
+m,l,t,c=simulate(ignore_outward=99); assert m==normal[:2],m
 assert any('POSITION TIMEOUT' in f for f in l)
-print('PASS: P0541 retry recovery, retry limit and timeout return using the real UART driver')
-m,l,t,c=simulate(mode=None); assert m==normal and any('mode unknown' in f for f in l)
+print('PASS: P0541 fault-stop without retransmit or automatic return using the real UART driver')
+m,l,t,c=simulate(mode=None); assert m==[] and any('MODE NOT CONFIRMED' in f for f in l)
 m,l,t,c=simulate(miss_mode_queries=2); assert m==normal,m
 m,l,t,c=simulate(mode=7); assert m==[] and any('not position mode' in f for f in l)
-print('PASS: mode confirmed before motion, three missing-mode reads fall back, later reply recovers')
+print('PASS: mode confirmed before motion, three missing-mode reads cancel, later reply recovers')
 m,l,t,c=simulate(extra_ack=True); assert m==normal,m
 m,l,t,c=simulate(extra_ack=True,noisy=True); assert m==normal,m
 m,l,t,c=simulate(extra_ack=True,noisy=True,short_mode=True); assert m==normal,m

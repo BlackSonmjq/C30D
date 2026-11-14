@@ -11,23 +11,24 @@
 - 出厂 ID 通常为 0：一次只接一只舵机，依次调用 `Servo_SetID(0, 1)` 至 `Servo_SetID(0, 4)`。确认回包 `#001P!` 等，再接下一只，最后并联总线。
 - 按当前机构方向配置：1/2 号使用模式 2，3/4 号使用模式 1。可分别发送 `M1`～`M4` 设置，并等待 `CONFIRMED` 回读确认。不要每次启动重复写 ID 或模式。实际安装方向先空载核对。
 
-## Merged feedback control
+## Fault-stop behavior (fault-stop-5)
 
-S1-S4 and K1-K4 now use home -> 180 degrees -> home. All IDs and targets
-use +/-100 position units and 500 ms moves. Two successive valid replies
-confirm arrival; missing query replies do not reset the count. Valid off-target
-positions reset the count. A stalled absolute target is resent at most twice,
-with a 500 ms wait before querying again; retries retain the 3-second deadline.
-One off-target reply followed by silence also enables retry after 1000 ms
-since the last motion command; a second stalled reply is not required.
-K2 no longer uses a fixed 1500 ms delay without feedback.
+S1-S4 and K1-K4 use home -> 180 degrees -> home, 500 ms per move,
+with +/-100 position units and two valid feedback confirmations. Missing
+queries retain the previous valid confirmation, inside a 3-second phase bound.
 
-Manual mode reads retry three times, then use the existing 270-degree fallback
-if no mode is received. Unsupported non-position modes cancel motion. Automatic
-K commands retain the configured 270-degree modes and never rewrite ID/mode.
-UART4 uses DMA1 stream 4/channel 4 for contiguous transmission. The existing
-scheduler guard, priority-2 RX interrupt and reply-type/ID filtering are retained.
-OLED page 3 shows the integration job; page 4 shows camera diagnostics.
+Automatic motion retransmission and retry homing have been removed. A timeout
+or send failure sends PDST, ends the servo sequence and latches out all further
+motion until MCU restart. No automatic return is attempted after a fault.
+Feedback beyond the upper commanded endpoint plus 100 also stops and latches.
+Raw position commands and Servo_MovePulse are blocked by the transport latch;
+stop and readback remain available. A transmitted stop is not proof that a
+faulty device/link physically stopped. Disconnect servo power on runaway.
+
+Manual mode reads retry three times; no confirmed mode means no movement.
+Existing ID/mode settings are not rewritten. UART4 DMA, the scheduler guard,
+priority-2 RX and ID/type reply filtering are retained. OLED page 3 shows
+integration status and page 4 shows camera diagnostics.
 
 ## 动作含义
 
