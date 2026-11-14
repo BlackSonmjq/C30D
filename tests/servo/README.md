@@ -18,6 +18,8 @@ use +/-100 position units and 500 ms moves. Two successive valid replies
 confirm arrival; missing query replies do not reset the count. Valid off-target
 positions reset the count. A stalled absolute target is resent at most twice,
 with a 500 ms wait before querying again; retries retain the 3-second deadline.
+One off-target reply followed by silence also enables retry after 1000 ms
+since the last motion command; a second stalled reply is not required.
 K2 no longer uses a fixed 1500 ms delay without feedback.
 
 Manual mode reads retry three times, then use the existing 270-degree fallback

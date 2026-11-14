@@ -87,7 +87,7 @@ static void ServoDebug_Process(void)
         phase=all_home?3U:1U; stage=all_home?0U:10U; attempts=stable=failed=0; last_position=0;
         half_turn_target=SERVO_HALF_TURN_PULSE;
         mode_reads=0;
-        any_printf(USART1,"SERVO debug=dma-feedback-3 request=%u\r\n",(unsigned)request);
+        any_printf(USART1,"SERVO debug=dma-feedback-4 request=%u\r\n",(unsigned)request);
     }
     if (request>=6U && request<=9U) {
         id=request-5U; requested_mode=id<=2U?2U:1U; phase=1; stage=20;
@@ -208,23 +208,29 @@ static void ServoDebug_Process(void)
             stable=(error>=-tolerance && error<=tolerance) ? stable+1U : 0U;
             any_printf(USART1,"SERVO %u pos=%u target=%u stable=%u\r\n",(unsigned)id,(unsigned)position,(unsigned)target,(unsigned)stable);
             arrived=stable>=2U;
-            if (!arrived && stalled_samples>=1U && motion_retries<2U &&
-                (TickType_t)(now-move_started)+pdMS_TO_TICKS(SERVO_MOVE_MS+300U)<pdMS_TO_TICKS(3000U)) {
-                Servo_ClearRx();
-                result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
-                ++motion_retries;
-                stalled_samples=0;
-                stable=0;
-                last_motion_sent=now;
-                stage=1;
-                any_printf(USART1,"SERVO %u motion retry=%u pos=%u target=%u tx=%u\r\n",
-                           (unsigned)id,(unsigned)motion_retries,(unsigned)position,
-                           (unsigned)target,(unsigned)result);
-                return;
-            }
+
         }
         /* UART mailbox stops after one frame. Wait before the next query. */
     }
+    /* One off-target reply followed by lost queries must still allow retry.
+     * Retain two valid arrival confirmations and the original phase deadline. */
+        if (!arrived && position_seen && stable==0U && motion_retries<2U &&
+            ((int)last_position-(int)target < -(int)SERVO_POSITION_TOLERANCE ||
+             (int)last_position-(int)target > (int)SERVO_POSITION_TOLERANCE) &&
+            (stalled_samples>=1U || (TickType_t)(now-last_motion_sent)>=pdMS_TO_TICKS(1000U)) &&
+            (TickType_t)(now-move_started)+pdMS_TO_TICKS(SERVO_MOVE_MS+300U)<pdMS_TO_TICKS(3000U)) {
+            Servo_ClearRx();
+            result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
+            ++motion_retries;
+            stalled_samples=0;
+            stable=0;
+            last_motion_sent=now;
+            stage=1;
+            any_printf(USART1,"SERVO %u motion retry=%u pos=%u target=%u tx=%u\r\n",
+                       (unsigned)id,(unsigned)motion_retries,(unsigned)last_position,
+                       (unsigned)target,(unsigned)result);
+            return;
+        }
     if (arrived) {
         Servo_ClearRx();
         if (all_home && id<SERVO_COUNT) { ++id; stage=0; attempts=stable=0; last_position=0; return; }

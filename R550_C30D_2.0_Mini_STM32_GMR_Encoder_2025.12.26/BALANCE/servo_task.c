@@ -138,18 +138,6 @@ void servo_task(void *pvParameters)
             } else if (stage == 2U) {
                 if (Servo_GetFrame(frame, sizeof(frame), &length) == SERVO_OK) {
                     stable = position_matches(frame, length, target) ? stable + 1U : 0U;
-                    /* Retry a stalled absolute target within the original
-                     * deadline, using the same feedback policy as manual S1..S4. */
-                    if (!stable && stalled_samples>=1U && motion_retries<2U &&
-                        (TickType_t)(now-move_started)+pdMS_TO_TICKS(SERVO_MOVE_MS+300U)<pdMS_TO_TICKS(MANGO_SERVO_PHASE_TIMEOUT_MS)) {
-                        Servo_ClearRx();
-                        ++motion_retries;
-                        stalled_samples=0;
-                        if (Servo_MovePulse(actuator.id,target,SERVO_MOVE_MS)!=SERVO_OK) phase_failed();
-                        else { last_motion_sent=xTaskGetTickCount(); stage=1; }
-                        any_printf(USART1,"SERVO %u motion retry=%u target=%u\r\n",
-                                   (unsigned)actuator.id,(unsigned)motion_retries,(unsigned)target);
-                    }
                     if (stable >= 2U) {
                         Servo_ClearRx();
                         if (phase < 2U) { ++phase; stage = 0; }
@@ -159,6 +147,23 @@ void servo_task(void *pvParameters)
                                        (unsigned)actuator.id, (unsigned)failed);
                         }
                     }
+                }
+                if (stage == 2U && actuator.state == SERVO_TASK_RUNNING) {
+                /* Retry a stalled absolute target within the original
+                 * deadline, using the same feedback policy as manual S1..S4. */
+                if (!stable && position_seen && motion_retries<2U &&
+                    ((int)last_position-(int)target < -(int)SERVO_POSITION_TOLERANCE ||
+                     (int)last_position-(int)target > (int)SERVO_POSITION_TOLERANCE) &&
+                    (stalled_samples>=1U || (TickType_t)(now-last_motion_sent)>=pdMS_TO_TICKS(1000U)) &&
+                    (TickType_t)(now-move_started)+pdMS_TO_TICKS(SERVO_MOVE_MS+300U)<pdMS_TO_TICKS(MANGO_SERVO_PHASE_TIMEOUT_MS)) {
+                    Servo_ClearRx();
+                    ++motion_retries;
+                    stalled_samples=0;
+                    if (Servo_MovePulse(actuator.id,target,SERVO_MOVE_MS)!=SERVO_OK) phase_failed();
+                    else { last_motion_sent=xTaskGetTickCount(); stage=1; }
+                    any_printf(USART1,"SERVO %u motion retry=%u target=%u\r\n",
+                               (unsigned)actuator.id,(unsigned)motion_retries,(unsigned)target);
+                }
                 }
                 if (stage == 2U && actuator.state == SERVO_TASK_RUNNING &&
                     (TickType_t)(now - query_started) >= pdMS_TO_TICKS(MANGO_SERVO_QUERY_MS)) {

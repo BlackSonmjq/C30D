@@ -20,6 +20,7 @@ static uint8_t fail_home, fail_query, home_after_twist;
 static uint16_t servo_target;
 static uint16_t physical_position;
 static uint8_t lossy_test, drop_outward, drop_return;
+static uint8_t sparse_lossy, stalled_replies;
 static unsigned int move_count, query_count, stops;
 static unsigned int checks, completed_jobs, hits, starts, case_id, stop_partial_edge;
 static u8 in_actuator, sensor, active_motor, output_id, forced_invalid, initial_close;
@@ -107,6 +108,8 @@ Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length) {
     CHECK(capacity >= 11);
     if (!reply_pending || (no_reply && servo_target == SERVO_HALF_TURN_PULSE)) return SERVO_NO_FRAME;
     reply_pending = 0;
+    if (sparse_lossy && abs((int)physical_position-(int)servo_target)>100 && stalled_replies++>0U)
+        return SERVO_NO_FRAME;
     if (bad_reply && servo_target == SERVO_HALF_TURN_PULSE) {
         /* ACK, wrong ID, echo, malformed frame and off-target feedback. */
         switch (query_count % 5U) {
@@ -203,6 +206,7 @@ static void reset(void) {
     fail_home = fail_query = home_after_twist = 0;
     move_count = query_count = stops = 0; servo_target = 0;
     lossy_test=drop_outward=drop_return=0; physical_position=545;
+    sparse_lossy=stalled_replies=0;
     ++case_id;
 }
 int main(void) {
@@ -264,6 +268,10 @@ int main(void) {
     reset(); lossy_test=drop_outward=1; run_job(2,MANGO_OK);
     CHECK(move_count==4 && home_after_twist);
     reset(); lossy_test=drop_return=1; run_job(2,MANGO_OK);
+    CHECK(move_count==4 && home_after_twist);
+    reset(); sparse_lossy=lossy_test=drop_outward=1; run_job(2,MANGO_OK);
+    CHECK(move_count==4 && home_after_twist);
+    reset(); sparse_lossy=lossy_test=drop_return=1; run_job(2,MANGO_OK);
     CHECK(move_count==4 && home_after_twist);
     reset(); CHECK(!ServoTask_Start(0) && !ServoTask_Start(5));
     CHECK(ServoTask_Start(1) && !ServoTask_Start(2));
