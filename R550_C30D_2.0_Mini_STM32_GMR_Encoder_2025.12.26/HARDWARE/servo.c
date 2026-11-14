@@ -13,6 +13,10 @@
 #endif
 #define SERVO_COMMAND_LIMIT 63U
 static uint8_t initialized;
+/* DMA1 stream 4/channel 4 is UART4_TX (RM0090). Keep this buffer in SRAM,
+ * not on a caller's possibly CCM-backed stack. No other driver owns stream 4. */
+static uint8_t tx_buffer[SERVO_COMMAND_LIMIT];
+#define SERVO_DMA_FLAGS (DMA_HIFCR_CTCIF4 | DMA_HIFCR_CHTIF4 | DMA_HIFCR_CTEIF4 | DMA_HIFCR_CDMEIF4 | DMA_HIFCR_CFEIF4)
 static volatile uint8_t sending;
     static volatile uint8_t receiving;
 static volatile uint8_t probing;
@@ -56,6 +60,7 @@ void Servo_Init(void)
     NVIC_InitTypeDef irq;
     volatile uint32_t discard;
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
+    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA1, ENABLE);
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
     USART_DeInit(UART4); /* Reset all interrupt enables, including stale TX/TC. */
     GPIO_StructInit(&gpio);
@@ -146,6 +151,7 @@ Servo_Result Servo_SendCommand(const char *command)
 {
     uint32_t mask;
     uint16_t length = 0, i;
+    uint32_t remaining;
     Servo_Result result = SERVO_OK;
     volatile uint32_t discard;
     if (command == NULL || __get_IPSR() != 0U) return SERVO_INVALID_ARGUMENT;
@@ -166,25 +172,43 @@ Servo_Result Servo_SendCommand(const char *command)
     discard = UART4->DR;
     (void)discard;
     rx_length = 0;
+    for (i=0; i<length; ++i) tx_buffer[i]=(uint8_t)command[i];
+    DMA1_Stream4->CR = 0;
+    DMA1_Stream4->PAR = (uint32_t)&UART4->DR;
+    DMA1_Stream4->M0AR = (uint32_t)tx_buffer;
+    DMA1_Stream4->NDTR = length;
+    DMA1_Stream4->FCR = 0; /* Direct mode, byte transfers, normal (not circular). */
+    DMA1->HIFCR = SERVO_DMA_FLAGS;
+    DMA1_Stream4->CR = DMA_SxCR_CHSEL_2 | DMA_SxCR_MINC | DMA_SxCR_DIR_0 | DMA_SxCR_PL_1;
     UART4->CR1 |= USART_CR1_TE;
+    __DMB();
+    DMA1_Stream4->CR |= DMA_SxCR_EN;
+    UART4->CR3 |= USART_CR3_DMAT;
     __set_PRIMASK(mask);
-    for (i = 0; i < length - 1U; ++i) {
-        if (!wait_flag(USART_FLAG_TXE)) {
+    /* DMA keeps all bytes contiguous even while higher-priority tasks/IRQs run.
+     * Only the tail and half-duplex turnaround need interrupt protection. */
+    remaining=SERVO_POLL_LIMIT;
+    while (DMA1_Stream4->NDTR > 1U) {
+        if (--remaining==0U || (DMA1->HISR & (DMA_HISR_TEIF4 | DMA_HISR_DMEIF4 | DMA_HISR_FEIF4))) {
             result = SERVO_TX_TIMEOUT;
             break;
         }
-        USART_SendData(UART4, (uint8_t)command[i]);
     }
-    if (result == SERVO_OK && !wait_flag(USART_FLAG_TXE)) result = SERVO_TX_TIMEOUT;
-    /* Protect the final byte and direction change against task preemption:
-     * otherwise a fast reply can be lost while RE is still disabled.
-     * Up to two bytes may still be in flight; a fault uses the finite poll bound.
-     */
     mask = __get_PRIMASK();
     __disable_irq();
-    if (result == SERVO_OK) USART_SendData(UART4, (uint8_t)command[length - 1U]);
+    remaining=SERVO_POLL_LIMIT;
+    while (result==SERVO_OK && !(DMA1->HISR & DMA_HISR_TCIF4)) {
+        if (--remaining==0U || (DMA1->HISR & (DMA_HISR_TEIF4 | DMA_HISR_DMEIF4 | DMA_HISR_FEIF4)))
+            result=SERVO_TX_TIMEOUT;
+    }
     /* TXE is not enough: the final stop bit must leave the shift register. */
     if (!wait_flag(USART_FLAG_TC)) result = SERVO_TX_TIMEOUT;
+    UART4->CR3 &= ~USART_CR3_DMAT;
+    DMA1_Stream4->CR &= ~DMA_SxCR_EN;
+    remaining=SERVO_POLL_LIMIT;
+    while ((DMA1_Stream4->CR & DMA_SxCR_EN) && --remaining) {}
+    if (!remaining) { initialized=0; result=SERVO_TX_TIMEOUT; }
+    DMA1->HIFCR = SERVO_DMA_FLAGS;
     UART4->CR1 &= ~USART_CR1_TE;
     if (result == SERVO_OK && SERVO_RX_IRQ_ENABLED && frame_length == 0U) {
         rx_budget = 2U * SERVO_FRAME_CAPACITY;

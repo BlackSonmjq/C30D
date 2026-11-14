@@ -5,6 +5,9 @@
 #include "../../R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/HARDWARE/servo.c"
 
 USART_TypeDef mock_uart;
+DMA_TypeDef mock_dma;
+static DMA_Stream_TypeDef mock_stream;
+static unsigned dma_offset;
 static char tx[128];
 static unsigned tx_size, checks, tc_checks, tc_delay, fail_flag, nested, isr;
 static uint32_t irq_mask;
@@ -24,7 +27,7 @@ void GPIO_PinAFConfig(void *port, uint16_t source, uint8_t af) { CHECK(port == G
 uint8_t GPIO_ReadInputDataBit(void *port, uint16_t pin) {
     CHECK(port == GPIOC && pin == GPIO_Pin_10); return pc10_high;
 }
-void RCC_AHB1PeriphClockCmd(uint32_t p, FunctionalState e) { CHECK(p == RCC_AHB1Periph_GPIOC && e == ENABLE); }
+void RCC_AHB1PeriphClockCmd(uint32_t p, FunctionalState e) { CHECK((p == RCC_AHB1Periph_GPIOC || p == RCC_AHB1Periph_DMA1) && e == ENABLE); }
 void RCC_APB1PeriphClockCmd(uint32_t p, FunctionalState e) { CHECK(p == RCC_APB1Periph_UART4 && e == ENABLE); }
 void NVIC_Init(NVIC_InitTypeDef *irq) {
     CHECK(irq->NVIC_IRQChannel == UART4_IRQn);
@@ -53,6 +56,24 @@ void USART_SendData(USART_TypeDef *p, uint16_t data) {
     tx[tx_size++] = (char)data;
     tx[tx_size] = 0;
     if (nested) { nested = 0; CHECK(Servo_Home(2, 100) == SERVO_BUSY); }
+}
+/* Advance the DMA engine on register accesses, including repeated transfers.
+ * TXE fault injection stalls DMA; the driver's finite timeout must recover. */
+DMA_Stream_TypeDef *mock_dma_stream(void) {
+    if (!(mock_stream.CR & DMA_SxCR_EN)) {
+        dma_offset=0;
+        mock_dma.HISR=0;
+    } else if ((mock_uart.CR3 & USART_CR3_DMAT) && mock_stream.NDTR && fail_flag!=USART_FLAG_TXE) {
+        CHECK(mock_stream.PAR==(uint32_t)&mock_uart.DR);
+        CHECK((mock_stream.CR & (DMA_SxCR_CHSEL_2 | DMA_SxCR_MINC | DMA_SxCR_DIR_0)) ==
+              (DMA_SxCR_CHSEL_2 | DMA_SxCR_MINC | DMA_SxCR_DIR_0));
+        while (mock_stream.NDTR) {
+            USART_SendData(&mock_uart,((const uint8_t *)mock_stream.M0AR)[dma_offset++]);
+            --mock_stream.NDTR;
+        }
+        mock_dma.HISR=DMA_HISR_TCIF4;
+    }
+    return &mock_stream;
 }
 static void expect(const char *command) {
     CHECK(strcmp(tx, command) == 0);

@@ -18,7 +18,6 @@ static volatile uint16_t usart3_forward_read, usart3_forward_write;
 static volatile uint32_t usart3_forward_dropped;
 #endif
 #define USART1_BINARY_FEEDBACK_ENABLED 0
-#define USART1_REPORT_PERIOD_MS 500U
 static DistanceProtocol_Receiver usart3_distance_receiver;
 static volatile uint32_t usart3_rx_bytes, usart3_uart_errors, usart3_error_flags;
 static volatile uint8_t usart3_raw[USART3_RAW_CAPTURE_SIZE], usart3_raw_write, usart3_raw_length;
@@ -62,8 +61,9 @@ static u8 ServoDebug_Mode(const char *frame, uint16_t length, u8 id, u8 *mode)
 
 static void ServoDebug_Process(void)
 {
-    static u8 id, phase, all_home, stage, attempts, stable, failed, query_valid, mode_reads, requested_mode;
-    static TickType_t move_started, query_started;
+    static u8 id, phase, all_home, stage, attempts, stable, failed, mode_reads, requested_mode;
+    static TickType_t move_started, query_started, last_motion_sent;
+    static u8 motion_retries, stalled_samples, position_seen;
     static uint16_t last_position, half_turn_target;
     u8 request, mode, arrived=0;
     TickType_t now=xTaskGetTickCount();
@@ -76,6 +76,8 @@ static void ServoDebug_Process(void)
         Servo_ClearRx(); all_home=(request==5U); id=all_home?1U:request;
         phase=all_home?3U:1U; stage=all_home?0U:10U; attempts=stable=failed=0; last_position=0;
         half_turn_target=SERVO_HALF_TURN_PULSE;
+        mode_reads=0;
+        any_printf(USART1,"SERVO debug=dma-feedback-3 request=%u\r\n",(unsigned)request);
     }
     if (request>=6U && request<=9U) {
         id=request-5U; requested_mode=id<=2U?2U:1U; phase=1; stage=20;
@@ -123,13 +125,15 @@ static void ServoDebug_Process(void)
     if (stage==10U) {
         snprintf(frame,sizeof(frame),"#%03uPMOD!",(unsigned)id);
         Servo_ClearRx(); result=Servo_SendCommand(frame);
-        query_started=now; stage=11;
+        query_started=now; stage=11; ++mode_reads;
         any_printf(USART1,"SERVO %u mode query tx=%u\r\n",(unsigned)id,(unsigned)result);
         return;
     }
     if (stage==11U) {
-        if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK &&
-            ServoDebug_Mode(frame,length,id,&mode)) {
+        result=Servo_GetFrame(frame,sizeof(frame),&length);
+        if (result==SERVO_OK)
+            any_printf(USART1,"SERVO %u mode reply: %s\r\n",(unsigned)id,frame);
+        if (result==SERVO_OK && ServoDebug_Mode(frame,length,id,&mode)) {
             if (mode<=4U) {
                 half_turn_target=mode>=3U ? 2500U : SERVO_HALF_TURN_PULSE;
                 any_printf(USART1,"SERVO %u mode=%u target180=%u\r\n",(unsigned)id,(unsigned)mode,(unsigned)half_turn_target);
@@ -142,6 +146,7 @@ static void ServoDebug_Process(void)
                 __set_PRIMASK(mask); return;
             }
         } else if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(600U)) {
+            if (mode_reads<3U) { stage=10; return; }
             any_printf(USART1,"SERVO %u mode unknown: assuming 270deg target180=%u\r\n",(unsigned)id,(unsigned)half_turn_target);
             Servo_ClearRx(); stage=0;
         }
@@ -151,28 +156,53 @@ static void ServoDebug_Process(void)
     if (stage==0U) {
         Servo_ClearRx();
         result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
-        ++attempts; stable=0; move_started=now; stage=1;
+        any_printf(USART1,"SERVO cmd=#%03uP%04uT%04u! tx=%u\r\n",
+                   (unsigned)id,(unsigned)target,(unsigned)SERVO_MOVE_MS,(unsigned)result);
+        ++attempts; stable=0; move_started=last_motion_sent=now; stage=1;
+        motion_retries=0; stalled_samples=0; position_seen=0;
         any_printf(USART1,"SERVO %u target=%u attempt=%u tx=%u\r\n",(unsigned)id,(unsigned)target,(unsigned)attempts,(unsigned)result);
         return;
     }
     if (stage==1U) {
-        if ((TickType_t)(now-move_started)<pdMS_TO_TICKS(SERVO_MOVE_MS)) return;
+        if ((TickType_t)(now-last_motion_sent)<pdMS_TO_TICKS(SERVO_MOVE_MS)) return;
         Servo_ClearRx(); result=Servo_ReadPosition(id);
-        query_started=now; stage=2; query_valid=0;
-        if (result!=SERVO_OK) stable=0;
+        query_started=now; stage=2;
         return;
     }
     if (Servo_GetFrame(frame,sizeof(frame),&length)==SERVO_OK) {
         if (ServoDebug_Position(frame,length,id,&position)) {
             int error=(int)position-(int)target;
-            /* Endpoint feedback can stop above P0500 (observed P0544/0545).
-             * Keep midpoint tolerance tighter; do not alter servo calibration. */
-            int tolerance=(target==SERVO_HOME_PULSE || target==2500U) ? 60 : 20;
-            query_valid=1;
+            /* Use the same arrival tolerance for every servo and target. */
+            int tolerance=(int)SERVO_POSITION_TOLERANCE;
+            /* A valid but unchanged position far from the target can indicate
+             * a lost motion command. Retry the same absolute target at most
+             * twice, while retaining the original 3 s phase deadline. */
+            if (position_seen && (error < -tolerance || error > tolerance) &&
+                (int)position-(int)last_position >= -5 &&
+                (int)position-(int)last_position <= 5) {
+                ++stalled_samples;
+            } else {
+                stalled_samples=0;
+            }
             last_position=position;
+            position_seen=1;
             stable=(error>=-tolerance && error<=tolerance) ? stable+1U : 0U;
             any_printf(USART1,"SERVO %u pos=%u target=%u stable=%u\r\n",(unsigned)id,(unsigned)position,(unsigned)target,(unsigned)stable);
             arrived=stable>=2U;
+            if (!arrived && stalled_samples>=1U && motion_retries<2U &&
+                (TickType_t)(now-move_started)+pdMS_TO_TICKS(SERVO_MOVE_MS+300U)<pdMS_TO_TICKS(3000U)) {
+                Servo_ClearRx();
+                result=Servo_MovePulse(id,target,SERVO_MOVE_MS);
+                ++motion_retries;
+                stalled_samples=0;
+                stable=0;
+                last_motion_sent=now;
+                stage=1;
+                any_printf(USART1,"SERVO %u motion retry=%u pos=%u target=%u tx=%u\r\n",
+                           (unsigned)id,(unsigned)motion_retries,(unsigned)position,
+                           (unsigned)target,(unsigned)result);
+                return;
+            }
         }
         /* UART mailbox stops after one frame. Wait before the next query. */
     }
@@ -191,8 +221,8 @@ static void ServoDebug_Process(void)
         if (!all_home && phase==2U) { phase=3; stage=0; attempts=stable=0; last_position=0; return; }
     } else {
         if ((TickType_t)(now-query_started)>=pdMS_TO_TICKS(150U)) {
-            /* Missing/malformed replies break consecutive-confirmation count. */
-            if (!query_valid) stable=0;
+            /* Count successive valid positions across missing replies. An
+             * out-of-range position still resets stable; the 3 s bound remains. */
             stage=1;
         }
         return;
@@ -226,8 +256,6 @@ Output  : none
 void data_task(void *pvParameters)
 {
 	 u32 lastWakeTime = getSysTickCnt();
-     TickType_t lastDistanceReport = xTaskGetTickCount();
-     DistanceTask_Data upper_distance;
      u8 probe_requested, probe_active = 0;
      TickType_t probe_started = 0;
      Servo_Result probe_result;
@@ -274,17 +302,6 @@ void data_task(void *pvParameters)
                            (unsigned int)servo_diag.pc10_high);
             }
 
-            /* Read the local VL53L0X owner's snapshot; never access I2C here. */
-            if ((TickType_t)(xTaskGetTickCount() - lastDistanceReport) >= pdMS_TO_TICKS(USART1_REPORT_PERIOD_MS)) {
-                lastDistanceReport = xTaskGetTickCount();
-                DistanceTask_GetData(&upper_distance);
-                any_printf(USART1, "UPPER VL53L0X laser=%u distance=%u mm valid=%u status=%u age_ms=%lu\r\n",
-                           (unsigned)upper_distance.laser_id,
-                           (unsigned)upper_distance.distance_mm,
-                           (unsigned)upper_distance.valid,
-                           (unsigned)upper_distance.status,
-                           (unsigned long)((TickType_t)(lastDistanceReport - upper_distance.update_tick) * portTICK_PERIOD_MS));
-            }
 			if(Check==0)
 			{
 				//Assign the data to be sent

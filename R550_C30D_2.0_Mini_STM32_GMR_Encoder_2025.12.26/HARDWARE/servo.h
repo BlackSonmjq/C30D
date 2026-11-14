@@ -16,6 +16,7 @@
 #define SERVO_HOME_PULSE        500U
 #define SERVO_HALF_TURN_PULSE   1833U
 #define SERVO_MOVE_MS           500U
+#define SERVO_POSITION_TOLERANCE 100U /* All IDs and targets: +/-100 feedback units. */
 #define SERVO_FRAME_CAPACITY    64U
 
 /* RX interrupts are armed after a successful send or an explicit RX probe.
