@@ -2,6 +2,19 @@
 /* 头文件重复包含保护，不是导航运行参数。 */
 #define ROUTE_CONFIG_H
 
+/* 1: chassis turned 180 degrees, keep the original field route.
+ * Swap front/rear AND left/right motion and localization sensors.
+ * Per-point calibration names/values still describe the original field layout.
+ * CAN/OLED retain physical chassis directions. Set 0 for original orientation. */
+#define ROUTE_CHASSIS_REVERSED        1
+#if ROUTE_CHASSIS_REVERSED
+#define ROUTE_PHYSICAL_FRONT_CENTER_MM Behind_Lidar_Center
+#define ROUTE_PHYSICAL_REAR_CENTER_MM  Front_Lidar_Center
+#else
+#define ROUTE_PHYSICAL_FRONT_CENTER_MM Front_Lidar_Center
+#define ROUTE_PHYSICAL_REAR_CENTER_MM  Behind_Lidar_Center
+#endif
+
 /*
  * 跑图参数：所有长度/测距均按各项注明的单位填写，修改宏后重新编译下载生效。
  * 左/右指车身方向；车头朝地图下方时，车身左移对应地图向右。
@@ -30,7 +43,7 @@
 
 /* VOFA 调试输出开关，无单位；仅在导航开启且处于调试模式时生效。
  * 1：蓝牙接口 USART2 专用于 JustFloat，暂停该口的 APP 解析与文本打印。
- * 使用 115200 波特率，TX=PD5、RX=PD6；关闭时恢复原蓝牙 9600 波特率和协议。
+ * 使用 9600 波特率，TX=PD5、RX=PD6；关闭时恢复原蓝牙 9600 波特率和协议。
  * USART3 恢复原有反馈方式，USART1 仍用于原疏果通信。
  */
 #define ROUTE_VOFA_ENABLE              1
@@ -39,7 +52,9 @@
  * 由原 20 Hz 通信任务检查，实际间隔以其 50 ms 周期为粒度；建议不小于 50 ms。
  * 串口忙时跳过该次输出，不等待串口、不阻塞导航；故障后重复发送冻结快照。
  */
-#define ROUTE_VOFA_PERIOD_MS           100U
+#define ROUTE_VOFA_PERIOD_MS           271U
+/* UART side of the original Bluetooth module; independent of PC BLE connection. */
+#define ROUTE_VOFA_BAUD                9600U
 
 /* ==================== 二、任务调度、数据有效期及各类等待时间 ==================== */
 

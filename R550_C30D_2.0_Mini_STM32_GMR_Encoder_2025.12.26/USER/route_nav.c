@@ -22,10 +22,10 @@ float RouteNav_WallTrim(uint16_t mm, uint16_t target_mm)
 
 float RouteNav_LaneVx(uint16_t front, uint16_t behind)
 {
-    float ef = (float)front - Front_Lidar_Center;
-    float eb = (float)behind - Behind_Lidar_Center;
-    uint8_t fv = front != 0U && Front_Lidar_Center != 0U && fabsf(ef) <= ROUTE_TRIM_VALID_MM;
-    uint8_t bv = behind != 0U && Behind_Lidar_Center != 0U && fabsf(eb) <= ROUTE_TRIM_VALID_MM;
+    float ef = (float)front - ROUTE_PHYSICAL_FRONT_CENTER_MM;
+    float eb = (float)behind - ROUTE_PHYSICAL_REAR_CENTER_MM;
+    uint8_t fv = front != 0U && ROUTE_PHYSICAL_FRONT_CENTER_MM != 0U && fabsf(ef) <= ROUTE_TRIM_VALID_MM;
+    uint8_t bv = behind != 0U && ROUTE_PHYSICAL_REAR_CENTER_MM != 0U && fabsf(eb) <= ROUTE_TRIM_VALID_MM;
     if (fv && bv) return limit_trim((ef - eb) * 0.5f);
     if (fv) return limit_trim(ef);
     if (bv) return limit_trim(-eb);
@@ -159,7 +159,7 @@ void RouteNav_Init(RouteController *c)
     memset(c, 0, sizeof(*c));
     c->status.phase = ROUTE_WAIT_START;
     c->status.motion = ROUTE_STOP;
-    c->status.next_motion = ROUTE_BACK;
+    c->status.next_motion = RoutePlan_Get(1U)->motion;
     c->status.sensor = ROUTE_LIDAR_COUNT;
     c->status.laser_remaining_mm = c->status.gate_mm = -1.0f;
 }
@@ -476,8 +476,8 @@ static void drive_segment(RouteController *c, const RouteInputs *in,
         out->vy_mps = s->side_wall == ROUTE_LIDAR_LEFT ? trim : -trim;
     } else {
         out->vy_mps = s->motion == ROUTE_LEFT ? speed : -speed;
-        out->vx_mps = RouteNav_LaneVx(control_reading(c, in, ROUTE_LIDAR_FRONT, Front_Lidar_Center),
-                                     control_reading(c, in, ROUTE_LIDAR_BEHIND, Behind_Lidar_Center));
+        out->vx_mps = RouteNav_LaneVx(control_reading(c, in, ROUTE_LIDAR_FRONT, ROUTE_PHYSICAL_FRONT_CENTER_MM),
+                                     control_reading(c, in, ROUTE_LIDAR_BEHIND, ROUTE_PHYSICAL_REAR_CENTER_MM));
     }
 }
 

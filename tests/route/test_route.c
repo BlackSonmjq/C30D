@@ -1377,7 +1377,7 @@ static void test_bluetooth_port_isolation(void)
 {
     const int active=ROUTE_DEMO_ENABLE&&ROUTE_DEBUG_MODE&&ROUTE_VOFA_ENABLE;
     assert(RouteVofa_IsActive()==active);
-    route_test_init_uart2();assert(initialized_uart2_baud==(active?115200U:9600U));
+    route_test_init_uart2();assert(initialized_uart2_baud==(active?ROUTE_VOFA_BAUD:9600U));
     route_test_usart2.CR1=USART_CR1_UE|USART_CR1_TE;route_test_usart2.SR=0xc0;route_test_usart2.DR=0xdead;
     assert(route_test_fputc('p',NULL)=='p');
     assert(route_test_usart2.DR==0xdeadU); /* printf is suppressed in servo log mode. */

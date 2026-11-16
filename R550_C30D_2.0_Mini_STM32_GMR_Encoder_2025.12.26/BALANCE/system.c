@@ -23,6 +23,7 @@ All rights reserved
 #include "pushrod.h"
 #include "servo.h"
 #include "route_debug.h"
+#include "route_config.h"
 
 //Robot software fails to flag bits
 //����������ʧ�ܱ�־λ
@@ -173,7 +174,7 @@ void systemInit(void)
     //Serial port 2 initialization, communication baud rate 9600,
     //used to communicate with Bluetooth APP terminal
     //����2��ʼ����ͨ�Ų�����9600������������APP��ͨ��
-    uart2_init(RouteVofa_IsActive()?115200U:9600U);
+    uart2_init(RouteVofa_IsActive()?ROUTE_VOFA_BAUD:9600U);
 
     //Serial port 3 is initialized and the baud rate is 115200.
     //Serial port 3 is the default port used to communicate with ROS terminal
