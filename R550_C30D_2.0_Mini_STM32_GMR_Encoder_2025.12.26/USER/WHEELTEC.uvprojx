@@ -10,21 +10,21 @@
       <TargetName>FreeRTOS</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
-      <pArmCC>5060528::V5.06 update 5 (build 528)::..\dpj keil5 dont delete\ARM\ARMCC</pArmCC>
-      <pCCUsed>5060528::V5.06 update 5 (build 528)::..\dpj keil5 dont delete\ARM\ARMCC</pCCUsed>
+      <pArmCC>5060750::V5.06 update 6 (build 750)::.\ARMCC</pArmCC>
+      <pCCUsed>5060750::V5.06 update 6 (build 750)::.\ARMCC</pCCUsed>
       <uAC6>0</uAC6>
       <TargetOption>
         <TargetCommonOption>
-          <Device>STM32F407ZG</Device>
+          <Device>STM32F407VETx</Device>
           <Vendor>STMicroelectronics</Vendor>
-          <PackID>Keil.STM32F4xx_DFP.1.0.8</PackID>
-          <PackURL>http://www.keil.com/pack</PackURL>
-          <Cpu>IROM(0x08000000,0x100000) IRAM(0x20000000,0x20000) IRAM2(0x10000000,0x10000) CPUTYPE("Cortex-M4") FPU2 CLOCK(168000000) ELITTLE</Cpu>
+          <PackID>Keil.STM32F4xx_DFP.3.1.1</PackID>
+          <PackURL>https://www.keil.com/pack/</PackURL>
+          <Cpu>IRAM(0x20000000,0x00020000) IRAM2(0x10000000,0x00010000) IROM(0x08000000,0x00080000) CPUTYPE("Cortex-M4") FPU2 DSP CLOCK(12000000) ELITTLE</Cpu>
           <FlashUtilSpec></FlashUtilSpec>
           <StartupFile></StartupFile>
-          <FlashDriverDll>UL2CM3(-S0 -C0 -P0 -FD20000000 -FC1000 -FN1 -FF0STM32F4xx_1024 -FS08000000 -FL0100000 -FP0($$Device:STM32F407ZG$Flash\STM32F4xx_1024.FLM))</FlashDriverDll>
+          <FlashDriverDll>UL2CM3(-S0 -C0 -P0 -FD20000000 -FC1000 -FN1 -FF0STM32F4xx_512 -FS08000000 -FL080000 -FP0($$Device:STM32F407VETx$CMSIS\Flash\STM32F4xx_512.FLM))</FlashDriverDll>
           <DeviceId>0</DeviceId>
-          <RegisterFile>$$Device:STM32F407ZG$Device\Include\stm32f4xx.h</RegisterFile>
+          <RegisterFile></RegisterFile>
           <MemoryEnv></MemoryEnv>
           <Cmp></Cmp>
           <Asm></Asm>
@@ -34,7 +34,7 @@
           <SLE66CMisc></SLE66CMisc>
           <SLE66AMisc></SLE66AMisc>
           <SLE66LinkerMisc></SLE66LinkerMisc>
-          <SFDFile>$$Device:STM32F407ZG$SVD\STM32F40x.svd</SFDFile>
+          <SFDFile>$$Device:STM32F407VETx$CMSIS\SVD\STM32F407.svd</SFDFile>
           <bCustSvd>0</bCustSvd>
           <UseEnv>0</UseEnv>
           <BinPath></BinPath>
@@ -139,7 +139,7 @@
           </Flash1>
           <bUseTDR>1</bUseTDR>
           <Flash2>BIN\UL2CM3.DLL</Flash2>
-          <Flash3>"" ()</Flash3>
+          <Flash3></Flash3>
           <Flash4></Flash4>
           <pFcarmOut></pFcarmOut>
           <pFcarmGrp></pFcarmGrp>
@@ -185,6 +185,9 @@
             <hadXRAM>0</hadXRAM>
             <uocXRam>0</uocXRam>
             <RvdsVP>2</RvdsVP>
+            <RvdsMve>0</RvdsMve>
+            <RvdsCdeCp>0</RvdsCdeCp>
+            <nBranchProt>0</nBranchProt>
             <hadIRAM2>1</hadIRAM2>
             <hadIROM2>0</hadIROM2>
             <StupSel>8</StupSel>
@@ -193,7 +196,7 @@
             <uLtcg>0</uLtcg>
             <nSecure>0</nSecure>
             <RoSelD>3</RoSelD>
-            <RwSelD>3</RwSelD>
+            <RwSelD>4</RwSelD>
             <CodeSel>0</CodeSel>
             <OptFeed>0</OptFeed>
             <NoZi1>0</NoZi1>
@@ -250,7 +253,7 @@
               <IROM>
                 <Type>1</Type>
                 <StartAddress>0x8000000</StartAddress>
-                <Size>0x100000</Size>
+                <Size>0x80000</Size>
               </IROM>
               <XRAM>
                 <Type>0</Type>
@@ -275,7 +278,7 @@
               <OCR_RVCT4>
                 <Type>1</Type>
                 <StartAddress>0x8000000</StartAddress>
-                <Size>0x100000</Size>
+                <Size>0x80000</Size>
               </OCR_RVCT4>
               <OCR_RVCT5>
                 <Type>1</Type>
@@ -325,6 +328,7 @@
             <uThumb>0</uThumb>
             <uSurpInc>0</uSurpInc>
             <uC99>1</uC99>
+            <uGnu>0</uGnu>
             <useXO>0</useXO>
             <v6Lang>3</v6Lang>
             <v6LangP>3</v6LangP>
@@ -350,7 +354,7 @@
             <NoWarn>0</NoWarn>
             <uSurpInc>0</uSurpInc>
             <useXO>0</useXO>
-            <uClangAs>0</uClangAs>
+            <ClangAsOpt>4</ClangAsOpt>
             <VariousControls>
               <MiscControls></MiscControls>
               <Define></Define>
@@ -405,6 +409,11 @@
               <FileName>system_stm32f4xx.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\system_stm32f4xx.c</FilePath>
+            </File>
+            <File>
+              <FileName>route_config.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\route_config.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -510,6 +519,16 @@
               <FileName>pushrod.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\HARDWARE\pushrod.c</FilePath>
+            </File>
+            <File>
+              <FileName>route_nav.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\route_nav.c</FilePath>
+            </File>
+            <File>
+              <FileName>route_nav.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\route_nav.h</FilePath>
             </File>
           </Files>
         </Group>
@@ -706,6 +725,71 @@
               <FileType>1</FileType>
               <FilePath>..\HARDWARE\check.c</FilePath>
             </File>
+            <File>
+              <FileName>my_chassis_task.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\my_chassis_task.c</FilePath>
+            </File>
+            <File>
+              <FileName>my_chassis_task.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\my_chassis_task.h</FilePath>
+            </File>
+            <File>
+              <FileName>Lidar.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Lidar.c</FilePath>
+            </File>
+            <File>
+              <FileName>Lidar.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Lidar.h</FilePath>
+            </File>
+            <File>
+              <FileName>route_io.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\route_io.c</FilePath>
+            </File>
+            <File>
+              <FileName>route_io.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\route_io.h</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_odometry.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\chassis_odometry.c</FilePath>
+            </File>
+            <File>
+              <FileName>chassis_odometry.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\chassis_odometry.h</FilePath>
+            </File>
+            <File>
+              <FileName>route_plan.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\route_plan.c</FilePath>
+            </File>
+            <File>
+              <FileName>route_plan.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\route_plan.h</FilePath>
+            </File>
+            <File>
+              <FileName>route_debug.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\route_debug.c</FilePath>
+            </File>
+            <File>
+              <FileName>route_debug.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\route_debug.h</FilePath>
+            </File>
+            <File>
+              <FileName>route_vofa.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\route_vofa.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
@@ -802,5 +886,14 @@
     <components/>
     <files/>
   </RTE>
+
+  <LayerInfo>
+    <Layers>
+      <Layer>
+        <LayName>WHEELTEC</LayName>
+        <LayPrjMark>1</LayPrjMark>
+      </Layer>
+    </Layers>
+  </LayerInfo>
 
 </Project>

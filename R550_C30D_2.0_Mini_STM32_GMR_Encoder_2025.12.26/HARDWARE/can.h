@@ -7,6 +7,17 @@
 //CAN1接收RX0中断使能
 #define CAN1_RX0_INT_ENABLE	1	//0, not enabling;1, can make //0,不使能; 1,使能								    		
 
+/* S21C 0x301 distances in wire order, all in mm. */
+typedef struct {
+    u16 left_mm;
+    u16 front_mm;
+    u16 right_mm;
+    u16 behind_mm;
+} CAN_LidarFrame;
+
+/* Copy the latest unread distance frame in task context. */
+u8 CAN1_TakeLidar(CAN_LidarFrame *frame);
+
 u8 CAN1_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode);
 u8 CAN1_Tx_Msg(u32 id,u8 ide,u8 rtr,u8 len,u8 *dat);		
 u8 CAN1_Msg_Pend(u8 fifox);							

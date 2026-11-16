@@ -25,5 +25,6 @@
 
 void HeadingControl_Reset(void);
 float HeadingControl_Update(short gyro_z_raw);
+float HeadingControl_HoldYaw(float target_yaw, float measured_yaw, short gyro_z_raw);
 
 #endif

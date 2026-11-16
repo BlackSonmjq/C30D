@@ -21,6 +21,8 @@ All rights reserved
 #include "pushrod_task.h"
 #include "stepper_task.h"
 #include "distance_task.h"
+#include "route_config.h"
+#include "my_chassis_task.h"
 //Task priority    //任务优先级
 #define START_TASK_PRIO	0
 
@@ -29,6 +31,7 @@ All rights reserved
 
 //Task handle     //任务句柄
 TaskHandle_t StartTask_Handler;
+volatile uint8_t Route_TaskCreated = 0U;
 
 //Task function   //任务函数
 void start_task(void *pvParameters);
@@ -69,14 +72,18 @@ void start_task(void *pvParameters)
 	xTaskCreate(data_task,     "DATA_task",     DATA_STK_SIZE,     NULL, DATA_TASK_PRIO,     NULL);	//Usartx3, Usartx1 and CAN send data task //串口3、串口1、CAN发送数据任务
     xTaskCreate(pushrod_task,      "pushrod_task",      PUSHROD_STK_SIZE,      NULL, PUSHROD_TASK_PRIO,      NULL);	//Pushrod control task //??????
     xTaskCreate(stepper_Task,      "stepper_task",      STEPPER_STK_SIZE,      NULL, STEPPER_TASK_PRIO,      NULL);	//Stepper motor control task //????????
-    xTaskCreate(distance_task,     "distance_task",     DISTANCE_STK_SIZE,     NULL, DISTANCE_TASK_PRIO,     NULL);
-	vTaskDelete(StartTask_Handler); //Delete the start task //删除开始任务
+    xTaskCreate(distance_task, "distance_task", DISTANCE_STK_SIZE,
+                NULL, DISTANCE_TASK_PRIO, NULL);
+
+    /* 正常模式下，启用演示才创建跑图任务。 */
+    if (ROUTE_DEMO_ENABLE && Check == 0) {
+        Route_TaskCreated = (xTaskCreate(my_chassis_task, "route_demo",
+                                         ROUTE_TASK_STACK, NULL,
+                                         ROUTE_TASK_PRIO, NULL) == pdPASS);
+    }
+
+    vTaskDelete(StartTask_Handler); // 删除启动任务
 
     taskEXIT_CRITICAL();            //Exit the critical section//退出临界区
 }
-
-
-
-
-
 

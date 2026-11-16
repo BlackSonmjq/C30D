@@ -1,6 +1,9 @@
 #include "balance.h"
 #include "heading_control.h"
-
+#include "stepper_task.h"
+#include "route_config.h"
+#include "route_io.h"
+#include "chassis_odometry.h"
 //int Time_count=0; //Time variable //计时变量
 
 // Robot mode is wrong to detect flag bits
@@ -283,6 +286,7 @@ void Balance_task(void *pvParameters)
 	u32 lastWakeTime = getSysTickCnt();
 	float chassis_vz;
 	u8 heading_control_active;
+	u8 chassis_allowed, actuator_parked;
 	static u8 imu_ready_beeped = 0;
 
     while(1)
@@ -297,7 +301,18 @@ void Balance_task(void *pvParameters)
 		//Get the encoder data, that is, the real time wheel speed, 
 		//and convert to transposition international units
 		//获取编码器数据，即车轮实时速度，并转换位国际单位
-		Get_Velocity_Form_Encoder();   
+        Get_Velocity_Form_Encoder();
+        if (ROUTE_DEMO_ENABLE) {
+            /* Encoder 按固定 CONTROL_FREQUENCY 换算过速度；除以同一频率恢复
+             * 本次计数对应的位移，平移里程不再重复乘实际采样时间。单位 mm。 */
+            ChassisOdom_UpdateDelta((MOTOR_A.Encoder + MOTOR_B.Encoder + MOTOR_C.Encoder + MOTOR_D.Encoder) *
+                                   (250.0f / CONTROL_FREQUENCY),
+                                   (MOTOR_A.Encoder - MOTOR_B.Encoder + MOTOR_C.Encoder - MOTOR_D.Encoder) *
+                                   (250.0f / CONTROL_FREQUENCY),
+                              imu.gyro.z, (uint32_t)xTaskGetTickCount(),
+                              SysVal.Time_count >= CONTROL_DELAY &&
+                              (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550));
+        }
 		
 		//Click the user button to update the gyroscope zero
 		//单击用户按键更新陀螺仪零点
@@ -310,11 +325,32 @@ void Balance_task(void *pvParameters)
 			imu_ready_beeped = 1;
 		}
 			
-		if( Allow_Recharge==1 )
-			if( Get_Charging_HardWare==0 ) Allow_Recharge=0,Find_Charging_HardWare();
+        if (RouteIO_ControlOwned())
+        {
+            Allow_Recharge = 0;
+            RouteIO_ApplyDrive();
+        }
+        else
+        {
+            if (Allow_Recharge == 1 && Get_Charging_HardWare == 0)
+            {
+                Allow_Recharge = 0;
+                Find_Charging_HardWare();
+            }
+
+
+        /* Hold heading normally, including idle after startup calibration.
+         * Ignore parked upper-actuator vibration; never block chassis commands.
+         * Explicit turns establish a new heading reference afterward. */
+        chassis_allowed = (Voltage >= 10) && EN && !Flag_Stop;
+        actuator_parked = StepperTask_IsBusy() &&
+            (Move_X == 0.0f) && (Move_Y == 0.0f) && (Move_Z == 0.0f);
 
 		heading_control_active =
 			(HEADING_CONTROL_ENABLE != 0) &&
+            chassis_allowed &&
+            !actuator_parked &&
+            (Move_Z == 0.0f) &&
 			(SysVal.Time_count >= CONTROL_DELAY) &&
 			(Allow_Recharge == 0) &&
 			(Car_Mode != Akm_Car) &&
@@ -364,10 +400,12 @@ void Balance_task(void *pvParameters)
 			}
 		}
 
+        }
+
 		//If there is no abnormity in the battery voltage, and the enable switch is in the ON position,
 		//and the software failure flag is 0
 		//如果电池电压不存在异常，而且使能开关在ON档位，而且软件失能标志位为0
-		if(Turn_Off(Voltage)==0||(Allow_Recharge&&EN&&!Flag_Stop)) 
+		if(Turn_Off(Voltage)==0||(!RouteIO_ControlOwned()&&Allow_Recharge&&EN&&!Flag_Stop)) 
 		{ 			
 			//Speed closed-loop control to calculate the PWM value of each motor, 
 			//PWM represents the actual wheel speed					 
@@ -1005,6 +1043,14 @@ void Key(void)
     tmp=KEY_Scan(RATE_100_HZ,0);
 		if(Check==0)
 		{
+        if (ROUTE_DEMO_ENABLE && (tmp == single_click || tmp == double_click))
+        {
+            if (tmp == single_click) {
+                RouteIO_RequestStart();
+            }
+            return;
+        }
+
     //单击 或 手柄同时按下两边的下扳机，开启自动回充
     if(tmp==single_click )
 	{

@@ -15,7 +15,10 @@ void OLED_ShowChecking(void);
 void OLED_ShowCheckResult(void);
 
 extern u8 oled_page,oled_refresh_flag;
-#define OLED_MAX_Page 3 //OLED²Ëµ¥Ò³Êý
+#define CAN_LIDAR_OLED_PAGE 3U
+#define ROUTE_STATUS_OLED_PAGE 4U
+#define ROUTE_PROCESS_OLED_PAGE 5U
+#define OLED_MAX_Page (ROUTE_PROCESS_OLED_PAGE + 1U)
 
 extern float base_vol;
 extern float VolMean_Filter(float data);

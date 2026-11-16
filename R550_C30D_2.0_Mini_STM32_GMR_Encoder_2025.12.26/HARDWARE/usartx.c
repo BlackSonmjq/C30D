@@ -1,4 +1,13 @@
 #include "usartx.h"
+#include "stepper_task.h"
+#include "distance_task.h"
+#include "usart.h"
+#include "route_io.h"
+#include "route_config.h"
+#include "route_debug.h"
+
+/* Keep USART1 text readable; set to 1 only for binary host telemetry. */
+#define USART1_BINARY_FEEDBACK_ENABLED 0
 SEND_DATA Send_Data;
 RECEIVE_DATA Receive_Data;
 SEND_AutoCharge_DATA Send_AutoCharge_Data;
@@ -29,14 +38,27 @@ void data_task(void *pvParameters)
 			vTaskDelayUntil(&lastWakeTime, F2T(RATE_20_HZ));
 			if(Check==0)
 			{
+				CAN_LidarFrame lidar;
+
+				if (CAN1_TakeLidar(&lidar)) {
+					RouteIO_PublishLidar(lidar.front_mm, lidar.behind_mm,
+					                     lidar.left_mm, lidar.right_mm);
+				}
+
 				//Assign the data to be sent
 				//对要进行发送的数据进行赋值
 				data_transition(); 
-				USART1_SEND();     //Serial port 1 sends data //串口1发送数据
+#if USART1_BINARY_FEEDBACK_ENABLED
+                USART1_SEND();
+#endif
+#if ROUTE_DEMO_ENABLE && ROUTE_DEBUG_MODE && ROUTE_VOFA_ENABLE
+                RouteVofa_Poll();
+#endif
 				USART3_SEND();     //Serial port 3 (ROS) sends data  //串口3(ROS)发送数据
 				USART5_SEND();		 //Serial port 5 sends data //串口5发送数据
 				CAN_SEND();        //CAN send data //CAN发送数据	
 			}
+
 		}
 }
 /**************************************************************************
@@ -522,6 +544,15 @@ int USART1_IRQHandler(void)
 		int check=0,error=1,i;
 		
 		Usart_Receive = USART_ReceiveData(USART1); //Read the data //读取数据
+        /* 只在二进制控制帧之外识别 ASCII 芒果编号 1～4，避免误解析帧内数据。
+         * 此入口不受底盘启动延时限制；中断只提交请求，忙碌时拒绝且不排队。 */
+        if (Count == 0 && (Usart_Receive >= '1' && Usart_Receive <= '4')) {
+            if (RouteIO_ControlOwned())
+                RouteIO_QueueWorkFromISR((uint8_t)(Usart_Receive - '0'));
+            else
+                StepperTask_RequestMangoFromISR((uint8_t)(Usart_Receive - '0'));
+            return 0;
+        }
 		if(SysVal.Time_count<CONTROL_DELAY)
 			// Data is not processed until 10 seconds after startup
 		  //开机10秒前不处理数据
@@ -878,12 +909,16 @@ uint8_t FlashWriteFlag = 0;
 int USART2_IRQHandler(void)
 {	
 	int Usart_Receive;
+
+    RouteVofa_Uart2TxIRQ();
 	if(USART_GetITStatus(USART2, USART_IT_RXNE) != RESET) //Check if data is received //判断是否接收到数据
 	{	      
 		static u8 Flag_PID,i,j,Receive[50],Last_Usart_Receive;
 		static float Data;
 				
 		Usart_Receive=USART2->DR; //Read the data //读取数据
+        /* VOFA 调试期间排空接收寄存器，普通字符不进入 APP、复位及参数命令。 */
+        if (RouteVofa_IsActive()) return 0;
 		
 		//过滤蓝牙的AT指令反馈
 		uint8_t ATFilter = 0;
@@ -1309,6 +1344,7 @@ Output  : none
 **************************************************************************/
 void usart2_send(u8 data)
 {
+    if (RouteVofa_IsActive()) return;
 	USART2->DR = data;
 	while((USART2->SR&0x40)==0);	
 }

@@ -1,0 +1,12 @@
+#ifndef MOCK_VL53L0X_H
+#define MOCK_VL53L0X_H
+#include <stdint.h>
+typedef enum {
+ VL53L0X_OK, VL53L0X_NOT_READY, VL53L0X_ERROR_I2C, VL53L0X_ERROR_TIMEOUT,
+ VL53L0X_ERROR_ID, VL53L0X_ERROR_ARGUMENT, VL53L0X_ERROR_STATE,
+ VL53L0X_ERROR_RANGE, VL53L0X_ERROR_CONFIG
+} VL53L0X_Status;
+typedef struct { uint16_t distance_mm; } VL53L0X_Result;
+VL53L0X_Status VL53L0X_Init(void);
+VL53L0X_Status VL53L0X_ReadSingle(VL53L0X_Result *result);
+#endif

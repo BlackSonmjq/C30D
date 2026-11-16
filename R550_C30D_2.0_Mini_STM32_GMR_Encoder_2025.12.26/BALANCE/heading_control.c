@@ -39,30 +39,9 @@ void HeadingControl_Reset(void)
     heading_state.initialized = 0;
 }
 
-float HeadingControl_Update(short gyro_z_raw)
+static float HeadingControl_Output(float error, float gyro_z_rad_s, float dt)
 {
-    const float dt = 1.0f / HEADING_CONTROL_RATE_HZ;
-    const float gyro_z_dps =
-        (float)gyro_z_raw * HEADING_CONTROL_GYRO_FULL_SCALE_DPS / 32768.0f;
-    const float gyro_z_rad_s = gyro_z_dps * HEADING_CONTROL_PI / 180.0f;
-    const float gyro_z_for_integration =
-        HeadingControl_Abs(gyro_z_rad_s) <= HEADING_CONTROL_GYRO_INTEGRATION_DEADZONE ?
-        0.0f : gyro_z_rad_s;
-    float error;
     float output;
-
-    /* Lock the current chassis direction when ROS serial control takes over. */
-    if(heading_state.initialized == 0)
-    {
-        HeadingControl_Reset();
-        heading_state.initialized = 1;
-        return 0.0f;
-    }
-
-    heading_state.yaw = HeadingControl_NormalizeAngle(
-        heading_state.yaw + gyro_z_for_integration * dt);
-    error = HeadingControl_NormalizeAngle(-heading_state.yaw);
-
     heading_state.integral = HeadingControl_Limit(
         heading_state.integral + error * dt,
         -HEADING_CONTROL_INTEGRAL_LIMIT,
@@ -106,4 +85,39 @@ float HeadingControl_Update(short gyro_z_raw)
         output,
         -HEADING_CONTROL_MAX_ANGULAR_VELOCITY,
         HEADING_CONTROL_MAX_ANGULAR_VELOCITY);
+}
+
+float HeadingControl_Update(short gyro_z_raw)
+{
+    const float dt = 1.0f / HEADING_CONTROL_RATE_HZ;
+    const float gyro_z_dps =
+        (float)gyro_z_raw * HEADING_CONTROL_GYRO_FULL_SCALE_DPS / 32768.0f;
+    const float gyro_z_rad_s = gyro_z_dps * HEADING_CONTROL_PI / 180.0f;
+    const float gyro_z_for_integration =
+        HeadingControl_Abs(gyro_z_rad_s) <= HEADING_CONTROL_GYRO_INTEGRATION_DEADZONE ?
+        0.0f : gyro_z_rad_s;
+    float error;
+
+    /* Lock the current chassis direction when ROS serial control takes over. */
+    if(heading_state.initialized == 0)
+    {
+        HeadingControl_Reset();
+        heading_state.initialized = 1;
+        return 0.0f;
+    }
+
+    heading_state.yaw = HeadingControl_NormalizeAngle(
+        heading_state.yaw + gyro_z_for_integration * dt);
+    error = HeadingControl_NormalizeAngle(-heading_state.yaw);
+
+    return HeadingControl_Output(error, gyro_z_rad_s, dt);
+}
+
+/* Route odometry keeps yaw continuous while parked or waiting for the tool. */
+float HeadingControl_HoldYaw(float target_yaw, float measured_yaw, short gyro_z_raw)
+{
+    const float gyro_rate = (float)gyro_z_raw * HEADING_CONTROL_GYRO_FULL_SCALE_DPS *
+                            HEADING_CONTROL_PI / (32768.0f * 180.0f);
+    return HeadingControl_Output(HeadingControl_NormalizeAngle(target_yaw - measured_yaw),
+                                 gyro_rate, 1.0f / HEADING_CONTROL_RATE_HZ);
 }

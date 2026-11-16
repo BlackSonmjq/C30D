@@ -1,4 +1,5 @@
-#include "usart.h"	
+#include "usart.h"
+#include "route_debug.h"	
 ////////////////////////////////////////////////////////////////////////////////// 	 
 //如果使用ucos,则包括下面的头文件即可.
 #if SYSTEM_SUPPORT_OS
@@ -25,6 +26,8 @@ void _sys_exit(int x)
 //重定义fputc函数 
 int fputc(int ch, FILE *f)
 { 	
+    (void)f;
+    if (RouteVofa_IsActive()) return ch;
 	while((USART2->SR&0X40)==0);//循环发送,直到发送完毕   
 	USART2->DR = (u8) ch;      
 	return ch;
@@ -46,6 +49,7 @@ void any_printf(USART_TypeDef* USARTx,char *format,...)
 {	
 	uint8_t i;                                           //用于for循环
 	
+    if (USARTx == USART2 && RouteVofa_IsActive()) return;
 	va_list listdata;                                     //建立一个va_list变量listdata
 	va_start(listdata,format);                            //向listdata加载...代表的不定长的参数
 	vsprintf((char *)Ux_TxBuff,format,listdata);          //格式化输出到缓冲区U0_TxBuff

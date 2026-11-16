@@ -1,5 +1,10 @@
 #include "show.h"
 #include "distance_task.h"
+#include "my_chassis_task.h"
+#include "route_config.h"
+#include "route_io.h"
+#include "stepper_task.h"
+#include <stdio.h>
 int Voltage_Show;
 unsigned char i;          
 unsigned char Send_Count; 
@@ -9,7 +14,7 @@ extern int MPU9250SensorCountA, MPU9250SensorCountB, MPU9250SensorCountC, MPU925
 
 
 u8 oled_refresh_flag;
-u8 oled_page=DISTANCE_OLED_PAGE;
+u8 oled_page=CAN_LIDAR_OLED_PAGE;
 /**************************************************************************
 Function: Read the battery voltage, buzzer alarm, start the self-test, send data to APP, OLED display task
 Input   : none
@@ -80,6 +85,146 @@ uint8_t show_usb_enum = 0;
 void OLED_ShowGamePadState(void)
 {
 	show_usb_enum = 1;
+}
+
+static void draw_can_lidar(void)
+{
+    static const u8 labels[ROUTE_LIDAR_COUNT][7] = {
+        [ROUTE_LIDAR_FRONT]  = "Front:",
+        [ROUTE_LIDAR_BEHIND] = "Rear:",
+        [ROUTE_LIDAR_LEFT]   = "Left:",
+        [ROUTE_LIDAR_RIGHT]  = "Right:"
+    };
+    RouteLidarFrame frame;
+    u8 direction;
+
+    RouteIO_ReadLidar(&frame);
+    for (direction = 0U; direction < ROUTE_LIDAR_COUNT; ++direction) {
+        const u8 y = direction * 16U;
+
+        OLED_ShowString16(0, y, labels[direction]);
+        if (frame.mm[direction] != 0U) {
+            OLED_ShowNumber(56, y, frame.mm[direction], 5, 16);
+        } else {
+            OLED_ShowString16(56, y, (const u8 *)"-----");
+        }
+        OLED_ShowString16(104, y, (const u8 *)"mm");
+    }
+}
+
+/* Draw 21 columns with the 6x12 font on the 128-pixel display. */
+static void draw_route_status_line(u8 y, const char *line)
+{
+    u8 x = 0U;
+
+    while (*line != '\0' && x <= 120U) {
+        OLED_ShowChar(x, y, (u8)*line, 12, 1);
+        x += 6U;
+        ++line;
+    }
+}
+
+static void draw_route_status(void)
+{
+    RouteIODiagnostics diagnostics;
+    const unsigned int centivolts = (unsigned int)(Voltage * 100.0f);
+    unsigned int pwm_active;
+    char rear[6] = "-----";
+    char line[32];
+
+    RouteIO_ReadDiagnostics(&diagnostics);
+    if (diagnostics.rear_mm != 0U) {
+        snprintf(rear, sizeof(rear), "%5u", (unsigned int)diagnostics.rear_mm);
+    }
+
+    taskENTER_CRITICAL();
+    pwm_active = (PWMA1 != PWMA2) || (PWMB1 != PWMB2) ||
+                 (PWMC1 != PWMC2) || (PWMD1 != PWMD2);
+    taskEXIT_CRITICAL();
+
+    snprintf(line, sizeof(line), "S:%02u REQ:%u TASK:%u D:%u",
+             (unsigned int)Route_Stage, (unsigned int)RouteIO_StartRequested(),
+             (unsigned int)Route_TaskCreated, (unsigned int)(ROUTE_DEMO_ENABLE != 0));
+    draw_route_status_line(0, line);
+
+    snprintf(line, sizeof(line), "OK:%u MEC:%u IMU:%u EN:%u",
+             (unsigned int)RouteIO_Ready(),
+             (unsigned int)(Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550),
+             (unsigned int)(SysVal.Time_count >= CONTROL_DELAY),
+             (unsigned int)(EN != 0U));
+    draw_route_status_line(12, line);
+
+    snprintf(line, sizeof(line), "STOP:%u BUSY:%u V:%u.%02u",
+             (unsigned int)(Flag_Stop != 0U), (unsigned int)(StepperTask_IsBusy() != 0U),
+             centivolts / 100U, centivolts % 100U);
+    draw_route_status_line(24, line);
+
+    snprintf(line, sizeof(line), "CAN:%u CMD:%u B:%s",
+             (unsigned int)diagnostics.can_fresh,
+             (unsigned int)diagnostics.command_fresh, rear);
+    draw_route_status_line(36, line);
+
+    snprintf(line, sizeof(line), "X:%+4d Y:%+4d PWM:%u",
+             (int)(diagnostics.vx_mps * 1000.0f),
+             (int)(diagnostics.vy_mps * 1000.0f), pwm_active);
+    draw_route_status_line(48, line);
+}
+
+static void draw_route_process(void)
+{
+    RouteStatus status;
+    ChassisOdomFrame pose;
+    const char sensor_names[] = {'F', 'B', 'L', 'R', '-'};
+    char range[6] = "----";
+    char line[32];
+    Route_ReadStatus(&status);
+    ChassisOdom_Read(&pose);
+    if (status.measured_mm != 0U)
+        snprintf(range, sizeof(range), "%4u", (unsigned int)status.measured_mm);
+
+    snprintf(line, sizeof(line), "AT:%02u GO:%02u L:%u",
+             (unsigned int)status.at_point, (unsigned int)status.target_point,
+             (unsigned int)status.lane);
+    draw_route_status_line(0, line);
+    snprintf(line, sizeof(line), "%s %s>%s", RouteNav_PhaseName(status.phase),
+             RoutePlan_MotionName(status.motion), RoutePlan_MotionName(status.next_motion));
+    draw_route_status_line(12, line);
+    if (status.phase == ROUTE_WAIT_START)
+        snprintf(line, sizeof(line), "X:%+5d Y:%+5d", (int)pose.x_mm, (int)pose.y_mm);
+    else if (status.reference == ROUTE_REF_WALL)
+        /* G 是本段估计终点，C 是捕获帧数；接管后 G 可区别于原计划长度。 */
+        snprintf(line, sizeof(line), "S:%4d G:%4d C:%u/%u",
+                 (int)status.progress_mm, (int)status.estimated_end_mm,
+                 (unsigned int)status.capture_confirmed, (unsigned int)ROUTE_CAPTURE_FRAMES);
+    else
+        snprintf(line, sizeof(line), "S:%5d/%4umm",
+                 (int)status.progress_mm, (unsigned int)status.estimated_end_mm);
+    draw_route_status_line(24, line);
+    if (status.reference == ROUTE_REF_EDGE)
+        snprintf(line, sizeof(line), "%c:%s E:%u A:%c%4u",
+                 sensor_names[status.sensor <= ROUTE_LIDAR_COUNT ? status.sensor : ROUTE_LIDAR_COUNT],
+                 range, (unsigned int)status.edge_state,
+                 sensor_names[status.aux_sensor <= ROUTE_LIDAR_COUNT ? status.aux_sensor : ROUTE_LIDAR_COUNT],
+                 (unsigned int)status.aux_measured_mm);
+    else
+        snprintf(line, sizeof(line), "%c:%s T:%4u N:%u/%u",
+                 sensor_names[status.sensor <= ROUTE_LIDAR_COUNT ? status.sensor : ROUTE_LIDAR_COUNT],
+                 range, (unsigned int)status.target_mm, (unsigned int)status.confirmed,
+                 (unsigned int)ROUTE_CONFIRM_FRAMES);
+    draw_route_status_line(36, line);
+    if (status.stop_flags != 0U)
+        snprintf(line, sizeof(line), "E:%s D:%02X", RouteNav_ErrorName(status.reason),
+                 (unsigned int)status.stop_flags);
+    else if (status.phase != ROUTE_WAIT_START && status.reason == ROUTE_ERROR_NONE)
+        /* R 用于实际接近控制；O 只是计划里程剩余。R 为负时将确认并小幅回调。 */
+        snprintf(line, sizeof(line), "R:%+5d Q:%u/%02X%s%s",
+                 (int)status.control_remaining_mm,
+                 (unsigned int)(status.reference == ROUTE_REF_EDGE ? status.aux_confidence : status.confidence),
+                 (unsigned int)(status.reference == ROUTE_REF_EDGE ? status.aux_reject_reason : status.reject_reason),
+                 status.odom_untrusted ? " !O" : "", status.speed_limited ? " S" : "");
+    else
+        snprintf(line, sizeof(line), "E:%s", RouteNav_ErrorName(status.reason));
+    draw_route_status_line(48, line);
 }
 
 void oled_show(void)
@@ -390,6 +535,21 @@ void oled_show(void)
 			OLED_Refresh_Gram();
 		}
 	
+        else if(oled_page==CAN_LIDAR_OLED_PAGE)
+        {
+            draw_can_lidar();
+            OLED_Refresh_Gram();
+        }
+        else if(oled_page==ROUTE_STATUS_OLED_PAGE)
+        {
+            draw_route_status();
+            OLED_Refresh_Gram();
+        }
+        else if(oled_page==ROUTE_PROCESS_OLED_PAGE)
+        {
+            draw_route_process();
+            OLED_Refresh_Gram();
+        }
         else if(oled_page==DISTANCE_OLED_PAGE)
         {
             DistanceTask_DrawOLED();

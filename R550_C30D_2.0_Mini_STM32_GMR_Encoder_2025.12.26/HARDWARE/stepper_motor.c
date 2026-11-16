@@ -12,6 +12,7 @@
 #define STEPPER_MAX_PERIOD_CHANGE_US 150u
 
 static volatile u8 stepper_running[2];
+static u8 stepper_continuous[2];
 static volatile u32 stepper_target_period_us[2];
 static volatile u32 stepper_completed[2];
 static u32 stepper_count[2], stepper_ramp[2], stepper_period[2];
@@ -109,6 +110,12 @@ void StepperMotor_Disable(u8 motor)
     __disable_irq();
     TIM_ITConfig(timer, TIM_IT_Update, DISABLE);
     TIM_Cmd(timer, DISABLE);
+    /* 计入最后一个已输出的上升沿，包括尚未触发更新中断就被停止的脉冲。 */
+    if (stepper_running[motor - 1u] &&
+        (TIM_GetFlagStatus(timer, TIM_FLAG_Update) != RESET ||
+         GPIO_ReadInputDataBit((motor == A4988_MOTOR_Left) ? GPIOB : GPIOC,
+             (motor == A4988_MOTOR_Left) ? GPIO_Pin_15 : GPIO_Pin_8)))
+        ++stepper_completed[motor - 1u];
     if (timer == TIM8) TIM_CtrlPWMOutputs(timer, DISABLE);
     TIM_CCxCmd(timer, (timer == TIM12) ? TIM_Channel_2 : TIM_Channel_3,
                TIM_CCx_Disable);
@@ -157,7 +164,7 @@ static void StepperMotor_StartNext(u8 motor)
 
     if (ramp && completed < ramp) {
         desired = start_period - (start_period - target) * completed / ramp;
-    } else if (ramp && completed >= count - ramp) {
+    } else if (!stepper_continuous[index] && ramp && completed >= count - ramp) {
         desired = target + (start_period - target) *
             (completed - (count - ramp)) / ramp;
     } else {
@@ -188,13 +195,13 @@ void StepperMotor_UpdateIRQ(u8 motor)
     TIM_ClearITPendingBit(timer, TIM_IT_Update);
     if (!stepper_running[index]) return;
     ++stepper_completed[index];
-    if (stepper_completed[index] >= stepper_count[index])
+    if (!stepper_continuous[index] && stepper_completed[index] >= stepper_count[index])
         StepperMotor_Disable(motor);
     else
         StepperMotor_StartNext(motor);
 }
 
-u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)
+static u8 StepperMotor_Start(u8 motor, s32 signed_pulses, u8 continuous)
 {
     TIM_TypeDef *timer = StepperMotor_Timer(motor);
     u32 index, count, target, primask;
@@ -209,8 +216,9 @@ u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)
     primask = __get_PRIMASK();
     __disable_irq();
     stepper_completed[index] = 0;
+    stepper_continuous[index] = continuous;
     stepper_count[index] = count;
-    stepper_ramp[index] = (count / 2u < STEPPER_RAMP_PULSES) ?
+    stepper_ramp[index] = continuous ? STEPPER_RAMP_PULSES : (count / 2u < STEPPER_RAMP_PULSES) ?
         count / 2u : STEPPER_RAMP_PULSES;
     target = stepper_target_period_us[index];
     stepper_period[index] = (target > STEPPER_START_PERIOD_US) ?
@@ -229,6 +237,46 @@ u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)
     StepperMotor_StartNext(motor);
     __set_PRIMASK(primask);
 
+    return 1;
+}
+
+/* 非阻塞定长运动，由定时器中断限制脉冲总数，任务调度延迟不会多走脉冲。 */
+u8 StepperMotor_StartMove(u8 motor, s32 signed_pulses)
+{
+    return StepperMotor_Start(motor, signed_pulses, 0);
+}
+
+u8 StepperMotor_StartContinuous(u8 motor, u8 forward)
+{
+    return StepperMotor_Start(motor, forward ? 1 : -1, 1);
+}
+
+u32 StepperMotor_GetCompletedPulses(u8 motor)
+{
+    if (StepperMotor_Timer(motor) == 0) return 0;
+    return stepper_completed[motor - 1u];
+}
+
+/* 状态机用此接口区分运行中、到数停止及异常提前停止。 */
+u8 StepperMotor_IsRunning(u8 motor)
+{
+    if (StepperMotor_Timer(motor) == 0) return 0;
+    return stepper_running[motor - 1u];
+}
+
+/* 先关闭定时器及更新中断，再清零计数，避免下一轮使用上轮返程计数。 */
+void StepperMotor_ResetCompletedPulses(u8 motor)
+{
+    if (StepperMotor_Timer(motor) == 0) return;
+    StepperMotor_Disable(motor);
+    stepper_completed[motor - 1u] = 0;
+}
+
+u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses)
+{
+    u32 index;
+    if (!StepperMotor_Start(motor, signed_pulses, 0)) return 0;
+    index = motor - 1u;
     while (stepper_running[index]) {
         if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
             vTaskDelay(1);

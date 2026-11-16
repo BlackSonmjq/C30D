@@ -1,5 +1,10 @@
 #include "can.h"
 #include "system.h"
+#include "stm32f4xx_can.h"
+
+static volatile CAN_LidarFrame lidar_frame;
+static volatile u8 lidar_pending;
+
 /**************************************************************************
 Function: CAN1 initialization
 Input   : tsjw：Resynchronize the jump time unit, Scope: 1 ~ 3;
@@ -123,7 +128,7 @@ u8 CAN1_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode)
 	CAN1->FA1R|=1<<0;	
 	//Filter group enters normal mode
   //过滤器组进入正常模式	
-	CAN1->FMR&=0<<0;			
+	CAN1->FMR &= ~(1U << 0);			
 
 #if CAN1_RX0_INT_ENABLE
   //Enable to interrupt reception //使能中断接收
@@ -296,6 +301,27 @@ void CAN1_Rx_Msg(u8 fifox,u32 *id,u8 *ide,u8 *rtr,u8 *len,u8 *dat)
   if(fifox==0)CAN1->RF0R|=0X20;      //Free the FIFO0 mailbox //释放FIFO0邮箱
 	else if(fifox==1)CAN1->RF1R|=0X20; //Free the FIFO1 mailbox //释放FIFO1邮箱	 
 }
+u8 CAN1_TakeLidar(CAN_LidarFrame *frame)
+{
+    u32 primask;
+    u8 pending;
+
+    if (frame == 0) {
+        return 0U;
+    }
+
+    /* CAN RX0 runs above the FreeRTOS critical-section mask. */
+    primask = __get_PRIMASK();
+    __disable_irq();
+    pending = lidar_pending;
+    if (pending) {
+        *frame = lidar_frame;
+        lidar_pending = 0U;
+    }
+    __set_PRIMASK(primask);
+    return pending;
+}
+
 /**************************************************************************
 Function: CAN receives interrupt service function, conditional compilation
 Input   : none
@@ -313,6 +339,16 @@ void CAN1_RX0_IRQHandler(void)
 	u8 temp_rxbuf[8];
 
  	CAN1_Rx_Msg(0,&id,&ide,&rtr,&len,temp_rxbuf);
+    if (id == 0x301U) {
+        if (ide == CAN_Id_Standard && rtr == CAN_RTR_Data && len == 8U) {
+            lidar_frame.left_mm   = ((u16)temp_rxbuf[0] << 8) | temp_rxbuf[1];
+            lidar_frame.front_mm  = ((u16)temp_rxbuf[2] << 8) | temp_rxbuf[3];
+            lidar_frame.right_mm  = ((u16)temp_rxbuf[4] << 8) | temp_rxbuf[5];
+            lidar_frame.behind_mm = ((u16)temp_rxbuf[6] << 8) | temp_rxbuf[7];
+            lidar_pending = 1U;
+        }
+        return;
+    }
 	
 	//回充装备特征码
 	if(id==0x12345678)
