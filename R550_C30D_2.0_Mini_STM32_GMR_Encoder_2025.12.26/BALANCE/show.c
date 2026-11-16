@@ -4,6 +4,7 @@
 #include "servo_task.h"
 #include <stdio.h>
 #include "camera_protocol.h"
+#include "can_test.h"
 int Voltage_Show;
 unsigned char i;          
 unsigned char Send_Count; 
@@ -194,6 +195,28 @@ static void Camera_DrawOLED(void)
     snprintf(line,sizeof(line),"E:%lu U:%lu",(unsigned long)(data.bad%10000U),(unsigned long)(data.uart_errors%10000U)); OLED_ShowString(0,48,(const u8 *)line);
 }
 
+/* Snapshot all four CAN distances atomically against the priority-1 ISR.
+ * The CAN owner supplies the 500 ms online timeout; hide stale distances. */
+static void LowerLaser_DrawOLED(void)
+{
+    static const char *names[4]={"D1 LEFT", "D2 FRONT", "D3 RIGHT", "D4 BACK"};
+    uint16_t distance[4];
+    uint8_t online, i;
+    uint32_t count, mask=__get_PRIMASK();
+    char line[22];
+    __disable_irq();
+    online=g_can_test_online;
+    count=g_can_test_rx_count;
+    for (i=0;i<4U;++i) distance[i]=g_can_distance_mm[i];
+    __set_PRIMASK(mask);
+    OLED_TaskLine(0,online ? "LOWER CAN OK 6/6" : count ? "LOWER OFFLINE 6/6" : "LOWER WAIT RX 6/6");
+    for (i=0;i<4U;++i) {
+        if (online) snprintf(line,sizeof(line),"%s:%5u mm",names[i],(unsigned)distance[i]);
+        else snprintf(line,sizeof(line),"%s: ---- mm",names[i]);
+        OLED_TaskLine((u8)((i+1U)*12U),line);
+    }
+}
+
 void oled_show(void)
 {   
 	int Car_Mode_Show;
@@ -208,6 +231,7 @@ void oled_show(void)
 		  //Car_Mode_Show=0;
 	
 	memset(OLED_GRAM,0, 128*8*sizeof(u8));
+    if (oled_page==LOWER_LASER_OLED_PAGE) { LowerLaser_DrawOLED(); OLED_Refresh_Gram(); return; }
     if (oled_page==4) { Camera_DrawOLED(); OLED_Refresh_Gram(); return; }
 	//GRAM清零但不立即刷新，防止花屏
 	if(Check==0)
