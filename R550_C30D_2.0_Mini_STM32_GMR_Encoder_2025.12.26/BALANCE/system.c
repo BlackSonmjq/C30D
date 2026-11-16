@@ -22,6 +22,7 @@ All rights reserved
 #include "distance_task.h"
 #include "pushrod.h"
 #include "servo.h"
+#include "route_debug.h"
 
 //Robot software fails to flag bits
 //����������ʧ�ܱ�־λ
@@ -157,7 +158,7 @@ void systemInit(void)
     any_printf(USART1, "boot: I2C ready\r\n");
 	//ϵͳ�������������ʼ��
 	SYS_VAL_t_Init(&SysVal);
-	
+
     //Serial port 1 initialization, communication baud rate 115200,
     //can be used to communicate with ROS terminal
     //����1��ʼ����ͨ�Ų�����115200����������ROS��ͨ��
@@ -172,19 +173,19 @@ void systemInit(void)
     //Serial port 2 initialization, communication baud rate 9600,
     //used to communicate with Bluetooth APP terminal
     //����2��ʼ����ͨ�Ų�����9600������������APP��ͨ��
-    uart2_init(9600);
+    uart2_init(RouteVofa_IsActive()?115200U:9600U);
 
     //Serial port 3 is initialized and the baud rate is 115200.
     //Serial port 3 is the default port used to communicate with ROS terminal
     //����3��ʼ����ͨ�Ų�����115200������3ΪĬ��������ROS��ͨ�ŵĴ���
     uart3_init(115200);
 //	uart3_init(230400);
-	
+
     //Serial port 5 initialization, communication baud rate 115200,
     //can be used to communicate with ROS terminal
     //����5��ʼ����ͨ�Ų�����115200����������ROS��ͨ��
     uart5_init(115200);
-	
+
 	//���IMUΪMPU6050,���Ǿɰ�C30D
 	if( MPU6050_DEFAULT_ADDRESS == MPU6050_getDeviceID() )
 	{
@@ -193,11 +194,11 @@ void systemInit(void)
 		//��ʼ����PS2�ֱ����ӵ�Ӳ���ӿ�
 		PS2_Init();
 		//PS2 gamepad configuration is initialized and configured in analog mode
-		//PS2�ֱ����ó�ʼ��,����Ϊģ����ģʽ	
-		PS2_SetInit();		 
+		//PS2�ֱ����ó�ʼ��,����Ϊģ����ģʽ
+		PS2_SetInit();
 		//Initialize the hardware interface connected to the LED lamp
 		//��ʼ����LED�����ӵ�Ӳ���ӿ�
-		V1_0_LED_Init(); 
+		V1_0_LED_Init();
 		//MPU6050 is initialized to read the vehicle's three-axis attitude,
 		//three-axis angular velocity and three-axis acceleration information
 		//MPU6050��ʼ�������ڶ�ȡС��������ٶȡ�������ٶ���Ϣ
@@ -207,10 +208,10 @@ void systemInit(void)
 	else if( REG_VAL_WIA == ICM20948_getDeviceID() )//��ȡICM20948 id
 	{
 		SysVal.HardWare_Ver = V1_1;
-		
+
 		//USBHOS��ʼ��
 		MX_USB_HOST_Init();
-		
+
 		//Initialize the hardware interface connected to the LED lamp
 		//��ʼ����LED�����ӵ�Ӳ���ӿ�
 		V1_1_LED_Init();
@@ -228,7 +229,7 @@ void systemInit(void)
         any_printf(USART1, "boot: IMU not found, restarting\r\n");
         delay_ms(1000);
         NVIC_SystemReset();
-	}         
+	}
 
     //Initialize the hardware interface connected to the buzzer
     //��ʼ������������ӵ�Ӳ���ӿ�
@@ -309,7 +310,7 @@ void systemInit(void)
     any_printf(USART1, "boot: startup delay done\r\n");
     Find_Charging_HardWare();
     any_printf(USART1, "boot: charger probe done\r\n");
-	
+
 	//��ȡFlash����
 	FlashParam_Read();
     any_printf(USART1, "boot: hardware init done\r\n");

@@ -63,6 +63,7 @@ u8 StepperTask_RequestMangoFromISR(u8 mango_id);
 /* Select only a laser, no motor/pushrod action; rejected while picking is busy. */
 u8 StepperTask_RequestLaserFromISR(u8 laser_id);
 /* 独占两路步进控制，协调测距、靠近、击打、返程和收尾。 */
+u8 StepperTask_RequestMango(u8 mango_id);
 void stepper_Task(void *pvParameters);
 
 #endif

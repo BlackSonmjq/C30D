@@ -1,5 +1,8 @@
 #include "usartx.h"
 #include "can_test.h"
+#include "route_io.h"
+#include "route_debug.h"
+#include "route_config.h"
 #include "distance_protocol.h"
 #include "distance_task.h"
 #include "servo.h"
@@ -401,7 +404,7 @@ u8 IP_Frame_Valid = 0;                     // IP֡��Ч��־
 u16 IP_Valid_Count = 0;                    // ������ͬIP������
 u8 Debug_Flag=0;
 /**************************************************************************
-Function: Usartx3, Usartx1,Usartx5 and CAN send data task 
+Function: Usartx3, Usartx1,Usartx5 and CAN send data task
 Input   : none
 Output  : none
 �������ܣ�����3������1������5��CAN������������
@@ -415,14 +418,22 @@ void data_task(void *pvParameters)
      TickType_t probe_started = 0;
      Servo_Result probe_result;
      Servo_Diagnostics servo_diag;
-	
+
    any_printf(USART1, "boot: data task running\r\n");
    while(1)
-    {	
+    {
 			//The task is run at 20hz
 			//��������20Hz��Ƶ������
 			vTaskDelayUntil(&lastWakeTime, F2T(RATE_20_HZ));
             CAN_Test_Process();
+            {
+                CAN_LidarFrame lidar;
+                if (CAN1_TakeLidar(&lidar))
+                    RouteIO_PublishLidar(lidar.front_mm,lidar.behind_mm,lidar.left_mm,lidar.right_mm);
+            }
+#if ROUTE_DEMO_ENABLE && ROUTE_DEBUG_MODE && ROUTE_VOFA_ENABLE
+            RouteVofa_Poll();
+#endif
             ServoDebug_Process();
             /* Consume the UART1 diagnostic request in task context. */
             taskENTER_CRITICAL();
@@ -463,13 +474,13 @@ void data_task(void *pvParameters)
 			{
 				//Assign the data to be sent
 				//��Ҫ���з��͵����ݽ��и�ֵ
-				data_transition(); 
+				data_transition();
 #if USART1_BINARY_FEEDBACK_ENABLED
                 USART1_SEND();
 #endif
 				USART5_SEND();		 //Serial port 5 sends data //����5��������
 				CAN_SEND();
-        //CAN send data //CAN��������	
+        //CAN send data //CAN��������
 			}
 
 		}
@@ -486,91 +497,91 @@ void data_transition(void)
 {
 	Send_Data.Sensor_Str.Frame_Header = FRAME_HEADER; //Frame_header //֡ͷ
 	Send_Data.Sensor_Str.Frame_Tail = FRAME_TAIL;     //Frame_tail //֡β
-	
-	//According to different vehicle types, different kinematics algorithms were selected to carry out the forward kinematics solution, 
+
+	//According to different vehicle types, different kinematics algorithms were selected to carry out the forward kinematics solution,
 	//and the three-axis velocity was obtained from each wheel velocity
 	//���ݲ�ͬ����ѡ��ͬ�˶�ѧ�㷨�����˶�ѧ���⣬�Ӹ������ٶ���������ٶ�
 	switch(Car_Mode)
-	{	
+	{
 		case Mec_Car:case Mec_Car_V550:
 			Send_Data.Sensor_Str.X_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder+MOTOR_C.Encoder+MOTOR_D.Encoder)/4)*1000;
-	    Send_Data.Sensor_Str.Y_speed = ((MOTOR_A.Encoder-MOTOR_B.Encoder+MOTOR_C.Encoder-MOTOR_D.Encoder)/4)*1000; 
-	    Send_Data.Sensor_Str.Z_speed = ((-MOTOR_A.Encoder-MOTOR_B.Encoder+MOTOR_C.Encoder+MOTOR_D.Encoder)/4/(Axle_spacing+Wheel_spacing))*1000;         
-		  break; 
-		
-    case Omni_Car:      
-			Send_Data.Sensor_Str.X_speed = ((MOTOR_C.Encoder-MOTOR_B.Encoder)/2/X_PARAMETER)*1000; 
-	    Send_Data.Sensor_Str.Y_speed = ((MOTOR_A.Encoder*2-MOTOR_B.Encoder-MOTOR_C.Encoder)/3)*1000; 
-	    Send_Data.Sensor_Str.Z_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder+MOTOR_C.Encoder)/3/Omni_turn_radiaus)*1000;      
-		  break; 
-    
-		case Akm_Car:  
-			Send_Data.Sensor_Str.X_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder)/2)*1000; 
+	    Send_Data.Sensor_Str.Y_speed = ((MOTOR_A.Encoder-MOTOR_B.Encoder+MOTOR_C.Encoder-MOTOR_D.Encoder)/4)*1000;
+	    Send_Data.Sensor_Str.Z_speed = ((-MOTOR_A.Encoder-MOTOR_B.Encoder+MOTOR_C.Encoder+MOTOR_D.Encoder)/4/(Axle_spacing+Wheel_spacing))*1000;
+		  break;
+
+    case Omni_Car:
+			Send_Data.Sensor_Str.X_speed = ((MOTOR_C.Encoder-MOTOR_B.Encoder)/2/X_PARAMETER)*1000;
+	    Send_Data.Sensor_Str.Y_speed = ((MOTOR_A.Encoder*2-MOTOR_B.Encoder-MOTOR_C.Encoder)/3)*1000;
+	    Send_Data.Sensor_Str.Z_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder+MOTOR_C.Encoder)/3/Omni_turn_radiaus)*1000;
+		  break;
+
+		case Akm_Car:
+			Send_Data.Sensor_Str.X_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder)/2)*1000;
 			Send_Data.Sensor_Str.Y_speed = 0;
 			Send_Data.Sensor_Str.Z_speed = ((MOTOR_B.Encoder-MOTOR_A.Encoder)/Wheel_spacing)*1000;
-		  break; 
-		
-		case Diff_Car: 
-			Send_Data.Sensor_Str.X_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder)/2)*1000; 
+		  break;
+
+		case Diff_Car:
+			Send_Data.Sensor_Str.X_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder)/2)*1000;
 			Send_Data.Sensor_Str.Y_speed = 0;
 			Send_Data.Sensor_Str.Z_speed = ((MOTOR_B.Encoder-MOTOR_A.Encoder)/Wheel_spacing)*1000;
-			break; 
-		
+			break;
+
 		case FourWheel_Car:case FourWheel_Car_V550:
-      Send_Data.Sensor_Str.X_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder+MOTOR_C.Encoder+MOTOR_D.Encoder)/4)*1000; 
+      Send_Data.Sensor_Str.X_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder+MOTOR_C.Encoder+MOTOR_D.Encoder)/4)*1000;
 	    Send_Data.Sensor_Str.Y_speed = 0;
 	    Send_Data.Sensor_Str.Z_speed = ((-MOTOR_B.Encoder-MOTOR_A.Encoder+MOTOR_C.Encoder+MOTOR_D.Encoder)/2/(Axle_spacing+Wheel_spacing))*1000;
-		 break; 
-		
-		case Tank_Car:   
-			Send_Data.Sensor_Str.X_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder)/2)*1000; 
+		 break;
+
+		case Tank_Car:
+			Send_Data.Sensor_Str.X_speed = ((MOTOR_A.Encoder+MOTOR_B.Encoder)/2)*1000;
 			Send_Data.Sensor_Str.Y_speed = 0;
 			Send_Data.Sensor_Str.Z_speed = ((MOTOR_B.Encoder-MOTOR_A.Encoder)/(Wheel_spacing)*1000);
-			break; 
+			break;
 	}
-	
+
 	//The acceleration of the triaxial acceleration //���ٶȼ�������ٶ�
 	Send_Data.Sensor_Str.Accelerometer.X_data= imu.accel.y; //The accelerometer Y-axis is converted to the ros coordinate X axis //���ٶȼ�Y��ת����ROS����X��
 	Send_Data.Sensor_Str.Accelerometer.Y_data=-imu.accel.x; //The accelerometer X-axis is converted to the ros coordinate y axis //���ٶȼ�X��ת����ROS����Y��
 	Send_Data.Sensor_Str.Accelerometer.Z_data= imu.accel.z; //The accelerometer Z-axis is converted to the ros coordinate Z axis //���ٶȼ�Z��ת����ROS����Z��
-	
+
 	//The Angle velocity of the triaxial velocity //���ٶȼ�������ٶ�
 	Send_Data.Sensor_Str.Gyroscope.X_data= imu.gyro.y; //The Y-axis is converted to the ros coordinate X axis //���ٶȼ�Y��ת����ROS����X��
 	Send_Data.Sensor_Str.Gyroscope.Y_data=-imu.gyro.x; //The X-axis is converted to the ros coordinate y axis //���ٶȼ�X��ת����ROS����Y��
-	if(Flag_Stop==0) 
+	if(Flag_Stop==0)
 		//If the motor control bit makes energy state, the z-axis velocity is sent normall
 	  //����������λʹ��״̬����ô��������Z����ٶ�
-		Send_Data.Sensor_Str.Gyroscope.Z_data=imu.gyro.z;  
-	else  
+		Send_Data.Sensor_Str.Gyroscope.Z_data=imu.gyro.z;
+	else
 		//If the robot is static (motor control dislocation), the z-axis is 0
-    //����������Ǿ�ֹ�ģ��������λʧ�ܣ�����ô���͵�Z����ٶ�Ϊ0		
-		Send_Data.Sensor_Str.Gyroscope.Z_data=0;        
-	
+    //����������Ǿ�ֹ�ģ��������λʧ�ܣ�����ô���͵�Z����ٶ�Ϊ0
+		Send_Data.Sensor_Str.Gyroscope.Z_data=0;
+
 	//Battery voltage (this is a thousand times larger floating point number, which will be reduced by a thousand times as well as receiving the data).
 	//��ص�ѹ(���ｫ�������Ŵ�һǧ�����䣬��Ӧ���ڽ��ն��ڽ��յ����ݺ�Ҳ����Сһǧ��)
-	Send_Data.Sensor_Str.Power_Voltage = Voltage*1000; 
-	
+	Send_Data.Sensor_Str.Power_Voltage = Voltage*1000;
+
 	Send_Data.buffer[0]=Send_Data.Sensor_Str.Frame_Header; //Frame_heade //֡ͷ
   Send_Data.buffer[1]=Flag_Stop; //Car software loss marker //С������ʧ�ܱ�־λ
-	
+
 	//The three-axis speed of / / car is split into two eight digit Numbers
 	//С�������ٶ�,���ᶼ���Ϊ����8λ�����ٷ���
-	Send_Data.buffer[2]=Send_Data.Sensor_Str.X_speed >>8; 
-	Send_Data.buffer[3]=Send_Data.Sensor_Str.X_speed ;    
-	Send_Data.buffer[4]=Send_Data.Sensor_Str.Y_speed>>8;  
-	Send_Data.buffer[5]=Send_Data.Sensor_Str.Y_speed;     
-	Send_Data.buffer[6]=Send_Data.Sensor_Str.Z_speed >>8; 
-	Send_Data.buffer[7]=Send_Data.Sensor_Str.Z_speed ;    
-	
+	Send_Data.buffer[2]=Send_Data.Sensor_Str.X_speed >>8;
+	Send_Data.buffer[3]=Send_Data.Sensor_Str.X_speed ;
+	Send_Data.buffer[4]=Send_Data.Sensor_Str.Y_speed>>8;
+	Send_Data.buffer[5]=Send_Data.Sensor_Str.Y_speed;
+	Send_Data.buffer[6]=Send_Data.Sensor_Str.Z_speed >>8;
+	Send_Data.buffer[7]=Send_Data.Sensor_Str.Z_speed ;
+
 	//The acceleration of the triaxial axis of / / imu accelerometer is divided into two eight digit reams
 	//IMU���ٶȼ�������ٶ�,���ᶼ���Ϊ����8λ�����ٷ���
-	Send_Data.buffer[8]=Send_Data.Sensor_Str.Accelerometer.X_data>>8; 
-	Send_Data.buffer[9]=Send_Data.Sensor_Str.Accelerometer.X_data;   
+	Send_Data.buffer[8]=Send_Data.Sensor_Str.Accelerometer.X_data>>8;
+	Send_Data.buffer[9]=Send_Data.Sensor_Str.Accelerometer.X_data;
 	Send_Data.buffer[10]=Send_Data.Sensor_Str.Accelerometer.Y_data>>8;
 	Send_Data.buffer[11]=Send_Data.Sensor_Str.Accelerometer.Y_data;
 	Send_Data.buffer[12]=Send_Data.Sensor_Str.Accelerometer.Z_data>>8;
 	Send_Data.buffer[13]=Send_Data.Sensor_Str.Accelerometer.Z_data;
-	
+
 	//The axis of the triaxial velocity of the / /imu is divided into two eight digits
 	//IMU���ٶȼ�������ٶ�,���ᶼ���Ϊ����8λ�����ٷ���
 	Send_Data.buffer[14]=Send_Data.Sensor_Str.Gyroscope.X_data>>8;
@@ -579,23 +590,23 @@ void data_transition(void)
 	Send_Data.buffer[17]=Send_Data.Sensor_Str.Gyroscope.Y_data;
 	Send_Data.buffer[18]=Send_Data.Sensor_Str.Gyroscope.Z_data>>8;
 	Send_Data.buffer[19]=Send_Data.Sensor_Str.Gyroscope.Z_data;
-	
+
 	//Battery voltage, split into two 8 digit Numbers
 	//��ص�ѹ,���Ϊ����8λ���ݷ���
-	Send_Data.buffer[20]=Send_Data.Sensor_Str.Power_Voltage >>8; 
-	Send_Data.buffer[21]=Send_Data.Sensor_Str.Power_Voltage; 
+	Send_Data.buffer[20]=Send_Data.Sensor_Str.Power_Voltage >>8;
+	Send_Data.buffer[21]=Send_Data.Sensor_Str.Power_Voltage;
 
   //Data check digit calculation, Pattern 1 is a data check
   //����У��λ���㣬ģʽ1�Ƿ�������У��
-	Send_Data.buffer[22]=Check_Sum(22,1); 
-	
+	Send_Data.buffer[22]=Check_Sum(22,1);
+
 	Send_Data.buffer[23]=Send_Data.Sensor_Str.Frame_Tail; //Frame_tail //֡β
 
 	///////////////////////�Զ��س���ر�����ֵ/////////////////////
 	Send_AutoCharge_Data.AutoCharge_Str.Frame_Header = AutoCharge_HEADER;   //֡ͷ��ֵ0x7C
 	Send_AutoCharge_Data.AutoCharge_Str.Frame_Tail = AutoCharge_TAIL;		//֡β��ֵ0x7F
 	Send_AutoCharge_Data.AutoCharge_Str.Charging_Current = (short)Charging_Current;//��������ֵ
-	
+
 	Send_AutoCharge_Data.AutoCharge_Str.RED = RED_STATE; //�����־λ��ֵ
 	Send_AutoCharge_Data.AutoCharge_Str.Charging = Charging; //�Ƿ��ڳ���־λ��ֵ
 
@@ -608,7 +619,7 @@ void data_transition(void)
 	Send_AutoCharge_Data.buffer[6] = Check_Sum_AutoCharge(6,1);								//У��λ
 	Send_AutoCharge_Data.buffer[7] = Send_AutoCharge_Data.AutoCharge_Str.Frame_Tail;		//֡β0x7F
 	///////////////////////�Զ��س���ر�����ֵ/////////////////////
-	
+
 }
 /**************************************************************************
 Function: Serial port 1 sends data
@@ -620,20 +631,20 @@ Output  : none
 **************************************************************************/
 void USART1_SEND(void)
 {
-  unsigned char i = 0;	
-	
+  unsigned char i = 0;
+
 	for(i=0; i<24; i++)
 	{
 		usart1_send(Send_Data.buffer[i]);
-	}	 
+	}
 	if(Get_Charging_HardWare==1)
 	{
 		//���ڻس�װ��ʱ�����ϲ㷢���Զ��س���ر���
 		for(i=0; i<8; i++)
 		{
 			usart1_send(Send_AutoCharge_Data.buffer[i]);
-		}	
-	}	
+		}
+	}
 }
 
 void USART3_Return(void)
@@ -655,18 +666,18 @@ Output  : none
 **************************************************************************/
 void USART5_SEND(void)
 {
-  unsigned char i = 0;	
+  unsigned char i = 0;
 	for(i=0; i<24; i++)
 	{
 		usart5_send(Send_Data.buffer[i]);
-	}	 
+	}
 	if(Get_Charging_HardWare==1)
 	{
 		//���ڻس�װ��ʱ�����ϲ㷢���Զ��س���ر���
 		for(i=0; i<8; i++)
 		{
 			usart5_send(Send_AutoCharge_Data.buffer[i]);
-		}	
+		}
 	}
 }
 /**************************************************************************
@@ -677,28 +688,28 @@ Output  : none
 ��ڲ�������
 �� �� ֵ����
 **************************************************************************/
-void CAN_SEND(void) 
+void CAN_SEND(void)
 {
 	u8 CAN_SENT[8],i;
-	
+
 	for(i=0;i<8;i++)
 	{
 	  CAN_SENT[i]=Send_Data.buffer[i];
 	}
 	CAN1_Send_Num(0x101,CAN_SENT);
-	
+
 	for(i=0;i<8;i++)
 	{
 	  CAN_SENT[i]=Send_Data.buffer[i+8];
 	}
 	CAN1_Send_Num(0x102,CAN_SENT);
-	
+
 	for(i=0;i<8;i++)
 	{
 	  CAN_SENT[i]=Send_Data.buffer[i+16];
 	}
 	CAN1_Send_Num(0x103,CAN_SENT);
-	
+
 	//////////////////�Զ��س�������ݷ���//////////////////
 	if(Get_Charging_HardWare) CAN_Send_AutoRecharge();
 }
@@ -711,36 +722,36 @@ Output  : none
 �� �� ֵ����
 **************************************************************************/
 void uart1_init(u32 bound)
-{  	 
+{
 	GPIO_InitTypeDef GPIO_InitStructure;
 	USART_InitTypeDef USART_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
-	
+
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);	 //Enable the gpio clock //ʹ��GPIOʱ��
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE); //Enable the Usart clock //ʹ��USARTʱ��
 
-	GPIO_PinAFConfig(GPIOA,GPIO_PinSource9,GPIO_AF_USART1);	
-	GPIO_PinAFConfig(GPIOA,GPIO_PinSource10 ,GPIO_AF_USART1);	 
-	
+	GPIO_PinAFConfig(GPIOA,GPIO_PinSource9,GPIO_AF_USART1);
+	GPIO_PinAFConfig(GPIOA,GPIO_PinSource10 ,GPIO_AF_USART1);
+
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9|GPIO_Pin_10;
 	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF;            //���ģʽ
 	GPIO_InitStructure.GPIO_OType=GPIO_OType_PP;          //�������
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;       //����50MHZ
 	GPIO_InitStructure.GPIO_PuPd=GPIO_PuPd_UP;            //����
 	GPIO_Init(GPIOA, &GPIO_InitStructure);  		          //��ʼ��
-	
+
   //UsartNVIC configuration //UsartNVIC����
 	NVIC_InitStructure.NVIC_IRQChannel = USART1_IRQn;
 	//Preempt priority //��ռ���ȼ�
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=2 ;
 	//Subpriority //�����ȼ�
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;		
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
 	//Enable the IRQ channel //IRQͨ��ʹ��
-	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;	
-  //Initialize the VIC register with the specified parameters 
-	//����ָ���Ĳ�����ʼ��VIC�Ĵ���	
-	NVIC_Init(&NVIC_InitStructure);	
-	
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  //Initialize the VIC register with the specified parameters
+	//����ָ���Ĳ�����ʼ��VIC�Ĵ���
+	NVIC_Init(&NVIC_InitStructure);
+
   //USART Initialization Settings ��ʼ������
 	USART_InitStructure.USART_BaudRate = bound; //Port rate //���ڲ�����
 	USART_InitStructure.USART_WordLength = USART_WordLength_8b; //The word length is 8 bit data format //�ֳ�Ϊ8λ���ݸ�ʽ
@@ -749,7 +760,7 @@ void uart1_init(u32 bound)
 	USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None; //No hardware data flow control //��Ӳ������������
 	USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;	//Sending and receiving mode //�շ�ģʽ
 	USART_Init(USART1, &USART_InitStructure); //Initialize serial port 1 //��ʼ������1
-	
+
 	USART_ITConfig(USART1, USART_IT_RXNE, ENABLE); //Open the serial port to accept interrupts //�������ڽ����ж�
 	USART_Cmd(USART1, ENABLE);                     //Enable serial port 1 //ʹ�ܴ���1
 }
@@ -762,36 +773,36 @@ Output  : none
 ����  ֵ����
 **************************************************************************/
 void uart2_init(u32 bound)
-{  	 
+{
 	GPIO_InitTypeDef GPIO_InitStructure;
 	USART_InitTypeDef USART_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
 
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);	 //Enable the gpio clock  //ʹ��GPIOʱ��
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART2, ENABLE); //Enable the Usart clock //ʹ��USARTʱ��
-	
-	GPIO_PinAFConfig(GPIOD,GPIO_PinSource5,GPIO_AF_USART2);	
-	GPIO_PinAFConfig(GPIOD,GPIO_PinSource6 ,GPIO_AF_USART2);	 
-	
+
+	GPIO_PinAFConfig(GPIOD,GPIO_PinSource5,GPIO_AF_USART2);
+	GPIO_PinAFConfig(GPIOD,GPIO_PinSource6 ,GPIO_AF_USART2);
+
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_5|GPIO_Pin_6;
 	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF;            //���ģʽ
 	GPIO_InitStructure.GPIO_OType=GPIO_OType_PP;          //�������
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;       //����50MHZ
 	GPIO_InitStructure.GPIO_PuPd=GPIO_PuPd_UP;            //����
 	GPIO_Init(GPIOD, &GPIO_InitStructure);  		          //��ʼ��
-	
+
 	//UsartNVIC configuration //UsartNVIC����
 	NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn;
 	//Preempt priority //��ռ���ȼ�
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=1 ;
 	//Subpriority //�����ȼ�
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;	
-  //Enable the IRQ channel //IRQͨ��ʹ��	
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+  //Enable the IRQ channel //IRQͨ��ʹ��
 	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
-  //Initialize the VIC register with the specified parameters 
-	//����ָ���Ĳ�����ʼ��VIC�Ĵ���		
-	NVIC_Init(&NVIC_InitStructure);	
-	
+  //Initialize the VIC register with the specified parameters
+	//����ָ���Ĳ�����ʼ��VIC�Ĵ���
+	NVIC_Init(&NVIC_InitStructure);
+
 	//USART Initialization Settings ��ʼ������
 	USART_InitStructure.USART_BaudRate = bound; //Port rate //���ڲ�����
 	USART_InitStructure.USART_WordLength = USART_WordLength_8b; //The word length is 8 bit data format //�ֳ�Ϊ8λ���ݸ�ʽ
@@ -800,9 +811,9 @@ void uart2_init(u32 bound)
 	USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None; //No hardware data flow control //��Ӳ������������
 	USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;	//Sending and receiving mode //�շ�ģʽ
 	USART_Init(USART2, &USART_InitStructure);      //Initialize serial port 2 //��ʼ������2
-	
+
 	USART_ITConfig(USART2, USART_IT_RXNE, ENABLE); //Open the serial port to accept interrupts //�������ڽ����ж�
-	USART_Cmd(USART2, ENABLE);                     //Enable serial port 2 //ʹ�ܴ���2 
+	USART_Cmd(USART2, ENABLE);                     //Enable serial port 2 //ʹ�ܴ���2
 }
 /**************************************************************************
 Function: Serial port 3 initialization
@@ -813,36 +824,36 @@ Output  : none
 ����  ֵ����
 **************************************************************************/
 void uart3_init(u32 bound)
-{  	 
+{
   GPIO_InitTypeDef GPIO_InitStructure;
 	USART_InitTypeDef USART_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
-	
+
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);	 //Enable the gpio clock  //ʹ��GPIOʱ��
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE); //Enable the Usart clock //ʹ��USARTʱ��
-	
-	GPIO_PinAFConfig(GPIOD,GPIO_PinSource8,GPIO_AF_USART3);	
-	GPIO_PinAFConfig(GPIOD,GPIO_PinSource9,GPIO_AF_USART3);	 
-	
+
+	GPIO_PinAFConfig(GPIOD,GPIO_PinSource8,GPIO_AF_USART3);
+	GPIO_PinAFConfig(GPIOD,GPIO_PinSource9,GPIO_AF_USART3);
+
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8|GPIO_Pin_9;
 	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF;            //���ģʽ
 	GPIO_InitStructure.GPIO_OType=GPIO_OType_PP;          //�������
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;       //����50MHZ
 	GPIO_InitStructure.GPIO_PuPd=GPIO_PuPd_UP;            //����
 	GPIO_Init(GPIOD, &GPIO_InitStructure);  		          //��ʼ��
-	
+
   //UsartNVIC configuration //UsartNVIC����
   NVIC_InitStructure.NVIC_IRQChannel = USART3_IRQn;
 	//Preempt priority //��ռ���ȼ�
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=1 ;
 	//Preempt priority //��ռ���ȼ�
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;		
-	//Enable the IRQ channel //IRQͨ��ʹ��	
-	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;	
-  //Initialize the VIC register with the specified parameters 
-	//����ָ���Ĳ�����ʼ��VIC�Ĵ���		
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	//Enable the IRQ channel //IRQͨ��ʹ��
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  //Initialize the VIC register with the specified parameters
+	//����ָ���Ĳ�����ʼ��VIC�Ĵ���
 	NVIC_Init(&NVIC_InitStructure);
-	
+
   //USART Initialization Settings ��ʼ������
 	USART_InitStructure.USART_BaudRate = bound; //Port rate //���ڲ�����
 	USART_InitStructure.USART_WordLength = USART_WordLength_8b; //The word length is 8 bit data format //�ֳ�Ϊ8λ���ݸ�ʽ
@@ -851,9 +862,9 @@ void uart3_init(u32 bound)
 	USART_InitStructure.USART_HardwareFlowControl = USART_HardwareFlowControl_None; //No hardware data flow control //��Ӳ������������
 	USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;	//Sending and receiving mode //�շ�ģʽ
   USART_Init(USART3, &USART_InitStructure);      //Initialize serial port 3 //��ʼ������3
-	
+
   USART_ITConfig(USART3, USART_IT_RXNE, ENABLE); //Open the serial port to accept interrupts //�������ڽ����ж�
-  USART_Cmd(USART3, ENABLE);                     //Enable serial port 3 //ʹ�ܴ���3 
+  USART_Cmd(USART3, ENABLE);                     //Enable serial port 3 //ʹ�ܴ���3
 }
 /**************************************************************************
 Function: Serial port 5 initialization
@@ -864,20 +875,20 @@ Output  : none
 ����  ֵ����
 **************************************************************************/
 void uart5_init(u32 bound)
-{  	 
+{
   GPIO_InitTypeDef GPIO_InitStructure;
 	USART_InitTypeDef USART_InitStructure;
 	NVIC_InitTypeDef NVIC_InitStructure;
-	
+
 	//PC12 TX
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);	 //Enable the gpio clock  //ʹ��GPIOʱ��
 		//PD2 RX
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOD, ENABLE);	 //Enable the gpio clock  //ʹ��GPIOʱ��
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART5, ENABLE); //Enable the Usart clock //ʹ��USARTʱ��
 
-	GPIO_PinAFConfig(GPIOC,GPIO_PinSource12,GPIO_AF_UART5);	
-	GPIO_PinAFConfig(GPIOD,GPIO_PinSource2 ,GPIO_AF_UART5);	 
-	
+	GPIO_PinAFConfig(GPIOC,GPIO_PinSource12,GPIO_AF_UART5);
+	GPIO_PinAFConfig(GPIOD,GPIO_PinSource2 ,GPIO_AF_UART5);
+
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_12;
 	GPIO_InitStructure.GPIO_Mode=GPIO_Mode_AF;            //���ģʽ
 	GPIO_InitStructure.GPIO_OType=GPIO_OType_PP;          //�������
@@ -891,19 +902,19 @@ void uart5_init(u32 bound)
 	GPIO_InitStructure.GPIO_Speed=GPIO_Speed_50MHz;       //����50MHZ
 	GPIO_InitStructure.GPIO_PuPd=GPIO_PuPd_UP;            //����
 	GPIO_Init(GPIOD, &GPIO_InitStructure);  		          //��ʼ��
-	
+
   //UsartNVIC configuration //UsartNVIC����
   NVIC_InitStructure.NVIC_IRQChannel = UART5_IRQn;
 	//Preempt priority //��ռ���ȼ�
 	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=2 ;
 	//Preempt priority //��ռ���ȼ�
-	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;		
-	//Enable the IRQ channel //IRQͨ��ʹ��	
-	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;	
-  //Initialize the VIC register with the specified parameters 
-	//����ָ���Ĳ�����ʼ��VIC�Ĵ���		
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
+	//Enable the IRQ channel //IRQͨ��ʹ��
+	NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+  //Initialize the VIC register with the specified parameters
+	//����ָ���Ĳ�����ʼ��VIC�Ĵ���
 	NVIC_Init(&NVIC_InitStructure);
-	
+
   //USART Initialization Settings ��ʼ������
 	USART_InitStructure.USART_BaudRate = bound; //Port rate //���ڲ�����
 	USART_InitStructure.USART_WordLength = USART_WordLength_8b; //The word length is 8 bit data format //�ֳ�Ϊ8λ���ݸ�ʽ
@@ -944,11 +955,11 @@ int USART3_IRQHandler(void)
 static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 {
 	#define DEBUG_BT04ACommand 0
-	
+
 	uint8_t isFilter = 0;//�Ƿ��������ַ�ͨ��,1����,0������
 	static uint8_t lastrecv = 0;
 	static uint8_t filterIndex = 0;
-	
+
 	const char* BT04AConnect = "+CONNECTING<<XX:XX:XX:XX:XX:XX\r\n+CONNECTED\r\n";
 	const char* BT04ADisConnect = "+DISC:SUCCESS\r\n+READY\r\n+PAIRABLE\r\n";
 	enum{
@@ -956,9 +967,9 @@ static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 		BT04A_CONNECTSTART,
 		BT04A_DISCONNECTSTART,
 	};
-	
+
 	static uint8_t statemachine = BT04A_NORMAL;
-	
+
 	switch( statemachine )
 	{
 		case BT04A_NORMAL:
@@ -979,8 +990,8 @@ static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 			if( BT04AConnect[filterIndex] == recv )  //��ʼ���������ַ�,����ֽ�ƥ��
 			{
 				isFilter = 1;//ƥ�������ֶ�,�����ƥ�������
-				
-				#if 1== DEBUG_BT04ACommand 
+
+				#if 1== DEBUG_BT04ACommand
 				printf("yes:%c\r\n",recv);
 				#endif
 			}
@@ -988,7 +999,7 @@ static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
        				  ((recv>='0'&&recv<='9')||(recv>='a'&&recv<='z')) )//���뵽MAC��ַƥ��׶�.�ý׶�ƥ�� 0~9 ��a~z�ֶ�
 			{
 				isFilter = 1;//MAC��ַ����
-				#if 1== DEBUG_BT04ACommand 
+				#if 1== DEBUG_BT04ACommand
 				printf("yes:%c\r\n",recv);
 				#endif
 			}
@@ -996,17 +1007,17 @@ static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 			{
 				//��������,�����ַ�ͨ��.���˳�����ģʽ
 				statemachine = BT04A_NORMAL;
-				#if 1== DEBUG_BT04ACommand 
+				#if 1== DEBUG_BT04ACommand
 				printf("No:get:%c,but:%c\r\n",recv,BT04AConnect[filterIndex]);
 				#endif
 			}
-			
+
 			//����ֱ����ɹ����б�
 			filterIndex++;
 			if( filterIndex == strlen(BT04AConnect) )
 			{
 				statemachine = BT04A_NORMAL;
-				#if 1== DEBUG_BT04ACommand 
+				#if 1== DEBUG_BT04ACommand
 				printf("filter con done!\r\n");
 				#endif
 			}
@@ -1015,7 +1026,7 @@ static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 			if( BT04ADisConnect[filterIndex] == recv )  //��ʼ���������ַ�,����ֽ�ƥ��
 			{
 				isFilter = 1;//ƥ�������ֶ�,�����ƥ�������
-				#if 1== DEBUG_BT04ACommand 
+				#if 1== DEBUG_BT04ACommand
 				printf("yes:%c\r\n",recv);
 				#endif
 			}
@@ -1025,11 +1036,11 @@ static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 				#if 1== DEBUG_BT04ACommand
 				printf("No:get:%c,but:%c\r\n",recv,BT04ADisConnect[filterIndex]);
 				#endif
-			}				
-			
+			}
+
 			//����ֱ����ɹ����б�
 			filterIndex++;
-			if( filterIndex == strlen(BT04ADisConnect) ) 
+			if( filterIndex == strlen(BT04ADisConnect) )
 			{
 				statemachine = BT04A_NORMAL;
 				#if 1== DEBUG_BT04ACommand
@@ -1039,7 +1050,7 @@ static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 			break;
 	}
 	lastrecv = recv;
-	
+
 	return isFilter;
 }
 
@@ -1048,11 +1059,11 @@ static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
 static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
 {
 	#define DEBUG_JDY33Command 0
-	
+
 	uint8_t isFilter = 0;//�Ƿ��������ַ�ͨ��,1����,0����
 	static uint8_t lastrecv = 0;
 	static uint8_t filterIndex = 0;
-	
+
 	const char* JDY33_SPPConnect = "+CONNECTING<<XX:XX:XX:XX:XX:XX\r\nCONNECTED\r\r\n";
 	const char* JDY33_BLEConnect = "CONNECTED\r\r\n";
 	const char* JDY33_DisConnect = "+DISC:SUCCESS\r\r\n\0"; //ע��\0���ᱻͳ���ֳ�,��Ҫ���а��ֳ�+1
@@ -1062,9 +1073,9 @@ static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
 		JDY33_BLECONNECTSTART,
 		JDY33_DISCONNECTSTART,
 	};
-	
+
 	static uint8_t statemachine = JDY33_NORMAL;
-	
+
 	switch( statemachine )
 	{
 		case JDY33_NORMAL:
@@ -1096,8 +1107,8 @@ static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
 			if( JDY33_SPPConnect[filterIndex] == recv )  //��ʼ���������ַ�,����ֽ�ƥ��
 			{
 				isFilter = 1;//ƥ�������ֶ�,�����ƥ�������
-				
-				#if 1== DEBUG_JDY33Command 
+
+				#if 1== DEBUG_JDY33Command
 				printf("yes:%c\r\n",recv);
 				#endif
 			}
@@ -1105,7 +1116,7 @@ static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
        				  ((recv>='0'&&recv<='9')||(recv>='A'&&recv<='Z')) )//���뵽MAC��ַƥ��׶�.�ý׶�ƥ�� 0~9 ��a~z�ֶ�
 			{
 				isFilter = 1;//MAC��ַ����
-				#if 1== DEBUG_JDY33Command 
+				#if 1== DEBUG_JDY33Command
 				printf("yes:%c\r\n",recv);
 				#endif
 			}
@@ -1113,17 +1124,17 @@ static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
 			{
 				//��������,�����ַ�ͨ��.���˳�����ģʽ
 				statemachine = JDY33_NORMAL;
-				#if 1== DEBUG_JDY33Command 
+				#if 1== DEBUG_JDY33Command
 				printf("SPP->No:get:%c,but:%c\r\n",recv,JDY33_SPPConnect[filterIndex]);
 				#endif
 			}
-			
+
 			//����ֱ����ɹ����б�
 			filterIndex++;
 			if( filterIndex == strlen(JDY33_SPPConnect) )
 			{
 				statemachine = JDY33_NORMAL;
-				#if 1== DEBUG_JDY33Command 
+				#if 1== DEBUG_JDY33Command
 				printf("SPP filter con done!\r\n");
 				#endif
 			}
@@ -1132,7 +1143,7 @@ static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
 			if( JDY33_BLEConnect[filterIndex] == recv )  //��ʼ���������ַ�,����ֽ�ƥ��
 			{
 				isFilter = 1;//ƥ�������ֶ�,�����ƥ�������
-				#if 1== DEBUG_JDY33Command 
+				#if 1== DEBUG_JDY33Command
 				printf("yes:%c\r\n",recv);
 				#endif
 			}
@@ -1142,11 +1153,11 @@ static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
 				#if 1== DEBUG_JDY33Command
 				printf("BLE->No:get:%c,but:%c\r\n",recv,JDY33_BLEConnect[filterIndex]);
 				#endif
-			}				
-			
+			}
+
 			//����ֱ����ɹ����б�
 			filterIndex++;
-			if( filterIndex == strlen(JDY33_BLEConnect) ) 
+			if( filterIndex == strlen(JDY33_BLEConnect) )
 			{
 				statemachine = JDY33_NORMAL;
 				#if 1== DEBUG_JDY33Command
@@ -1158,7 +1169,7 @@ static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
 			if( JDY33_DisConnect[filterIndex] == recv )  //��ʼ���������ַ�,����ֽ�ƥ��
 			{
 				isFilter = 1;//ƥ�������ֶ�,�����ƥ�������
-				#if 1== DEBUG_JDY33Command 
+				#if 1== DEBUG_JDY33Command
 				printf("yes:%c\r\n",recv);
 				#endif
 			}
@@ -1168,8 +1179,8 @@ static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
 				#if 1== DEBUG_JDY33Command
 				printf("dis->No:get:%c,but:%c\r\n",recv,JDY33_DisConnect[filterIndex]);
 				#endif
-			}				
-			
+			}
+
 			//����ֱ����ɹ����б�
 			filterIndex++;
 			if( filterIndex == strlen(JDY33_DisConnect)+1 ) //+1Ϊ������ַ�'\0'
@@ -1182,28 +1193,28 @@ static uint8_t ATCommandFeedBack_JDY33(uint8_t recv)
 			break;
 	}
 	lastrecv = recv;
-	
+
 	return isFilter;
 }
 
 //����ģʽ
 void RobotControl_SetDebugLevel(char uart_recv)
 {
-	
+
 	static char res_buf[4];
 	static char res_count=0;
-	
+
 	res_buf[res_count]=uart_recv;
-	
+
 	if( uart_recv=='L'||res_count>0 )
 		res_count++;
 	else
 		res_count = 0;
-	
+
 	if(res_count==4)
 	{
 		res_count = 0;
-		
+
 		if( res_buf[0]=='L'&&res_buf[1]=='O'&&res_buf[2]=='G')
 		{
 			switch( res_buf[3] )
@@ -1218,28 +1229,30 @@ void RobotControl_SetDebugLevel(char uart_recv)
 uint8_t FlashWriteFlag = 0;
 
 int USART2_IRQHandler(void)
-{	
+{
+    RouteVofa_Uart2TxIRQ();
+    if (RouteVofa_IsActive()) return 0;
 	int Usart_Receive;
 	if(USART_GetITStatus(USART2, USART_IT_RXNE) != RESET) //Check if data is received //�ж��Ƿ���յ�����
-	{	      
+	{
 		static u8 Flag_PID,i,j,Receive[50],Last_Usart_Receive;
 		static float Data;
-				
+
 		Usart_Receive=USART2->DR; //Read the data //��ȡ����
-		
+
 		//����������ATָ���
 		uint8_t ATFilter = 0;
 		ATFilter += ATCommandFeedBack_JDY33(Usart_Receive);
 		ATFilter += ATCommandFeedBack_BT04A(Usart_Receive);
 		if( ATFilter > 0 ) return 0; //�������һ�������Ĺ�����Ϣ,�����
-		
+
 		_System_Reset_(Usart_Receive);
 		RobotControl_SetDebugLevel(Usart_Receive);
 		if(SysVal.Time_count<CONTROL_DELAY)
 			// Data is not processed until 10 seconds after startup
 		  //����10��ǰ����������
-		  return 0;	
-		
+		  return 0;
+
 		if(Check==0)
 		{
 		if(Usart_Receive==0x41&&Last_Usart_Receive==0x41&&APP_ON_Flag==0)
@@ -1248,29 +1261,29 @@ int USART2_IRQHandler(void)
 			//����10��֮�󣬰���APP��ǰ��������APP����ģʽ
 		  //APP���Ʊ�־λ��1��������־λ��0
 			PS2_ON_Flag=0,Remote_ON_Flag=0,APP_ON_Flag=1,CAN_ON_Flag=0,Usart1_ON_Flag=0,Usart5_ON_Flag=0;
-    Last_Usart_Receive=Usart_Receive;			
-	  
-		if(Usart_Receive==0x4B) 
+    Last_Usart_Receive=Usart_Receive;
+
+		if(Usart_Receive==0x4B)
 			//Enter the APP steering control interface
 		  //����APPת����ƽ���
-			Turn_Flag=1;  
-	  else	if(Usart_Receive==0x49||Usart_Receive==0x4A) 
-      // Enter the APP direction control interface		
-			//����APP������ƽ���	
-			Turn_Flag=0;	
-		
-		if(Turn_Flag==0) 
+			Turn_Flag=1;
+	  else	if(Usart_Receive==0x49||Usart_Receive==0x4A)
+      // Enter the APP direction control interface
+			//����APP������ƽ���
+			Turn_Flag=0;
+
+		if(Turn_Flag==0)
 		{
 			//App rocker control interface command
 			//APPҡ�˿��ƽ�������
-			if(Usart_Receive>=0x41&&Usart_Receive<=0x48)  
-			{	
+			if(Usart_Receive>=0x41&&Usart_Receive<=0x48)
+			{
 				Flag_Direction=Usart_Receive-0x40;
 			}
-			else	if(Usart_Receive<=8)   
-			{			
+			else	if(Usart_Receive<=8)
+			{
 				Flag_Direction=Usart_Receive;
-			}	
+			}
 			else  Flag_Direction=0;
 		}
 		else if(Turn_Flag==1)
@@ -1285,14 +1298,14 @@ int USART2_IRQHandler(void)
 		}
 		if(Usart_Receive==0x58)  RC_Velocity=RC_Velocity+100; //Accelerate the keys, +100mm/s //���ٰ�����+100mm/s
 		if(Usart_Receive==0x59)  RC_Velocity=RC_Velocity-100; //Slow down buttons,   -100mm/s //���ٰ�����-100mm/s
-	  
+
 	 // The following is the communication with the APP debugging interface
 	 //��������APP���Խ���ͨѶ
 	 if(Usart_Receive==0x7B) Flag_PID=1;   //The start bit of the APP parameter instruction //APP����ָ����ʼλ
 	 if(Usart_Receive==0x7D) Flag_PID=2;   //The APP parameter instruction stops the bit    //APP����ָ��ֹͣλ
-	
+
 	if( Usart_Receive=='b' ) Allow_Recharge = !Allow_Recharge;
-		
+
 	 if(Flag_PID==1) //Collect data //�ɼ�����
 	 {
 		Receive[i]=Usart_Receive;
@@ -1302,8 +1315,8 @@ int USART2_IRQHandler(void)
 	 {
 			if(Receive[3]==0x50) 	 PID_Send=1;
 			else if( Receive[3]==0x57 ) FlashWriteFlag = 1;
-			else  if(Receive[1]!=0x23) 
-			{								
+			else  if(Receive[1]!=0x23)
+			{
 				for(j=i;j>=4;j--)
 				{
 					Data+=(Receive[j-1]-48)*pow(10,i-j);
@@ -1318,30 +1331,30 @@ int USART2_IRQHandler(void)
 					 case 0x35:  break;
 					 case 0x36:  break;
 					 case 0x37:  break;
-					 case 0x38:  break; 	
+					 case 0x38:  break;
 				 }
-      }		
-      //Relevant flag position is cleared			
-      //��ر�־λ����			
+      }
+      //Relevant flag position is cleared
+      //��ر�־λ����
 			Flag_PID=0;
 			i=0;
 			j=0;
 			Data=0;
 			memset(Receive, 0, sizeof(u8)*50); //Clear the array to zero//��������
 	 }
-   if(RC_Velocity<0)   RC_Velocity=0; 
+   if(RC_Velocity<0)   RC_Velocity=0;
  }
 		else if(Check==1)
 		{
-			if(Usart_Receive>=0x41&&Usart_Receive<=0x48)  
-			{	
+			if(Usart_Receive>=0x41&&Usart_Receive<=0x48)
+			{
 				check_parameter.Usart2_check_dir = Usart_Receive-0x40;
 			}
-			else 
+			else
 				check_parameter.Usart2_check_dir = 9;
 		}
   }
-  return 0;	
+  return 0;
 }
 
 // ========== ����3�����жϴ��� ==========
@@ -1401,7 +1414,10 @@ int USART1_IRQHandler(void)
     if (servo_debug_prefix == 3U) {
         servo_debug_prefix = 0;
         if (byte >= '1' && byte <= '4' && !USART_ServoControlBusy() && !ServoTask_IsBusy())
-            StepperTask_RequestMangoFromISR((u8)(byte - '0'));
+        {
+            if (RouteIO_ControlOwned()) RouteIO_QueueWorkFromISR((u8)(byte-'0'));
+            else StepperTask_RequestMangoFromISR((u8)(byte-'0'));
+        }
         return 0;
     }
     if (byte=='V') { servo_debug_prefix=5U; return 0; }
@@ -1488,7 +1504,7 @@ Output  : none
 ����  ֵ����
 **************************************************************************/
 int UART5_IRQHandler(void)
-{	
+{
 	static u8 Count=0;
 	u8 Usart_Receive;
 
@@ -1498,31 +1514,31 @@ int UART5_IRQHandler(void)
 		if(SysVal.Time_count<CONTROL_DELAY)
 			// Data is not processed until 10 seconds after startup
 		  //����10��ǰ����������
-		  return 0;	
-		
+		  return 0;
+
 		//Fill the array with serial data
 		//����������������
     Receive_Data.buffer[Count]=Usart_Receive;
-		
+
 		// Ensure that the first data in the array is FRAME_HEADER
 		//ȷ�������һ������ΪFRAME_HEADER
-		if(Usart_Receive == FRAME_HEADER||Count>0) 
-			Count++; 
-		else 
+		if(Usart_Receive == FRAME_HEADER||Count>0)
+			Count++;
+		else
 			Count=0;
-		
+
 		if (Count == 11) //Verify the length of the packet //��֤���ݰ��ĳ���
-		{   
+		{
 				Count=0; //Prepare for the serial port data to be refill into the array //Ϊ����������������������׼��
 				if(Receive_Data.buffer[10] == FRAME_TAIL) //Verify the frame tail of the packet //��֤���ݰ���֡β
 				{
 					//Data exclusionary or bit check calculation, mode 0 is sent data check
 					//�������λУ����㣬ģʽ0�Ƿ�������У��
-					if(Receive_Data.buffer[9] ==Check_Sum(9,0))	 
-				  {	
-						float Vz;						
+					if(Receive_Data.buffer[9] ==Check_Sum(9,0))
+				  {
+						float Vz;
 						//All modes flag position 0, USART1 control mode
-            //����ģʽ��־λ��0��ΪUsart5����ģʽ						
+            //����ģʽ��־λ��0��ΪUsart5����ģʽ
 						PS2_ON_Flag=0;
 						Remote_ON_Flag=0;
 						APP_ON_Flag=0;
@@ -1544,8 +1560,8 @@ int UART5_IRQHandler(void)
 						}				  }
 			}
 		}
-	} 
-  return 0;	
+	}
+  return 0;
 }
 /**************************************************************************
 Function: After the top 8 and low 8 figures are integrated into a short type data, the unit reduction is converted
@@ -1559,7 +1575,7 @@ float Vz_to_Akm_Angle(float Vx, float Vz)
 {
 	float R, AngleR, Min_Turn_Radius;
 	//float AngleL;
-	
+
 	//Ackermann car needs to set minimum turning radius
 	//If the target speed requires a turn radius less than the minimum turn radius,
 	//This will greatly improve the friction force of the car, which will seriously affect the control effect
@@ -1567,7 +1583,7 @@ float Vz_to_Akm_Angle(float Vx, float Vz)
 	//���Ŀ���ٶ�Ҫ���ת��뾶С����Сת��뾶��
 	//�ᵼ��С���˶�Ħ���������ߣ�����Ӱ�����Ч��
 	Min_Turn_Radius=MINI_AKM_MIN_TURN_RADIUS;
-	
+
 	if(Vz!=0 && Vx!=0)
 	{
 		//If the target speed requires a turn radius less than the minimum turn radius
@@ -1578,9 +1594,9 @@ float Vz_to_Akm_Angle(float Vx, float Vz)
 			//����Ŀ����ٶȣ����ǰ���ٶȣ����ת��뾶����Сת��뾶
 			if(Vz>0)
 				Vz= float_abs(Vx)/(Min_Turn_Radius);
-			else	
-				Vz=-float_abs(Vx)/(Min_Turn_Radius);	
-		}		
+			else
+				Vz=-float_abs(Vx)/(Min_Turn_Radius);
+		}
 		R=Vx/Vz;
 		//AngleL=atan(Axle_spacing/(R-0.5*Wheel_spacing));
 		AngleR=atan(Axle_spacing/(R+0.5f*Wheel_spacing));
@@ -1589,7 +1605,7 @@ float Vz_to_Akm_Angle(float Vx, float Vz)
 	{
 		AngleR=0;
 	}
-	
+
 	return AngleR;
 }
 /**************************************************************************
@@ -1604,13 +1620,13 @@ float XYZ_Target_Speed_transition(u8 High,u8 Low)
 {
 	//Data conversion intermediate variable
 	//����ת�����м����
-	short transition; 
-	
+	short transition;
+
 	//����8λ�͵�8λ���ϳ�һ��16λ��short������
 	//The high 8 and low 8 bits are integrated into a 16-bit short data
-	transition=((High<<8)+Low); 
-	return 
-		transition/1000+(transition%1000)*0.001; //Unit conversion, mm/s->m/s //��λת��, mm/s->m/s						
+	transition=((High<<8)+Low);
+	return
+		transition/1000+(transition%1000)*0.001; //Unit conversion, mm/s->m/s //��λת��, mm/s->m/s
 }
 /**************************************************************************
 Function: Serial port 1 sends data
@@ -1634,6 +1650,7 @@ Output  : none
 **************************************************************************/
 void usart2_send(u8 data)
 {
+    if (RouteVofa_IsActive()) return;
     (void)USART_WriteByte(USART2, data);
 }
 /**************************************************************************
@@ -1672,7 +1689,7 @@ Output  : Check result
 u8 Check_Sum(unsigned char Count_Number,unsigned char Mode)
 {
 	unsigned char check_sum=0,k;
-	
+
 	//Validate the data to be sent
 	//��Ҫ���͵����ݽ���У��
 	if(Mode==1)
@@ -1680,7 +1697,7 @@ u8 Check_Sum(unsigned char Count_Number,unsigned char Mode)
 	{
 	check_sum=check_sum^Send_Data.buffer[k];
 	}
-	
+
 	//Verify the data received
 	//�Խ��յ������ݽ���У��
 	if(Mode==0)
@@ -1695,7 +1712,7 @@ u8 Check_Sum(unsigned char Count_Number,unsigned char Mode)
 u8 Check_Sum_AutoCharge(unsigned char Count_Number,unsigned char Mode)
 {
 	unsigned char check_sum=0,k;
-	
+
 	//Validate the data to be sent
 	//��Ҫ���͵����ݽ���У��
 	if(Mode==1)
@@ -1703,8 +1720,8 @@ u8 Check_Sum_AutoCharge(unsigned char Count_Number,unsigned char Mode)
 	{
 	check_sum=check_sum^Send_AutoCharge_Data.buffer[k];
 	}
-	
-	return check_sum;	
+
+	return check_sum;
 }
 
 
@@ -1716,7 +1733,7 @@ u8 AT_Command_Capture(u8 uart_recv)
 	+CONNECTING<<00:11:22:33:44:55\r\n
 	+CONNECTED\r\n
 	��44���ַ�
-	
+
 	�����Ͽ�ʱ���͵��ַ�
 	+DISC:SUCCESS\r\n
 	+READY\r\n
@@ -1725,29 +1742,29 @@ u8 AT_Command_Capture(u8 uart_recv)
 	\r -> 0x0D
 	\n -> 0x0A
 	*/
-	
+
 	static u8 pointer = 0; //��������ʱָ���¼��
 	static u8 bt_line = 0; //��ʾ�����ڵڼ���
 	static u8 disconnect = 0;
 	static u8 connect = 0;
-	
+
 	//�Ͽ�����
 	static char* BlueTooth_Disconnect[3]={"+DISC:SUCCESS\r\n","+READY\r\n","+PAIRABLE\r\n"};
-	
+
 	//��ʼ����
 	static char* BlueTooth_Connect[2]={"+CONNECTING<<00:00:00:00:00:00\r\n","+CONNECTED\r\n"};
 
 
 	//�����ʶ������ʼ����(ʹ��ʱҪ-1)
-	if(uart_recv=='+') 
+	if(uart_recv=='+')
 	{
-		bt_line++,pointer=0; //�յ���+������ʾ�л�������	
+		bt_line++,pointer=0; //�յ���+������ʾ�л�������
 		disconnect++,connect++;
 		return 1;//ץ������ֹ����
 	}
 
-	if(bt_line!=0) 
-	{	
+	if(bt_line!=0)
+	{
 		pointer++;
 
 		//��ʼ׷�������Ƿ���϶Ͽ�������������ʱȫ�����Σ�������ʱȡ������
@@ -1756,27 +1773,27 @@ u8 AT_Command_Capture(u8 uart_recv)
 			disconnect++;
 			if(disconnect==34) disconnect=0,connect=0,bt_line=0,pointer=0;
 			return 1;//ץ������ֹ����
-		}			
+		}
 
 		//׷���������� (bt_line==1&&connect>=13)����������MAC��ַ��ÿһ������MAC��ַ������ͬ������ֱ�����ι�ȥ
 		else if(uart_recv == BlueTooth_Connect[bt_line-1][pointer] || (bt_line==1&&connect>=13) )
-		{		
+		{
 			connect++;
-			if(connect==44) connect=0,disconnect=0,bt_line=0,pointer=0;		
+			if(connect==44) connect=0,disconnect=0,bt_line=0,pointer=0;
 			return 1;//ץ������ֹ����
-		}	
+		}
 
 		//��ץ���ڼ��յ��������ֹͣץ��
 		else
 		{
 			disconnect = 0;
 			connect = 0;
-			bt_line = 0;		
+			bt_line = 0;
 			pointer = 0;
 			return 0;//�ǽ�ֹ���ݣ����Կ���
-		}			
+		}
 	}
-	
+
 	return 0;//�ǽ�ֹ���ݣ����Կ���
 }
 
@@ -1785,14 +1802,14 @@ void _System_Reset_(u8 uart_recv)
 {
 	static u8 res_buf[5];
 	static u8 res_count=0;
-	
+
 	res_buf[res_count]=uart_recv;
-	
+
 	if( uart_recv=='r'||res_count>0 )
 		res_count++;
 	else
 		res_count = 0;
-	
+
 	if(res_count==5)
 	{
 		res_count = 0;
@@ -1803,5 +1820,3 @@ void _System_Reset_(u8 uart_recv)
 		}
 	}
 }
-
-

@@ -281,3 +281,13 @@ void stepper_Task(void *pvParameters)
         vTaskDelay(pdMS_TO_TICKS(MANGO_CHECK_MS));
     }
 }
+
+u8 StepperTask_RequestMango(u8 mango_id)
+{
+    u8 result;
+    uint32_t mask=__get_PRIMASK();
+    __disable_irq();
+    result=StepperTask_RequestMangoFromISR(mango_id);
+    __set_PRIMASK(mask);
+    return result;
+}

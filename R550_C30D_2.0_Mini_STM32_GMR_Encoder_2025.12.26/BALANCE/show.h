@@ -5,7 +5,7 @@
 #include "system.h"
 #include "bsp_gamepad.h"
 #define SHOW_TASK_PRIO		3
-#define SHOW_STK_SIZE 		512  
+#define SHOW_STK_SIZE 		512
 
 void show_task(void *pvParameters);
 void oled_show(void);
@@ -18,7 +18,7 @@ void OLED_ShowCheckResult(void);
 extern u8 oled_page,oled_refresh_flag;
 #define TASK_OLED_PAGE 3U
 #define LOWER_LASER_OLED_PAGE 5U
-#define OLED_MAX_Page 6 //OLED菜单页数
+#define OLED_MAX_Page 8 //OLED菜单页数
 
 extern float base_vol;
 extern float VolMean_Filter(float data);

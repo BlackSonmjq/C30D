@@ -5,11 +5,14 @@
 #include <stdio.h>
 #include "camera_protocol.h"
 #include "can_test.h"
+#include "my_chassis_task.h"
+#include "route_io.h"
+#include "route_config.h"
 int Voltage_Show;
-unsigned char i;          
-unsigned char Send_Count; 
+unsigned char i;
+unsigned char Send_Count;
 extern SEND_DATA Send_Data;
-extern int MPU9250ErrorCount, EncoderA_Count, EncoderB_Count, EncoderC_Count, EncoderD_Count; 
+extern int MPU9250ErrorCount, EncoderA_Count, EncoderB_Count, EncoderC_Count, EncoderD_Count;
 extern int MPU9250SensorCountA, MPU9250SensorCountB, MPU9250SensorCountC, MPU9250SensorCountD;
 
 
@@ -28,44 +31,44 @@ void show_task(void *pvParameters)
 {
    u32 lastWakeTime = getSysTickCnt();
    while(1)
-   {	
+   {
 		int i=0;
 		static int LowVoltage_1=0, LowVoltage_2=0;
 		vTaskDelayUntil(&lastWakeTime, F2T(RATE_10_HZ));//This task runs at 10Hz //此任务以10Hz的频率运行
-		
+
 		//开机时蜂鸣器短暂蜂鸣，开机提醒
 		//The buzzer will beep briefly when the machine is switched on
 		if(SysVal.Time_count<50)Buzzer_Set(1);
 		else if(SysVal.Time_count>=51 && SysVal.Time_count<100)Buzzer_Set(0);
-		 
+
 		if(LowVoltage_1==1 || LowVoltage_2==1)Buzzer_count=0;
 		if(LowVoltage_2>=2 && LowVoltage_2%10==2)Buzzer_count=0;  // 每10个周期重置一次
 		if(Buzzer_count<5)Buzzer_count++;
 		if(Buzzer_count<5)Buzzer_Set(1); //The buzzer is buzzing //蜂鸣器蜂鸣
 		else if(Buzzer_count==5)Buzzer_Set(0);
-		
+
 		//Read the battery voltage //读取电池电压
 		for(i=0;i<100;i++)
 		{
-			Voltage_All+=Get_battery_volt(); 
+			Voltage_All+=Get_battery_volt();
 		}
 		Voltage=Voltage_All/100;
 		Voltage = VolMean_Filter(Voltage);
 		Voltage_All=0;
-		
+
 		if(Get_Charging_HardWare==1)
 		{	//电压过低，收到红外信号，开启自动回充功能
 			if(Voltage<10&&RED_STATE) Allow_Recharge=1;
 		}
 		if(LowVoltage_1==1)LowVoltage_1++; //Make sure the buzzer only rings for 0.5 seconds //确保蜂鸣器只响0.5秒
 		if(LowVoltage_2>=1)LowVoltage_2++; // 只要>=1就累加
-		
+
 		if(Voltage>=12.6f)Voltage=12.6f;
 		else if(10<=Voltage && Voltage<10.5f && LowVoltage_1<2)LowVoltage_1++; //10.5V, first buzzer when low battery //10.5V，低电量时蜂鸣器第一次报警
 		else if(Voltage<10 && LowVoltage_2==0)LowVoltage_2=1; //只在等于0时初始化
-					
+
 		/* USART1 is reserved for servo logs; APP telemetry disabled. */ //APP_Show();	 //Send data to the APP //向APP发送数据
-		
+
 		if(oled_refresh_flag) OLED_Clear(),oled_refresh_flag=0;
 		else oled_show(); //Tasks are displayed on the screen //显示屏显示任务
    }
@@ -217,20 +220,136 @@ static void LowerLaser_DrawOLED(void)
     }
 }
 
+static void draw_route_status_line(u8 y, const char *line)
+{
+    u8 x = 0U;
+
+    while (*line != '\0' && x <= 120U) {
+        OLED_ShowChar(x, y, (u8)*line, 12, 1);
+        x += 6U;
+        ++line;
+    }
+}
+
+static void draw_route_status(void)
+{
+    RouteIODiagnostics diagnostics;
+    const unsigned int centivolts = (unsigned int)(Voltage * 100.0f);
+    unsigned int pwm_active;
+    char rear[6] = "-----";
+    char line[32];
+
+    RouteIO_ReadDiagnostics(&diagnostics);
+    if (diagnostics.rear_mm != 0U) {
+        snprintf(rear, sizeof(rear), "%5u", (unsigned int)diagnostics.rear_mm);
+    }
+
+    taskENTER_CRITICAL();
+    pwm_active = (PWMA1 != PWMA2) || (PWMB1 != PWMB2) ||
+                 (PWMC1 != PWMC2) || (PWMD1 != PWMD2);
+    taskEXIT_CRITICAL();
+
+    snprintf(line, sizeof(line), "S:%02u REQ:%u TASK:%u D:%u",
+             (unsigned int)Route_Stage, (unsigned int)RouteIO_StartRequested(),
+             (unsigned int)Route_TaskCreated, (unsigned int)(ROUTE_DEMO_ENABLE != 0));
+    draw_route_status_line(0, line);
+
+    snprintf(line, sizeof(line), "OK:%u MEC:%u IMU:%u EN:%u",
+             (unsigned int)RouteIO_Ready(),
+             (unsigned int)(Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550),
+             (unsigned int)(SysVal.Time_count >= CONTROL_DELAY),
+             (unsigned int)(EN != 0U));
+    draw_route_status_line(12, line);
+
+    snprintf(line, sizeof(line), "STOP:%u BUSY:%u V:%u.%02u",
+             (unsigned int)(Flag_Stop != 0U), (unsigned int)(StepperTask_IsBusy() != 0U),
+             centivolts / 100U, centivolts % 100U);
+    draw_route_status_line(24, line);
+
+    snprintf(line, sizeof(line), "CAN:%u CMD:%u B:%s",
+             (unsigned int)diagnostics.can_fresh,
+             (unsigned int)diagnostics.command_fresh, rear);
+    draw_route_status_line(36, line);
+
+    snprintf(line, sizeof(line), "X:%+4d Y:%+4d PWM:%u",
+             (int)(diagnostics.vx_mps * 1000.0f),
+             (int)(diagnostics.vy_mps * 1000.0f), pwm_active);
+    draw_route_status_line(48, line);
+}
+
+static void draw_route_process(void)
+{
+    RouteStatus status;
+    ChassisOdomFrame pose;
+    const char sensor_names[] = {'F', 'B', 'L', 'R', '-'};
+    char range[6] = "----";
+    char line[32];
+    Route_ReadStatus(&status);
+    ChassisOdom_Read(&pose);
+    if (status.measured_mm != 0U)
+        snprintf(range, sizeof(range), "%4u", (unsigned int)status.measured_mm);
+
+    snprintf(line, sizeof(line), "AT:%02u GO:%02u L:%u",
+             (unsigned int)status.at_point, (unsigned int)status.target_point,
+             (unsigned int)status.lane);
+    draw_route_status_line(0, line);
+    snprintf(line, sizeof(line), "%s %s>%s", RouteNav_PhaseName(status.phase),
+             RoutePlan_MotionName(status.motion), RoutePlan_MotionName(status.next_motion));
+    draw_route_status_line(12, line);
+    if (status.phase == ROUTE_WAIT_START)
+        snprintf(line, sizeof(line), "X:%+5d Y:%+5d", (int)pose.x_mm, (int)pose.y_mm);
+    else if (status.reference == ROUTE_REF_WALL)
+        /* G 是本段估计终点，C 是捕获帧数；接管后 G 可区别于原计划长度。 */
+        snprintf(line, sizeof(line), "S:%4d G:%4d C:%u/%u",
+                 (int)status.progress_mm, (int)status.estimated_end_mm,
+                 (unsigned int)status.capture_confirmed, (unsigned int)ROUTE_CAPTURE_FRAMES);
+    else
+        snprintf(line, sizeof(line), "S:%5d/%4umm",
+                 (int)status.progress_mm, (unsigned int)status.estimated_end_mm);
+    draw_route_status_line(24, line);
+    if (status.reference == ROUTE_REF_EDGE)
+        snprintf(line, sizeof(line), "%c:%s E:%u A:%c%4u",
+                 sensor_names[status.sensor <= ROUTE_LIDAR_COUNT ? status.sensor : ROUTE_LIDAR_COUNT],
+                 range, (unsigned int)status.edge_state,
+                 sensor_names[status.aux_sensor <= ROUTE_LIDAR_COUNT ? status.aux_sensor : ROUTE_LIDAR_COUNT],
+                 (unsigned int)status.aux_measured_mm);
+    else
+        snprintf(line, sizeof(line), "%c:%s T:%4u N:%u/%u",
+                 sensor_names[status.sensor <= ROUTE_LIDAR_COUNT ? status.sensor : ROUTE_LIDAR_COUNT],
+                 range, (unsigned int)status.target_mm, (unsigned int)status.confirmed,
+                 (unsigned int)ROUTE_CONFIRM_FRAMES);
+    draw_route_status_line(36, line);
+    if (status.stop_flags != 0U)
+        snprintf(line, sizeof(line), "E:%s D:%02X", RouteNav_ErrorName(status.reason),
+                 (unsigned int)status.stop_flags);
+    else if (status.phase != ROUTE_WAIT_START && status.reason == ROUTE_ERROR_NONE)
+        /* R 用于实际接近控制；O 只是计划里程剩余。R 为负时将确认并小幅回调。 */
+        snprintf(line, sizeof(line), "R:%+5d Q:%u/%02X%s%s",
+                 (int)status.control_remaining_mm,
+                 (unsigned int)(status.reference == ROUTE_REF_EDGE ? status.aux_confidence : status.confidence),
+                 (unsigned int)(status.reference == ROUTE_REF_EDGE ? status.aux_reject_reason : status.reject_reason),
+                 status.odom_untrusted ? " !O" : "", status.speed_limited ? " S" : "");
+    else
+        snprintf(line, sizeof(line), "E:%s", RouteNav_ErrorName(status.reason));
+    draw_route_status_line(48, line);
+}
+
 void oled_show(void)
-{   
+{
 	int Car_Mode_Show;
-	
-	//Collect the tap information of the potentiometer, 
+
+	//Collect the tap information of the potentiometer,
 		 //and display the car model to be fitted when the car starts up in real time
 		 //采集电位器档位信息，实时显示小车开机时要适配的小车型号
 		 Divisor_Mode=2048/CAR_NUMBER+5;
 		POT_val = Get_adc_Average(Potentiometer,10);
-		 Car_Mode_Show=(int) (POT_val/Divisor_Mode); 
-		 if(Car_Mode_Show>7)Car_Mode_Show=7; 
+		 Car_Mode_Show=(int) (POT_val/Divisor_Mode);
+		 if(Car_Mode_Show>7)Car_Mode_Show=7;
 		  //Car_Mode_Show=0;
-	
+
 	memset(OLED_GRAM,0, 128*8*sizeof(u8));
+    if (oled_page==6) { draw_route_status(); OLED_Refresh_Gram(); return; }
+    if (oled_page==7) { draw_route_process(); OLED_Refresh_Gram(); return; }
     if (oled_page==LOWER_LASER_OLED_PAGE) { LowerLaser_DrawOLED(); OLED_Refresh_Gram(); return; }
     if (oled_page==4) { Camera_DrawOLED(); OLED_Refresh_Gram(); return; }
 	//GRAM清零但不立即刷新，防止花屏
@@ -244,7 +363,7 @@ void oled_show(void)
 			{
 				return;
 			}
-			else 
+			else
 			{
 				show_delay=0;
 				show_usb_enum = 0;
@@ -252,7 +371,7 @@ void oled_show(void)
 		}
 //		if( show_usb_enum && GamePadDebug.enmu_state == EnumDone)
 //		{
-//			if(clear) 
+//			if(clear)
 //			{
 //				clear=0,oled_refresh_flag=1; //枚举中,清屏显示下面信息
 //				return;//执行1次清屏
@@ -275,21 +394,21 @@ void oled_show(void)
 //					return;
 //				}
 //				show_done = 0;
-//				show_delay=0;	
+//				show_delay=0;
 //				oled_refresh_flag = 1;//延迟完毕,清屏显示正常数据
 //				show_usb_enum = 0;
 //			}
 //			clear=1; //枚举完成,等待下次枚举时重新清屏
 //		}
 		///////////// usb ps2 设备插拔提示 /////////////
-	
+
 	if(oled_page==0)
 	{
-		 Voltage_Show=Voltage*100; 
+		 Voltage_Show=Voltage*100;
 		memset(OLED_GRAM,0, 128*8*sizeof(u8));
 	//GRAM清零但不立即刷新，防止花屏
 		 if(Check==0)//The car displays normally when the self-check mode is not enabled //没有开启自检模式时小车正常显示
-		 {	
+		 {
 			 //The first line of the display displays the content//
 			 //显示屏第1行显示内容//
 			 if(Allow_Recharge) OLED_ShowString(0,0,"RCM ");
@@ -297,17 +416,17 @@ void oled_show(void)
 			 {
 				 switch(Car_Mode_Show)
 				 {
-					case Mec_Car:       OLED_ShowString(0,0,"Mec  "); break; 
-					case Omni_Car:      OLED_ShowString(0,0,"Omni "); break; 
-					case Akm_Car:       OLED_ShowString(0,0,"Akm  "); break; 
-					case Diff_Car:      OLED_ShowString(0,0,"Diff "); break; 
-					case FourWheel_Car: OLED_ShowString(0,0,"4WD  "); break; 
-					case Tank_Car:      OLED_ShowString(0,0,"Tank "); break; 
+					case Mec_Car:       OLED_ShowString(0,0,"Mec  "); break;
+					case Omni_Car:      OLED_ShowString(0,0,"Omni "); break;
+					case Akm_Car:       OLED_ShowString(0,0,"Akm  "); break;
+					case Diff_Car:      OLED_ShowString(0,0,"Diff "); break;
+					case FourWheel_Car: OLED_ShowString(0,0,"4WD  "); break;
+					case Tank_Car:      OLED_ShowString(0,0,"Tank "); break;
 					case Mec_Car_V550:  OLED_ShowString(0,0,"Mec-V"); break;
 					case FourWheel_Car_V550: OLED_ShowString(0,0,"4WD-V"); break;
-				 } 
+				 }
 			 }
-			 
+
 			 if(Car_Mode==Mec_Car||Car_Mode==Omni_Car||Car_Mode==Mec_Car_V550)
 			 {
 				 //The Mec_car and omni_car show Z-axis angular velocity
@@ -326,7 +445,7 @@ void oled_show(void)
 					OLED_ShowString(120,0," ");
 					OLED_ShowString(60,0,"GZ");
 					if( imu.gyro.z<0)  OLED_ShowString(80,0,"-"),OLED_ShowNumber(90,0,-imu.gyro.z,5,12);
-					else            OLED_ShowString(80,0,"+"),OLED_ShowNumber(90,0, imu.gyro.z,5,12);		
+					else            OLED_ShowString(80,0,"+"),OLED_ShowNumber(90,0, imu.gyro.z,5,12);
 				}
 			 }
 			 else if(Car_Mode==Akm_Car||Car_Mode==Diff_Car||Car_Mode==FourWheel_Car||Car_Mode==Tank_Car||Car_Mode==FourWheel_Car_V550)
@@ -340,7 +459,7 @@ void oled_show(void)
 //				 {
 //					 OLED_ShowString(55,0,"ps2 outline");
 //				 }
-//	
+//
 				 //Akm_Car, Diff_Car, FourWheel_Car and Tank_Car Displays gyroscope zero
 				 //阿克曼、差速、四驱、履带车显示陀螺仪零点
 				 OLED_ShowString(55,0,"BIAS");
@@ -349,7 +468,7 @@ void oled_show(void)
 			 }
 			 //The first line of the display displays the content//
 			 //显示屏第1行显示内容//
-			 
+
 
 			 //The second line of the display displays the content//
 			 //显示屏第2行显示内容//
@@ -361,8 +480,8 @@ void oled_show(void)
 				if( MOTOR_A.Target<0)	OLED_ShowString(15,10,"-"),
 															OLED_ShowNumber(20,10,-MOTOR_A.Target*1000,5,12);
 				else                 	OLED_ShowString(15,10,"+"),
-															OLED_ShowNumber(20,10, MOTOR_A.Target*1000,5,12); 
-				
+															OLED_ShowNumber(20,10, MOTOR_A.Target*1000,5,12);
+
 				if( MOTOR_A.Encoder<0)OLED_ShowString(60,10,"-"),
 															OLED_ShowNumber(75,10,-MOTOR_A.Encoder*1000,5,12);
 				else                 	OLED_ShowString(60,10,"+"),
@@ -376,36 +495,36 @@ void oled_show(void)
 				 if( imu.gyro.z<0)  OLED_ShowString(60,10,"-"),
 												 OLED_ShowNumber(75,10,-imu.gyro.z,5,12);
 				 else            OLED_ShowString(60,10,"+"),
-												 OLED_ShowNumber(75,10, imu.gyro.z,5,12);			
-			 }	 
+												 OLED_ShowNumber(75,10, imu.gyro.z,5,12);
+			 }
 			 //The second line of the display displays the content//
 			 //显示屏第2行显示内容//
-			 
+
 			 //Lines 3 and 4 of the display screen display content//
 			 //显示屏第3、4行显示内容//
 			 if(Car_Mode==Mec_Car||Car_Mode==Omni_Car||Car_Mode==FourWheel_Car||Car_Mode==FourWheel_Car_V550||Car_Mode==Mec_Car_V550)
 			 {
 				//Mec_Car, Omni_Car and FourWheel_Car Display the target speed and current actual speed of motor B
 				//麦轮、全向轮、四驱车显示电机B的目标速度和当前实际速度
-				OLED_ShowString(0,20,"B");		
+				OLED_ShowString(0,20,"B");
 				if( MOTOR_B.Target<0)	OLED_ShowString(15,20,"-"),
 															OLED_ShowNumber(20,20,-MOTOR_B.Target*1000,5,12);
 				else                 	OLED_ShowString(15,20,"+"),
-															OLED_ShowNumber(20,20, MOTOR_B.Target*1000,5,12); 
-				
+															OLED_ShowNumber(20,20, MOTOR_B.Target*1000,5,12);
+
 				if( MOTOR_B.Encoder<0)OLED_ShowString(60,20,"-"),
 															OLED_ShowNumber(75,20,-MOTOR_B.Encoder*1000,5,12);
 				else                 	OLED_ShowString(60,20,"+"),
 															OLED_ShowNumber(75,20, MOTOR_B.Encoder*1000,5,12);
-				
+
 				//Mec_Car, Omni_Car and FourWheel_Car Display the target speed and current actual speed of motor C
 				//麦轮、全向轮、四驱车显示电机C的目标速度和当前实际速度
 				OLED_ShowString(0,30,"C");
 				if( MOTOR_C.Target<0)	OLED_ShowString(15,30,"-"),
 															OLED_ShowNumber(20,30,- MOTOR_C.Target*1000,5,12);
 				else                 	OLED_ShowString(15,30,"+"),
-															OLED_ShowNumber(20,30,  MOTOR_C.Target*1000,5,12); 
-					
+															OLED_ShowNumber(20,30,  MOTOR_C.Target*1000,5,12);
+
 				if( MOTOR_C.Encoder<0)OLED_ShowString(60,30,"-"),
 															OLED_ShowNumber(75,30,-MOTOR_C.Encoder*1000,5,12);
 				else                 	OLED_ShowString(60,30,"+"),
@@ -419,7 +538,7 @@ void oled_show(void)
 				 if( MOTOR_A.Target<0)	OLED_ShowString(15,20,"-"),
 																OLED_ShowNumber(20,20,-MOTOR_A.Target*1000,5,12);
 				 else                 	OLED_ShowString(15,20,"+"),
-																OLED_ShowNumber(20,20, MOTOR_A.Target*1000,5,12);  
+																OLED_ShowNumber(20,20, MOTOR_A.Target*1000,5,12);
 				 if( MOTOR_A.Encoder<0)	OLED_ShowString(60,20,"-"),
 																OLED_ShowNumber(75,20,-MOTOR_A.Encoder*1000,5,12);
 				 else                 	OLED_ShowString(60,20,"+"),
@@ -430,8 +549,8 @@ void oled_show(void)
 				 if( MOTOR_B.Target<0)	OLED_ShowString(15,30,"-"),
 																OLED_ShowNumber(20,30,-MOTOR_B.Target*1000,5,12);
 				 else                 	OLED_ShowString(15,30,"+"),
-																OLED_ShowNumber(20,30,  MOTOR_B.Target*1000,5,12);  
-					
+																OLED_ShowNumber(20,30,  MOTOR_B.Target*1000,5,12);
+
 				 if( MOTOR_B.Encoder<0)	OLED_ShowString(60,30,"-"),
 																OLED_ShowNumber(75,30,-MOTOR_B.Encoder*1000,5,12);
 				 else                 	OLED_ShowString(60,30,"+"),
@@ -440,7 +559,7 @@ void oled_show(void)
 	//			 if( Remoter_Ch1<0)	    OLED_ShowString(15,20,"-"),
 	//															OLED_ShowNumber(20,20,-Remoter_Ch1,5,12);
 	//			 else                 	OLED_ShowString(15,20,"+"),
-	//															OLED_ShowNumber(20,20, Remoter_Ch1,5,12);  
+	//															OLED_ShowNumber(20,20, Remoter_Ch1,5,12);
 	//			 if( Remoter_Ch2<0)	    OLED_ShowString(60,20,"-"),
 	//															OLED_ShowNumber(75,20,-Remoter_Ch2,5,12);
 	//			 else                 	OLED_ShowString(60,20,"+"),
@@ -448,7 +567,7 @@ void oled_show(void)
 	//			 if( Remoter_Ch3<0)	    OLED_ShowString(15,30,"-"),
 	//															OLED_ShowNumber(20,30,-Remoter_Ch3,5,12);
 	//			 else                 	OLED_ShowString(15,30,"+"),
-	//															OLED_ShowNumber(20,30, Remoter_Ch3,5,12);  
+	//															OLED_ShowNumber(20,30, Remoter_Ch3,5,12);
 	//			 if( Remoter_Ch4<0)	    OLED_ShowString(60,30,"-"),
 	//															OLED_ShowNumber(75,30,-Remoter_Ch4,5,12);
 	//			 else                 	OLED_ShowString(60,30,"+"),
@@ -456,7 +575,7 @@ void oled_show(void)
 			 }
 			 //Lines 3 and 4 of the display screen display content//
 			 //显示屏第3、4行显示内容//
-			 
+
 			 //Line 5 of the display displays the content//
 			 //显示屏第5行显示内容//
 			 if(Car_Mode==Mec_Car||Car_Mode==FourWheel_Car||Car_Mode==Mec_Car_V550||Car_Mode==FourWheel_Car_V550)
@@ -467,7 +586,7 @@ void oled_show(void)
 					if( MOTOR_D.Target<0)	OLED_ShowString(15,40,"-"),
 																OLED_ShowNumber(20,40,- MOTOR_D.Target*1000,5,12);
 					else                 	OLED_ShowString(15,40,"+"),
-																OLED_ShowNumber(20,40,  MOTOR_D.Target*1000,5,12); 			
+																OLED_ShowNumber(20,40,  MOTOR_D.Target*1000,5,12);
 					if( MOTOR_D.Encoder<0)	OLED_ShowString(60,40,"-"),
 																OLED_ShowNumber(75,40,-MOTOR_D.Encoder*1000,5,12);
 					else                 	OLED_ShowString(60,40,"+"),
@@ -477,7 +596,7 @@ void oled_show(void)
 			 {
 				  // The Omni_car shows Z-axis angular velocity (1000 times magnification) in rad/s
 					//全向轮小车显示Z轴角速度(放大1000倍)，单位rad/s
-					OLED_ShowString(0,40,"MOVE_Z"); 			
+					OLED_ShowString(0,40,"MOVE_Z");
 					if(Send_Data.Sensor_Str.X_speed<0)	OLED_ShowString(60,40,"-"),
 																							OLED_ShowNumber(75,40,-Send_Data.Sensor_Str.X_speed,5,12);
 					else                              	OLED_ShowString(60,40,"+"),
@@ -495,7 +614,7 @@ void oled_show(void)
 				 if( MOTOR_A.Motor_Pwm<0)OLED_ShowString(20,40,"-"),
 																 OLED_ShowNumber(30,40,-MOTOR_A.Motor_Pwm,4,12);
 				 else                 	 OLED_ShowString(20,40,"+"),
-																 OLED_ShowNumber(30,40, MOTOR_A.Motor_Pwm,4,12); 
+																 OLED_ShowNumber(30,40, MOTOR_A.Motor_Pwm,4,12);
 																 OLED_ShowString(60,40,"MB");
 				 if(MOTOR_B.Motor_Pwm<0) OLED_ShowString(80,40,"-"),
 																 OLED_ShowNumber(90,40,-MOTOR_B.Motor_Pwm,4,12);
@@ -504,7 +623,7 @@ void oled_show(void)
 			 }
 			 //Line 5 of the display displays the content//
 			 //显示屏第5行显示内容//
-				 
+
 			 //Displays the current control mode //显示当前控制模式
 			 if(PS2_ON_Flag==1)         OLED_ShowString(0,50,"PS2  ");
 			 else if (APP_ON_Flag==1)   OLED_ShowString(0,50,"APP  ");
@@ -513,22 +632,22 @@ void oled_show(void)
 			 else if ((Usart1_ON_Flag || Usart5_ON_Flag)==1) OLED_ShowString(0,50,"USART");
 				else if (nav_walk==1)      OLED_ShowString(0,50,"nav");
 				else                       OLED_ShowString(0,50,"ROS  ");
-				
+
 			 //Displays whether controls are allowed in the current car
 			 //显示当前小车是否允许控制
-			 if(EN==1&&Flag_Stop==0)   OLED_ShowString(45,50,"O N");  
-			 else                      OLED_ShowString(45,50,"OFF"); 
-				
+			 if(EN==1&&Flag_Stop==0)   OLED_ShowString(45,50,"O N");
+			 else                      OLED_ShowString(45,50,"OFF");
+
 																	OLED_ShowNumber(75,50,Voltage_Show/100,2,12);
 										  OLED_ShowString(88,50,".");
 																	OLED_ShowNumber(98,50,Voltage_Show%100,2,12);
 										  OLED_ShowString(110,50,"V");
 			 if(Voltage_Show%100<10) 	OLED_ShowNumber(92,50,0,2,12);
-			}	
-		 
+			}
+
 			OLED_Refresh_Gram();
 		}
-	
+
         else if(oled_page==TASK_OLED_PAGE)
         {
             OLED_ShowTaskStatus();
@@ -557,7 +676,7 @@ void oled_show(void)
 			OLED_ShowNumber(48,50,Received_IP[1],3,12);
 			OLED_ShowNumber(72,50,Received_IP[2],3,12);
 			OLED_ShowNumber(96,50,Received_IP[3],3,12);
-			OLED_Refresh_Gram();	
+			OLED_Refresh_Gram();
 		}
 	}
 	else
@@ -569,8 +688,8 @@ void oled_show(void)
 			 OLED_ShowCHinese(00, 32, "    确认开始    ");
 			 OLED_ShowString(104, 50, "0/8");
 		 }
-		 
-		 if(check_parameter.Process==1)					
+
+		 if(check_parameter.Process==1)
 		 {
 			 OLED_Show_POT();
 			 OLED_ShowCHinese12(8, 9, "请转动电位器：");
@@ -602,17 +721,17 @@ void oled_show(void)
 																OLED_ShowNumber(20,5,-MOTOR_A.Encoder*1000,5,12);
 				else                		OLED_ShowString(00,5,"A+"),
 																OLED_ShowNumber(20,5, MOTOR_A.Encoder*1000,5,12);
-				
+
 				if( MOTOR_B.Encoder<0)	OLED_ShowString(70,5,"B-"),
 																OLED_ShowNumber(90,5,-MOTOR_B.Encoder*1000,5,12);
 				else                		OLED_ShowString(70,5,"B+"),
 																OLED_ShowNumber(90,5, MOTOR_B.Encoder*1000,5,12);
-				
+
 				if( MOTOR_C.Encoder<0)	OLED_ShowString(00,20,"C-"),
 																OLED_ShowNumber(20,20,-MOTOR_C.Encoder*1000,5,12);
 				else                		OLED_ShowString(00,20,"C+"),
 																OLED_ShowNumber(20,20, MOTOR_C.Encoder*1000,5,12);
-				
+
 				if( MOTOR_D.Encoder<0)	OLED_ShowString(70,20,"D-"),
 																OLED_ShowNumber(90,20,-MOTOR_D.Encoder*1000,5,12);
 				else                		OLED_ShowString(70,20,"D+"),
@@ -634,37 +753,37 @@ void oled_show(void)
 																	 OLED_ShowNumber(24, 16, -imu.gyro.x, 5, 12);
 			 else							 					 OLED_ShowString(16, 16, "+"),
 																	 OLED_ShowNumber(24, 16, imu.gyro.x, 5, 12);
-			 
+
 			 if(imu.gyro.y<0)							 OLED_ShowString(16, 26, "-"),
 																	 OLED_ShowNumber(24, 26, -imu.gyro.y, 5, 12);
 			 else							 					 OLED_ShowString(16, 26, "+"),
 																	 OLED_ShowNumber(24, 26, imu.gyro.y, 5, 12);
-			 
+
 			 if(imu.gyro.z<0)	 						OLED_ShowString(16, 36, "-"),
 																	OLED_ShowNumber(24, 36, -imu.gyro.z, 5, 12);
 			 else						 						OLED_ShowString(16, 36, "+"),
 																	OLED_ShowNumber(24, 36, imu.gyro.z, 5, 12);
-			 
+
 			 OLED_ShowString(64, 16, "|");
 			 OLED_ShowString(64, 26, "|");
 			 OLED_ShowString(64, 36, "|");
-			 
+
 			 OLED_ShowString(72, 16, "A");
 			 if(imu.accel.x<0)							 OLED_ShowString(80, 16, "-"),
 																	 OLED_ShowNumber(88, 16, -imu.accel.x, 5, 12);
 			 else							 					 OLED_ShowString(80, 16, "+"),
 																	 OLED_ShowNumber(88, 16, imu.accel.x, 5, 12);
-			 
+
 			 if(imu.accel.y<0)							 OLED_ShowString(80, 26, "-"),
 																	 OLED_ShowNumber(88, 26, -imu.accel.y, 5, 12);
 			 else							 					 OLED_ShowString(80, 26, "+"),
 																	 OLED_ShowNumber(88, 26, imu.accel.y, 5, 12);
-			 
+
 			 if(imu.accel.z<0)							 OLED_ShowString(80, 36, "-"),
 																	 OLED_ShowNumber(88, 36, -imu.accel.z, 5, 12);
 			 else							 					 OLED_ShowString(80, 36, "+"),
 																	 OLED_ShowNumber(88, 36, imu.accel.z, 5, 12);
-			 
+
 			 OLED_ShowString(104, 50, "3/8");
 		 }
 
@@ -722,7 +841,7 @@ void oled_show(void)
 			 OLED_ShowCHinese(00, 00, "发送");
 			 OLED_ShowString16(36, 00, "#");
 			 OLED_ShowCHinese(48, 00, "结尾的数据");
-			 
+
 			 OLED_ShowCHinese(8, 16, "波特率：");
 			 OLED_ShowString16(72, 16, "115200");
 //			 OLED_ShowCHinese(00, 00, "单击发送");
@@ -741,12 +860,12 @@ void oled_show(void)
 			  OLED_ShowCHinese(12, 32, "当前车型：");
 			  switch(Car_Mode_Show)
 			  {
-					case Mec_Car:       OLED_ShowString16(92,32,"Mec "); break; 
-					case Omni_Car:      OLED_ShowString16(92,32,"Omni"); break; 
-					case Akm_Car:       OLED_ShowString16(92,32,"Akm "); break; 
-					case Diff_Car:      OLED_ShowString16(92,32,"Diff"); break; 
-					case FourWheel_Car: OLED_ShowString16(92,32,"4WD "); break; 
-					case Tank_Car:      OLED_ShowString16(92,32,"Tank"); break; 
+					case Mec_Car:       OLED_ShowString16(92,32,"Mec "); break;
+					case Omni_Car:      OLED_ShowString16(92,32,"Omni"); break;
+					case Akm_Car:       OLED_ShowString16(92,32,"Akm "); break;
+					case Diff_Car:      OLED_ShowString16(92,32,"Diff"); break;
+					case FourWheel_Car: OLED_ShowString16(92,32,"4WD "); break;
+					case Tank_Car:      OLED_ShowString16(92,32,"Tank"); break;
 					case Mec_Car_V550:  OLED_ShowString(92,32,"MecV"); break;
 					case FourWheel_Car_V550: OLED_ShowString(92,32,"4WDV"); break;
 			  }
@@ -767,48 +886,48 @@ Output  : none
 int voltage_to_percentage(float voltage) {
     const float V_MIN = 9.5f;  // 最小电压 (0%)
     const float V_MAX = 12.2f; // 最大电压 (100%)
-    
+
     // 确保电压在有效范围内
     if (voltage < V_MIN) return 0;
     if (voltage > V_MAX) return 100;
-    
+
     // 线性插值计算百分比并取整
     int percentage = (int)(((voltage - V_MIN) / (V_MAX - V_MIN)) * 100.0f + 0.5f); // 四舍五入
-	
+
 	if( percentage > 100 ) percentage = 100;
 	if( percentage <= 0 ) percentage = 0;
-	
+
     return percentage;
 }
 
 void APP_Show(void)
-{    
+{
 	 static u8 flag_show;
 	 int Left_Figure,Right_Figure,Voltage_Show;
-	
+
 	 //The battery voltage is processed as a percentage
 	 //对电池电压处理成百分比形式
 	Voltage_Show = voltage_to_percentage(Voltage);
 //	 Voltage_Show=(Voltage*1000-10000)/27;
-//	 if(Voltage_Show>100)Voltage_Show=100; 
-	
+//	 if(Voltage_Show>100)Voltage_Show=100;
+
 	 //Wheel speed unit is converted to 0.01m/s for easy display in APP
 	 //车轮速度单位转换为0.01m/s，方便在APP显示
-	 Left_Figure=MOTOR_A.Encoder*100;  if(Left_Figure<0)Left_Figure=-Left_Figure;	
+	 Left_Figure=MOTOR_A.Encoder*100;  if(Left_Figure<0)Left_Figure=-Left_Figure;
 	 Right_Figure=MOTOR_B.Encoder*100; if(Right_Figure<0)Right_Figure=-Right_Figure;
-	
+
 	 //Used to alternately print APP data and display waveform
 	 //用于交替打印APP数据和显示波形
 	 flag_show=!flag_show;
-	
-	 if(PID_Send==1) 
+
+	 if(PID_Send==1)
 	 {
 		 //Send parameters to the APP, the APP is displayed in the debug screen
 		 //发送参数到APP，APP在调试界面显示
 		 printf("{C%d:%d:%d:%d}$",(int)RC_Velocity,(int)Velocity_KP,(int)Velocity_KI,LineDiffParam);
-		 PID_Send=0;	
-	 }	
-	 else	if(flag_show==0) 
+		 PID_Send=0;
+	 }
+	 else	if(flag_show==0)
 	 {
 		 //Send parameters to the APP and the APP will be displayed on the front page
 		 //发送参数到APP，APP在首页显示
@@ -837,7 +956,7 @@ float VolMean_Filter(float data)
     double Sum_Speed = 0;
     float Filter_Speed;
     static  float Speed_Buf[VOL_COUNT]= {0};
-	
+
 	/*----------- 数组初始化 -----------*/
 	static u8 once=1;
 	if(once)
@@ -847,7 +966,7 @@ float VolMean_Filter(float data)
 			Speed_Buf[i]=base_vol;
 	}
 	/*-------------------------------*/
-	
+
     for(i = 1 ; i<VOL_COUNT; i++)
     {
         Speed_Buf[i - 1] = Speed_Buf[i];

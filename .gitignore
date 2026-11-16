@@ -5,3 +5,16 @@
 
 # Local VS Code workspace configuration.
 /.vscode/
+
+
+
+
+# Python diagnostic tools and tests.
+__pycache__/
+*.py[cod]
+
+# Local logs, editor state, and exported terminal output.
+debug.log
+**/.vscode/
+*.uvguix.*
+/h C30D main*

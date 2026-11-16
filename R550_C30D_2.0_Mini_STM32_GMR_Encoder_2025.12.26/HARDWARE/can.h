@@ -1,19 +1,30 @@
 #ifndef __CAN_H
-#define __CAN_H	 
-#include "sys.h"	    
+#define __CAN_H
+#include "sys.h"
 #include "system.h"
- 
+
 //CAN1 receives RX0 interrupt enablement
-//CAN1ï¿½ï¿½ï¿½ï¿½RX0ï¿½Ð¶ï¿½Ê¹ï¿½ï¿½
-#define CAN1_RX0_INT_ENABLE	1	//0, not enabling;1, can make //0,ï¿½ï¿½Ê¹ï¿½ï¿½; 1,Ê¹ï¿½ï¿½								    		
+//CAN1½ÓÊÕRX0ÖÐ¶ÏÊ¹ÄÜ
+#define CAN1_RX0_INT_ENABLE	1	//0, not enabling;1, can make //0,²»Ê¹ÄÜ; 1,Ê¹ÄÜ
+
+/* S21C 0x301 distances in wire order, all in mm. */
+typedef struct {
+    u16 left_mm;
+    u16 front_mm;
+    u16 right_mm;
+    u16 behind_mm;
+} CAN_LidarFrame;
+
+/* Copy the latest unread distance frame in task context. */
+u8 CAN1_TakeLidar(CAN_LidarFrame *frame);
 
 u8 CAN1_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode);
-u8 CAN1_Tx_Msg(u32 id,u8 ide,u8 rtr,u8 len,u8 *dat);		
-u8 CAN1_Msg_Pend(u8 fifox);							
+u8 CAN1_Tx_Msg(u32 id,u8 ide,u8 rtr,u8 len,u8 *dat);
+u8 CAN1_Msg_Pend(u8 fifox);
 void CAN1_Rx_Msg(u8 fifox,u32 *id,u8 *ide,u8 *rtr,u8 *len,u8 *dat);
-u8 CAN1_Tx_Staus(u8 mbox);  								
-u8 CAN1_Send_Msg(u8* msg,u8 len);						
-u8 CAN1_Receive_Msg(u8 *buf);						
+u8 CAN1_Tx_Staus(u8 mbox);
+u8 CAN1_Send_Msg(u8* msg,u8 len);
+u8 CAN1_Receive_Msg(u8 *buf);
 
 u8 CAN1_Send_MsgTEST(u8* msg,u8 len);
 u8 CAN1_Send_Num(u32 id,u8* msg);
@@ -22,19 +33,3 @@ void can_data_transition(void);
 u8 CAN1_Send_EXTid_Num(u32 id,u8* msg);
 
 #endif
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
