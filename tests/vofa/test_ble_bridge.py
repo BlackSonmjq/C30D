@@ -14,7 +14,8 @@ class BridgeTest(unittest.TestCase):
                 socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
             receiver.bind(('127.0.0.1', 0))
             receiver.settimeout(.2)
-            bridge = Forwarder(sender, receiver.getsockname())
+            records = []
+            bridge = Forwarder(sender, receiver.getsockname(), records.append)
             values = [0.] * 64
             values[0] = 123456.
             packet = struct.pack('<64f', *values) + TAIL
@@ -28,6 +29,8 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(receiver.recv(1024), packet)
             self.assertEqual(receiver.recv(1024), packet)
             self.assertEqual(bridge.frames, 3)
+            self.assertEqual(len(records), 3)
+            self.assertTrue(all(row == tuple(values) for row in records))
             with self.assertRaises(socket.timeout):
                 receiver.recv(1024)
             bridge.receive(None, b'x' * 10000)

@@ -12,6 +12,8 @@
 typedef struct { float vx_mps, vy_mps; TickType_t tick; } RouteCommand;
 static RouteCommand command;
 static volatile uint8_t start_requested;
+static volatile uint8_t reverse_test_running;
+static TickType_t reverse_test_started;
 static RouteLidarFrame lidar;
 static TickType_t lidar_tick;
 static uint8_t command_seen;
@@ -56,13 +58,29 @@ uint8_t RouteIO_Ready(void)
 }
 uint8_t RouteIO_ControlOwned(void)
 {
+    if (ROUTE_REVERSE_TEST_ENABLE) return 1U;
     return ROUTE_DEMO_ENABLE && (!ROUTE_DEBUG_MODE || start_requested);
 }
+
+uint8_t RouteIO_ReverseTestRunning(void) { return reverse_test_running; }
 
 void RouteIO_RequestStart(void)
 {
     RouteLidarFrame frame;
     ChassisOdomFrame pose;
+    if (ROUTE_REVERSE_TEST_ENABLE) {
+        /* 单击只控制限时后退，不启动导航；不依赖激光数据。 */
+        if (reverse_test_running) {
+            reverse_test_running = 0U;
+            RouteIO_SetVelocity(0.0f, 0.0f);
+        } else if (Route_TaskCreated && RouteIO_Ready() && RouteIO_ChassisStopped() &&
+                   ROUTE_REVERSE_TEST_SPEED_MPS > 0.0f &&
+                   ROUTE_REVERSE_TEST_DURATION_MS > 0UL) {
+            reverse_test_started = xTaskGetTickCount();
+            reverse_test_running = 1U;
+        }
+        return;
+    }
     RouteIO_ReadLidar(&frame);
     ChassisOdom_Read(&pose);
     if (!start_requested && Route_TaskCreated && RoutePlan_Calibrated() &&
@@ -107,6 +125,21 @@ void RouteIO_ApplyDrive(void)
 {
     RouteCommand latest;
     ChassisOdomFrame pose;
+    if (ROUTE_REVERSE_TEST_ENABLE) {
+        /* 本分支仍使用四轮原速度 PI；不叠加侧墙或航向修正。
+         * 失能、机构忙、低电压和到时均结束本轮，恢复后不会自动重启。 */
+        float vx = 0.0f;
+        if (reverse_test_running &&
+            (!RouteIO_Ready() || (TickType_t)(xTaskGetTickCount() - reverse_test_started) >=
+             pdMS_TO_TICKS(ROUTE_REVERSE_TEST_DURATION_MS)))
+            reverse_test_running = 0U;
+        if (reverse_test_running) vx = -ROUTE_REVERSE_TEST_SPEED_MPS;
+        RouteIO_SetVelocity(vx, 0.0f);
+        if (!reverse_test_running)
+            smooth_control.VX = smooth_control.VY = smooth_control.VZ = 0.0f;
+        Drive_Motor(vx, 0.0f, 0.0f);
+        return;
+    }
     taskENTER_CRITICAL();
     latest = command;
     taskEXIT_CRITICAL();

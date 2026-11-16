@@ -5,19 +5,24 @@ API reference: https://bleak.readthedocs.io/en/stable/api/client.html
 """
 import argparse
 import asyncio
+import csv
+from datetime import datetime
+from pathlib import Path
 import socket
 import struct
+import sys
 import time
 
-from vofa_capture import Framer, TAIL
+from vofa_capture import Framer, TAIL, FIELDS, PHASES, ERRORS, stamp
 
 SERVICE = '0000ffe0-0000-1000-8000-00805f9b34fb'
 CHARACTERISTIC = '0000ffe1-0000-1000-8000-00805f9b34fb'
 
 
 class Forwarder:
-    def __init__(self, sock, destination):
+    def __init__(self, sock, destination, record=None):
         self.sock, self.destination = sock, destination
+        self.record = record
         self.buffer = bytearray()
         self.bytes = self.frames = self.discarded = 0
         self.last_rx = time.monotonic()
@@ -36,6 +41,8 @@ class Forwarder:
             if tail >= 256 and Framer.decode(self.buffer[tail - 256:tail]) is not None:
                 packet = bytes(self.buffer[tail - 256:tail + 4])
                 self.sock.sendto(packet, self.destination)
+                if self.record:
+                    self.record(struct.unpack('<64f', packet[:256]))
                 self.frames += 1
                 self.discarded += tail - 256
                 del self.buffer[:tail + 4]
@@ -75,7 +82,7 @@ async def run(args):
                     char = service.get_characteristic(CHARACTERISTIC) if service else None
                     if char is None or 'notify' not in char.properties:
                         raise RuntimeError('FFE0 / FFE1 Notify characteristic not available')
-                    forwarder = Forwarder(sock, ('127.0.0.1', args.port))
+                    forwarder = Forwarder(sock, ('127.0.0.1', args.port), args.record)
                     await client.start_notify(char, forwarder.receive)
                     print(f'Subscribed FFE1 -> UDP 127.0.0.1:{args.port}; Ctrl+C to stop.', flush=True)
                     while not disconnected.is_set():
@@ -107,6 +114,7 @@ def main():
     parser.add_argument('--port', type=int, default=9000, help='VOFA UDP listening port')
     parser.add_argument('--local-port', type=int, default=9001, help='Bridge UDP source port')
     parser.add_argument('--self-test', action='store_true', help='Check packaged BLE dependencies and UDP forwarding without connecting')
+    parser.add_argument('--log-dir', type=Path, help='CSV folder (default: logs beside EXE/script)')
     args = parser.parse_args()
     if args.self_test:
         from bleak.backends.winrt.client import BleakClientWinRT
@@ -127,7 +135,29 @@ def main():
     if args.port == args.local_port:
         parser.error('VOFA and bridge must use different ports')
     try:
-        asyncio.run(run(args))
+        base = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
+        folder = args.log_dir or base / 'logs'
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / ('route-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.csv')
+        with path.open('x', newline='', encoding='utf-8-sig') as log:
+            writer = csv.writer(log)
+            writer.writerow(['received_at'] + FIELDS)
+            log.flush()
+            last_status = None
+            def record(values):
+                nonlocal last_status
+                writer.writerow([stamp()] + list(values))
+                log.flush()
+                status = tuple(int(values[i]) for i in (1, 2, 3))
+                if status != last_status:
+                    point, phase, error = status
+                    print(f'ROUTE P{point:02d} {PHASES[phase]} {ERRORS[error]} '
+                          f'progress={values[4]:.0f}/{values[5]:.0f}mm '
+                          f'laser={values[10]:.0f}/{values[11]:.0f}mm', flush=True)
+                    last_status = status
+            args.record = record
+            print(f'CSV: {path.resolve()}', flush=True)
+            asyncio.run(run(args))
     except KeyboardInterrupt:
         print('Stopped.')
 

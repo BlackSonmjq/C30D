@@ -2,17 +2,24 @@
 /* 头文件重复包含保护，不是导航运行参数。 */
 #define ROUTE_CONFIG_H
 
+/* 临时整车后退测试：1=USER 单击测试，0=恢复原 P01～P17 路线。
+ * 保持实际负载；速度为正数，程序按车体后退方向输出。
+ * 单击运行指定时长后停车，运行中再次单击立即请求停车。 */
+#define ROUTE_REVERSE_TEST_ENABLE      0       // 测试开关：1=USER 单击后退测试；0=恢复原路径运行
+#define ROUTE_REVERSE_TEST_SPEED_MPS   0.10f   // 后退目标速度，单位 m/s；填写正数，程序自动输出后退方向
+#define ROUTE_REVERSE_TEST_DURATION_MS 2000UL  // 单次测试时长，单位 ms；2000 表示 2 秒，到时自动停车
+
 /* 1: chassis turned 180 degrees, keep the original field route.
  * Swap front/rear AND left/right motion and localization sensors.
- * Per-point calibration names/values still describe the original field layout.
+ * Per-point parameter names describe the physical sensors with this switch = 1.
  * CAN/OLED retain physical chassis directions. Set 0 for original orientation. */
 #define ROUTE_CHASSIS_REVERSED        1
 #if ROUTE_CHASSIS_REVERSED
-#define ROUTE_PHYSICAL_FRONT_CENTER_MM Behind_Lidar_Center
-#define ROUTE_PHYSICAL_REAR_CENTER_MM  Front_Lidar_Center
-#else
 #define ROUTE_PHYSICAL_FRONT_CENTER_MM Front_Lidar_Center
 #define ROUTE_PHYSICAL_REAR_CENTER_MM  Behind_Lidar_Center
+#else
+#define ROUTE_PHYSICAL_FRONT_CENTER_MM Behind_Lidar_Center
+#define ROUTE_PHYSICAL_REAR_CENTER_MM  Front_Lidar_Center
 #endif
 
 /*
@@ -340,7 +347,7 @@
  * 速度按“本值 × (剩余距离绝对值 - 到点半宽)”计算，再受慢速及最低速度限制。
  * 在更远处还会由巡航逐渐降到慢速；本项不改变轮速 PI。
  */
-#define ROUTE_APPROACH_KP               0.0007f
+#define ROUTE_APPROACH_KP               0.0015f
 
 /* 尚在目标区间外时的最低接近速度，单位 m/s，须不大于慢速和回调速度。
  * 避免比例速度太小无法带动车轮；进入到点区间后仍输出零速。
@@ -500,104 +507,81 @@
  * 与前测距比较得到前后间距纠偏；前距偏大时倾向向车头方向修正。
  * 应在前后近垄均可见的位置标定，不能用入口缺口处的远回波代替。
  */
-#define Front_Lidar_Center             45U
+#define Behind_Lidar_Center             45U
 
 /* 沟内横移时，车位于沟中心且后探头照到相邻近垄侧的目标读数，单位 mm，必须非 0。
  * 与后测距比较得到前后间距纠偏；后距偏大时倾向向车尾方向修正。
  * 两路都可信时合并偏差，一路不可信时可仅用另一条可信测距纠偏。
  */
-#define Behind_Lidar_Center            65U
+#define Front_Lidar_Center            65U
 
 /* ==================== 八、按动作顺序编号的转向点标定 ==================== */
 
-/* 旧 P01 后激光远墙标定，三项单位均为 mm；当前路线未使用。
- * 当前 P01 改用 ROUTE_ENTRY_LENGTH_MM 纯里程入场，修改本项不会改变现有入场终点。
- * 保留旧名称和值，供历史标定对照。
- */
-#define Behind_Lidar_1                 {4275U, 350U, 15U}
+/* P01：当前车体前激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Front_Lidar_1                  {4330U, 400U, 15U}
+/* 仅 P01 使用远处围栏参考，当前由车体前激光测量；其他路径点限制不变。 */
+#define ROUTE_ENTRY_REFERENCE_MAX_MM    4500U
 
-/* P02：第一沟车身左移，到地图右端；左探头测右围栏，接近时距离减小。
- * 三项依次为 {到点读数, 距目标的减速范围, 到点区间半宽}，单位均为 mm。
- * 例如 {120,150,15} 对应到点 105～135，距目标剩余不超过 150 时减速。
- */
-#define Left_Lidar_2                   {120U, 350U, 15U}
+/* P02：当前车体右激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Right_Lidar_2                  {120U, 350U, 15U}
 
-/* P03：在地图右端倒车换入第二沟；前探头测下围栏，倒车时读数增大。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- * 本段剩余距离按“目标读数 - 前测距”计算，方向与大多数接近围栏的段不同。
- */
-#define Front_Lidar_3                  {780U, 350U, 15U}
+/* P03：当前车体后激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Behind_Lidar_3                 {780U, 350U, 15U}
 
-/* P04：第二沟车身右移，到地图左端；右探头测左围栏，接近时距离减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- */
-#define Right_Lidar_4                  {120U, 350U, 15U}
+/* P04：当前车体左激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Left_Lidar_4                   {120U, 350U, 15U}
 
-/* P05后激光独立围栏复核，{目标,减速剩余,到点半宽}，单位mm。
- * 已确认在正确沟中心实测。须有完整垄端过程及可信辅助新帧，不能单靠几何补偿切段。
- */
-#define Behind_Lidar_5                 {2850U, 350U, 15U}
+/* P05：当前车体前激光，独立围栏辅助定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Front_Lidar_5                  {2850U, 350U, 15U}
 
-/* P06：第三沟车身左移，到地图右端；左探头测右围栏，接近时距离减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- * 本段到点和测距一致性看左通道，诊断页的后激光 B 值不用于判断此段终点。
- */
-#define Left_Lidar_6                   {120U, 350U, 15U}
+/* P06：当前车体右激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Right_Lidar_6                  {120U, 350U, 15U}
 
-/* P07前激光独立围栏复核，已确认实测；倒车时前距增大，剩余=目标-测距。
- * 仅连续可信的新帧可确认到点，不能用固定补偿或旧预测代替。
- */
-#define Front_Lidar_7                  {2200U, 350U, 15U}
+/* P07：当前车体后激光，独立围栏辅助定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Behind_Lidar_7                 {2200U, 350U, 15U}
 
-/* P08：第四沟车身右移，到地图左端；右探头测左围栏，接近时距离减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- */
-#define Right_Lidar_8                  {120U, 350U, 15U}
+/* P08：当前车体左激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Left_Lidar_8                   {120U, 350U, 15U}
 
-/* P09后激光独立围栏复核，已确认实测；与短垄主边沿分别验证。 */
-/* 三项仍为{目标,减速剩余,到点半宽}，单位mm。
- */
-#define Behind_Lidar_9                 {1435U, 350U, 15U}
+/* P09：当前车体前激光，独立围栏辅助定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Front_Lidar_9                  {1435U, 350U, 15U}
 
-/* P10：第五沟车身左移，到地图右端；左探头测右围栏，接近时距离减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- */
-#define Left_Lidar_10                  {120U, 350U, 15U}
+/* P10：当前车体右激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Right_Lidar_10                 {120U, 350U, 15U}
 
-/* P11：在地图右端倒车换入第六沟；后探头测上围栏，倒车时读数减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- * 目标应标定为车处于第六沟换道中心时的后探头实际读数。
- */
-#define Behind_Lidar_11                {770U, 350U, 15U}
+/* P11：当前车体前激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Front_Lidar_11                 {770U, 350U, 15U}
 
-/* P12：第六沟车身右移，到地图左端；右探头测左围栏，接近时距离减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- */
-#define Right_Lidar_12                 {120U, 350U, 15U}
+/* P12：当前车体左激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Left_Lidar_12                  {120U, 350U, 15U}
 
-/* P13：在地图左端倒车换入第七沟；后探头测上围栏，倒车时读数减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- * 目标应按第七沟换道中心的实际间距标定。
- */
-#define Behind_Lidar_13                {65U, 350U, 15U}
+/* P13：当前车体前激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Front_Lidar_13                 {65U, 350U, 15U}
 
-/* P14：第七沟车身左移，到地图右端；左探头测右围栏，接近时距离减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- * 完成此点后，正式模式先检查成功疏果记录，再进入 P15 返程。
- */
-#define Left_Lidar_14                  {120U, 350U, 15U}
+/* P14：当前车体右激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Right_Lidar_14                 {120U, 350U, 15U}
 
-/* P15：沿地图右侧走廊向车头前进，返回第一沟右端；前探头测下围栏，读数减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- * 应实测第一沟右端位置的前距；长返程会等进入近距参考区后才允许激光判点。
- */
-#define Front_Lidar_15                 {80U, 350U, 15U}
+/* P15：当前车体后激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Behind_Lidar_15                {80U, 350U, 15U}
 
-/* P16：从第一沟右端车身右移回地图左侧入口；右探头测左围栏，读数减小。
- * 格式为 {到点读数, 减速剩余距离, 到点区间半宽}，单位均为 mm。
- * 确认此点后进入 P17，按 ROUTE_EXIT_LENGTH_MM 向前行驶并停入启动区。
- */
-#define Right_Lidar_16                 {120U, 350U, 15U}
+/* P16：当前车体左激光，主定位。
+ * 参数依次为：目标距离、减速距离带、到点容差，单位均为 mm。 */
+#define Left_Lidar_16                  {120U, 350U, 15U}
 
 /* P17 为纯里程出场停车段，距离由 ROUTE_EXIT_LENGTH_MM 单独设置。 */
 

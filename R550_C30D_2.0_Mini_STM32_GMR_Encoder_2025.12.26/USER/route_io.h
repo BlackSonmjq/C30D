@@ -24,6 +24,7 @@ uint8_t RouteIO_Ready(void);
 uint8_t RouteIO_ControlOwned(void);
 void RouteIO_RequestStart(void);
 uint8_t RouteIO_StartRequested(void);
+uint8_t RouteIO_ReverseTestRunning(void);
 void RouteIO_SetVelocity(float vx_mps, float vy_mps);
 void RouteIO_ReadDiagnostics(RouteIODiagnostics *diagnostics);
 void RouteIO_ApplyDrive(void);

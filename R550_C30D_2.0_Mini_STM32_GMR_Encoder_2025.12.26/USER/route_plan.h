@@ -33,6 +33,7 @@ typedef struct {
 const RouteSegment *RoutePlan_Get(uint8_t point);
 const RouteAuxReference *RoutePlan_AuxReference(uint8_t point);
 uint8_t RoutePlan_Calibrated(void);
+uint16_t RoutePlan_ReferenceMax(const RouteSegment *segment);
 void RoutePlan_Target(uint8_t point, float *x_mm, float *y_mm);
 const char *RoutePlan_MotionName(RouteMotion motion);
 #endif

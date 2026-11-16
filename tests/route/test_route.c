@@ -1464,6 +1464,61 @@ static void test_task_integration(void)
 
 int main(void)
 {
+#ifdef ROUTE_REVERSE_TEST_ONLY
+    assert(ROUTE_REVERSE_TEST_ENABLE && RouteIO_ControlOwned());
+    clock_ms=10000;
+    RouteIO_ApplyDrive();
+    assert(driven_x==0 && driven_y==0 && !start_requested);
+    RouteIO_RequestStart();
+    RouteIO_ApplyDrive();
+    assert(RouteIO_ReverseTestRunning() && fabsf(driven_x+0.04f)<0.00001f && driven_y==0);
+    assert(!start_requested); /* Navigation must stay unstarted. */
+    clock_ms+=ROUTE_REVERSE_TEST_DURATION_MS-1;
+    RouteIO_ApplyDrive();assert(driven_x<0);
+    ++clock_ms;
+    RouteIO_ApplyDrive();assert(driven_x==0 && !RouteIO_ReverseTestRunning());
+    RouteIO_RequestStart();RouteIO_ApplyDrive();assert(driven_x<0);
+    RouteIO_RequestStart();RouteIO_ApplyDrive();assert(driven_x==0);
+    RouteIO_RequestStart();RouteIO_ApplyDrive();assert(driven_x<0);
+    EN=0;RouteIO_ApplyDrive();assert(driven_x==0 && !RouteIO_ReverseTestRunning());
+    EN=1;RouteIO_ApplyDrive();assert(driven_x==0);
+    MOTOR_A.Encoder=0.1f;
+    RouteIO_RequestStart();RouteIO_ApplyDrive();assert(driven_x==0);
+    MOTOR_A.Encoder=0;
+    Voltage=9;RouteIO_RequestStart();RouteIO_ApplyDrive();assert(driven_x==0);
+    puts("PASS: USER request drives backward 0.04m/s, 2s timeout, repeat/cancel, no navigation, disable/no auto restart, moving/low-voltage guards");
+    return 0;
+#endif
+#ifdef ROUTE_P01_TEST_ONLY
+    RouteController p01; RouteInputs input; RouteOutput output;
+    assert(RoutePlan_Calibrated());
+    assert(RoutePlan_Get(1)->reference == ROUTE_REF_WALL);
+    assert(RoutePlan_Get(1)->trigger == ROUTE_LIDAR_FRONT);
+    assert(RoutePlan_Get(1)->mark.target_mm == 3602);
+    assert(RoutePlan_ReferenceMax(RoutePlan_Get(2)) == 1200);
+    fixture(&p01, &input, 1);
+    /* Encoder says 300 mm but laser still 100 mm short: no early P02. */
+    prime_wall(&p01, &input, &output, 300, 3702);
+    assert(p01.status.target_point == 1 && output.vx_mps > 0);
+    for (unsigned n=0;n<10;n++) {
+        frame(&p01, &input, &output, 310+10*n, (uint16_t)(3692-10*n));
+        assert(p01.status.target_point == 1);
+    }
+    /* Even in-band samples may not switch while wheels are still moving. */
+    input.chassis_stopped=0;
+    for(unsigned n=0;n<8;n++)frame(&p01,&input,&output,400,3602);
+    assert(p01.status.target_point==1 && output.vx_mps==0 && output.vy_mps==0);
+    input.chassis_stopped=1;
+    for(unsigned n=0;n<8 && p01.status.target_point==1;n++)
+        frame(&p01,&input,&output,400,3602);
+    assert(p01.status.target_point==2);
+    fixture(&p01,&input,1);
+    for(unsigned n=0;n<25 && p01.status.phase!=ROUTE_FAULT;n++)
+        frame(&p01,&input,&output,300,0);
+    assert(p01.status.target_point==1 && output.vx_mps==0 && output.vy_mps==0);
+    puts("PASS: P01 uses front 3602mm; encoder 300mm cannot finish; moving/missing laser cannot switch; stopped valid laser reaches P02");
+    return 0;
+#endif
     setbuf(stdout,NULL);
     if(!ROUTE_CALIBRATION_READY){assert(!RoutePlan_Calibrated());puts("Uncalibrated start is blocked.");return 0;}
     assert(RoutePlan_Calibrated());

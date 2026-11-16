@@ -42,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix='route-orientation-') as temp:
         active = re.sub(r'(#define ROUTE_CHASSIS_REVERSED\s+)1',
                         lambda m: m[1] + str(reverse), config)
         (build / 'route_config.h').write_text(active, encoding='utf-8')
-        exe = build / ('test.exe' if os.name == 'nt' else 'test')
+        exe = build / (f'test-{reverse}.exe' if os.name == 'nt' else f'test-{reverse}')
         subprocess.run([compiler, '-std=c11', '-I', str(build),
                         str(build / 'route_plan.c'), str(build / 'test.c'),
                         '-o', str(exe)], check=True)

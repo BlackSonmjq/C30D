@@ -41,7 +41,7 @@ void HeadingControl_Reset(void)
 
 static float HeadingControl_Output(float error, float gyro_z_rad_s, float dt)
 {
-    float output;
+    float output, minimum, error_scale;
     heading_state.integral = HeadingControl_Limit(
         heading_state.integral + error * dt,
         -HEADING_CONTROL_INTEGRAL_LIMIT,
@@ -62,23 +62,17 @@ static float HeadingControl_Output(float error, float gyro_z_rad_s, float dt)
            + HEADING_CONTROL_KI * heading_state.integral
            - HEADING_CONTROL_KD * gyro_z_rad_s;
 
-    /* Compensate the chassis/motor dead zone without changing PID direction. */
-    if((output > 0.0f) &&
-       (output < HEADING_CONTROL_MIN_ANGULAR_VELOCITY))
-        output = HEADING_CONTROL_MIN_ANGULAR_VELOCITY;
-    else if((output < 0.0f) &&
-            (output > -HEADING_CONTROL_MIN_ANGULAR_VELOCITY))
-        output = -HEADING_CONTROL_MIN_ANGULAR_VELOCITY;
-    else if(output == 0.0f)
+    /* 仅在近乎静止、且 PID 仍要求朝误差方向运动时补起转死区。
+     * 靠近目标逐步退出，不把小误差强行抬到固定 0.08 rad/s。
+     * D 项要求反向制动或恰好抵消 P 项时，原样保留，不强造纠偏方向。 */
+    if(HeadingControl_Abs(gyro_z_rad_s) <= HEADING_CONTROL_MIN_ASSIST_RATE &&
+       output * error > 0.0f)
     {
-        if(HeadingControl_Abs(error) > HEADING_CONTROL_YAW_TOLERANCE)
-            output = error > 0.0f ?
-                HEADING_CONTROL_MIN_ANGULAR_VELOCITY :
-                -HEADING_CONTROL_MIN_ANGULAR_VELOCITY;
-        else
-            output = gyro_z_rad_s > 0.0f ?
-                -HEADING_CONTROL_MIN_ANGULAR_VELOCITY :
-                HEADING_CONTROL_MIN_ANGULAR_VELOCITY;
+        error_scale = HeadingControl_Limit(
+            HeadingControl_Abs(error) / HEADING_CONTROL_MIN_FULL_ERROR_RAD, 0.0f, 1.0f);
+        minimum = HEADING_CONTROL_MIN_ANGULAR_VELOCITY * error_scale;
+        if(HeadingControl_Abs(output) < minimum)
+            output = output > 0.0f ? minimum : -minimum;
     }
 
     return HeadingControl_Limit(

@@ -52,6 +52,20 @@ void my_chassis_task(void *parameters)
         in.chassis_stopped = RouteIO_ChassisStopped();
         in.work_request = 0U;
 
+        if (ROUTE_REVERSE_TEST_ENABLE) {
+            RouteIODiagnostics test_command;
+            RouteIO_ReadDiagnostics(&test_command);
+            navigator.status.target_point = 0U;
+            navigator.status.phase = RouteIO_ReverseTestRunning() ? ROUTE_ODOM_RUN : ROUTE_WAIT_START;
+            navigator.status.motion = RouteIO_ReverseTestRunning() ? ROUTE_BACK : ROUTE_STOP;
+            navigator.status.reason = RouteIO_Ready() ? ROUTE_ERROR_NONE : ROUTE_ERROR_READY;
+            navigator.status.elapsed_ms = in.now_ms;
+            RouteDebug_Capture(&navigator, &in, test_command.vx_mps, 0.0f);
+            publish_status();
+            vTaskDelayUntil(&wake, period);
+            continue;
+        }
+
         if (!RouteIO_StartRequested()) {
             navigator.status.reason = !RoutePlan_Calibrated() ? ROUTE_ERROR_CALIB :
                 in.tool_fault ? ROUTE_ERROR_TOOL :

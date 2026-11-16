@@ -1,5 +1,8 @@
 # 原蓝牙模块连接 VOFA
 
+路径联调记录版位于 `D:\Keil_Project\C30D_EIDE\dist\BLE-VOFA-Logger\WHEELTEC-BLE-VOFA.exe`。
+运行时自动在 EXE 同目录的 `logs` 文件夹创建带时间戳的 CSV，包含电脑接收时间和全部 64 个遥测字段，每帧刷新到磁盘。断线重连仍写入本次文件，终端显示路径点、状态及故障原因变化。该文件可在程序运行期间读取分析；关闭旧版转发器后再运行记录版，避免争用 BLE 和 UDP 9001。
+
 ## Windows 独立可执行文件
 
 已打包到 `D:\Keil_Project\C30D_EIDE\dist\BLE-VOFA\WHEELTEC-BLE-VOFA.exe`。

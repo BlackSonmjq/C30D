@@ -72,7 +72,9 @@ with tempfile.TemporaryDirectory(prefix="mango-route-tests-") as temporary:
             assert count == 1, name
         (build / "route_config.h").write_text(active, encoding="utf-8")
         executable = build / ("route-test.exe" if os.name == "nt" else "route-test")
-        subprocess.run([compiler, "-std=c11", "-Wall", "-Wextra", "-Werror",
+        subprocess.run([compiler, "-std=c11", "-Wall", "-Wextra", "-Werror"] +
+                       (["-DROUTE_P01_TEST_ONLY"] if os.environ.get("ROUTE_P01_TEST_ONLY") else []) +
+                       (["-DROUTE_REVERSE_TEST_ONLY"] if os.environ.get("ROUTE_REVERSE_TEST_ONLY") else []) + [
                         "-I", str(build), "-I", str(HERE / "stubs"),
                         str(HERE / "test_route.c"), str(build / "route_plan.c"),
                         str(build / "chassis_odometry.c"), str(build / "heading_control.c"),
@@ -80,6 +82,8 @@ with tempfile.TemporaryDirectory(prefix="mango-route-tests-") as temporary:
                         "-lm", "-o", str(executable)], check=True)
         print(f"DEBUG={debug} CALIBRATED={calibrated} VOFA={vofa} PRODUCTION_CALIBRATION={production}", flush=True)
         subprocess.run([str(executable)], check=True, timeout=30)
+        if os.environ.get("ROUTE_P01_TEST_ONLY") or os.environ.get("ROUTE_REVERSE_TEST_ONLY"):
+            raise SystemExit(0)
 
     # 检查真正的底盘换算与调用，防止只修复里程函数却把调用单位仍写成速度。
     balance_source = (FW / "BALANCE/balance.c").read_bytes().decode("utf-8",errors="replace")

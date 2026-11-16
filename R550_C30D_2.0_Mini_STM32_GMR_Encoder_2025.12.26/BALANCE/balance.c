@@ -1,5 +1,7 @@
 #include "balance.h"
 #include "heading_control.h"
+#include "lateral_friction.h"
+#include "wheel_output.h"
 #include "stepper_task.h"
 #include "route_config.h"
 #include "route_io.h"
@@ -23,6 +25,35 @@ u8 clear_done_once = 0; //清除完成标志位
 u16 clear_again_times = 0;
 float debug_show_diff = 0;
 void auto_pwm_clear(void);
+
+/* 麦轮手动平移：左杆前后、右杆左右；进入手动时锁定当前 IMU 航向。 */
+static u8 manual_heading_locked;
+static float manual_heading_target;
+static void ManualMecanum_Drive(float forward, float left)
+{
+    ChassisOdomFrame pose;
+    float angular = 0.0f;
+    ChassisOdom_Read(&pose);
+    if (!EN || Flag_Stop || Voltage < 10.0f || SysVal.Time_count < CONTROL_DELAY ||
+        !pose.valid || (uint32_t)(xTaskGetTickCount() - pose.tick_ms) > ROUTE_ODOM_MAX_GAP_MS) {
+        manual_heading_locked = 0U;
+        Move_X = Move_Y = Move_Z = 0.0f;
+        Drive_Motor(0.0f, 0.0f, 0.0f);
+        return;
+    }
+    if (!manual_heading_locked) {
+        manual_heading_target = pose.yaw_rad;
+        HeadingControl_Reset();
+        manual_heading_locked = 1U;
+    }
+    if (HEADING_CONTROL_ENABLE)
+        angular = HeadingControl_HoldYaw(manual_heading_target, pose.yaw_rad, imu.gyro.z);
+    Move_X = forward;
+    Move_Y = left;
+    Move_Z = angular;
+    Drive_Motor(Move_X, Move_Y, Move_Z);
+}
+
 volatile u8 clear_state = 0x00;
 /*------------------------------------*/
 
@@ -107,8 +138,12 @@ static float wheelCoefficient(uint32_t diffparam,uint8_t isLeftWheel)
 }
 
 
+static float lateral_friction_requested_x, lateral_friction_requested_y;
+
 void Drive_Motor(float Vx,float Vy,float Vz)
 {
+    lateral_friction_requested_x = Vx;
+    lateral_friction_requested_y = Vy;
 	float amplitude=3.5; //Wheel target speed limit //车轮目标速度限幅
 
 	Vx=target_limit_float(Vx,-amplitude,amplitude);
@@ -325,6 +360,9 @@ void Balance_task(void *pvParameters)
 			imu_ready_beeped = 1;
 		}
 
+        if (RouteIO_ControlOwned() || APP_ON_Flag || (!Remote_ON_Flag && !PS2_ON_Flag) || !EN || Flag_Stop)
+            manual_heading_locked = 0U;
+
         if (RouteIO_ControlOwned())
         {
             Allow_Recharge = 0;
@@ -361,7 +399,7 @@ void Balance_task(void *pvParameters)
 			(Usart1_ON_Flag == 0) &&
 			(Usart5_ON_Flag == 0);
 
-		if(heading_control_active == 0)
+		if(heading_control_active == 0 && manual_heading_locked == 0U)
 			HeadingControl_Reset();
 
 //			command_lost_count++;
@@ -414,6 +452,22 @@ void Balance_task(void *pvParameters)
 			MOTOR_B.Motor_Pwm=Incremental_PI_B(MOTOR_B.Encoder, MOTOR_B.Target);
 			MOTOR_C.Motor_Pwm=Incremental_PI_C(MOTOR_C.Encoder, MOTOR_C.Target);
 			MOTOR_D.Motor_Pwm=Incremental_PI_D(MOTOR_D.Encoder, MOTOR_D.Target);
+
+            MOTOR_A.Motor_Pwm = WheelOutput_Apply(MOTOR_A.Motor_Pwm, MOTOR_A.Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+            MOTOR_B.Motor_Pwm = WheelOutput_Apply(MOTOR_B.Motor_Pwm, MOTOR_B.Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+            MOTOR_C.Motor_Pwm = WheelOutput_Apply(MOTOR_C.Motor_Pwm, MOTOR_C.Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+            MOTOR_D.Motor_Pwm = WheelOutput_Apply(MOTOR_D.Motor_Pwm, MOTOR_D.Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+
+            if ((Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550) && !start_clear) {
+                MOTOR_A.Motor_Pwm = LateralFriction_Apply(0U, MOTOR_A.Motor_Pwm, MOTOR_A.Target,
+                    MOTOR_A.Encoder, lateral_friction_requested_x, lateral_friction_requested_y);
+                MOTOR_B.Motor_Pwm = LateralFriction_Apply(1U, MOTOR_B.Motor_Pwm, MOTOR_B.Target,
+                    MOTOR_B.Encoder, lateral_friction_requested_x, lateral_friction_requested_y);
+                MOTOR_C.Motor_Pwm = LateralFriction_Apply(2U, MOTOR_C.Motor_Pwm, MOTOR_C.Target,
+                    MOTOR_C.Encoder, lateral_friction_requested_x, lateral_friction_requested_y);
+                MOTOR_D.Motor_Pwm = LateralFriction_Apply(3U, MOTOR_D.Motor_Pwm, MOTOR_D.Target,
+                    MOTOR_D.Encoder, lateral_friction_requested_x, lateral_friction_requested_y);
+            }
 
 			Limit_Pwm(16700);
 
@@ -585,8 +639,7 @@ int Incremental_PI_A (float Encoder,float Target)
 	 static float Bias,Pwm,Last_bias;
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
-	 if(Pwm>16700)Pwm=16700;
-	 if(Pwm<-16700)Pwm=-16700;
+     Pwm = WheelOutput_ClampPi(Pwm, Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 
 	//清除PWM标志位，该位为1时代表需要清除PWM
@@ -608,8 +661,7 @@ int Incremental_PI_B (float Encoder,float Target)
 	 static float Bias,Pwm,Last_bias;
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
-	 if(Pwm>16700)Pwm=16700;
-	 if(Pwm<-16700)Pwm=-16700;
+     Pwm = WheelOutput_ClampPi(Pwm, Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 	if( start_clear )
 	{
@@ -626,8 +678,7 @@ int Incremental_PI_C (float Encoder,float Target)
 	 static float Bias,Pwm,Last_bias;
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
-	 if(Pwm>16700)Pwm=16700;
-	 if(Pwm<-16700)Pwm=-16700;
+     Pwm = WheelOutput_ClampPi(Pwm, Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 
 	if(Car_Mode==Diff_Car || Car_Mode==Akm_Car || Car_Mode==Tank_Car) Pwm = 0;
@@ -647,8 +698,7 @@ int Incremental_PI_D (float Encoder,float Target)
 
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
-	 if(Pwm>16700)Pwm=16700;
-	 if(Pwm<-16700)Pwm=-16700;
+     Pwm = WheelOutput_ClampPi(Pwm, Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 
 	if(Car_Mode==Diff_Car || Car_Mode==Akm_Car || Car_Mode==Tank_Car || Car_Mode==Omni_Car ) Pwm = 0;
@@ -843,6 +893,17 @@ static uint8_t map_to_vib(float x) {
 
 void PS2_control(void)
 {
+    if (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550) {
+        /* 左杆前后控制前后，右杆左右控制横移；取消摇杆自转和扳机替代。 */
+        float forward = (float)GamePadInterface->LY - 127.0f;
+        float left = 127.0f - (float)GamePadInterface->RX;
+        if (fabsf(forward) < 20.0f) forward = 0.0f;
+        if (fabsf(left) < 20.0f) left = 0.0f;
+        ManualMecanum_Drive(forward * RC_Velocity / (127.0f * 1000.0f),
+                           left * RC_Velocity / (127.0f * 1000.0f));
+        return;
+    }
+
 	float LX=127,LY=127,RX=127;
 	float ThrottleTri = 255;
 
@@ -959,6 +1020,24 @@ void Remote_Control(void)
 
 	  //limiter //限幅
     int LX,LY,RY,RX,Remote_RCvelocity;
+    if (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550) {
+        /* 航模通道：CH2 为左杆前后，CH1 为右杆左右；CH3/CH4 不参与麦轮平移与自转。 */
+        int forward = target_limit_int(Remoter_Ch2, 1000, 2000) - 1500;
+        int right = target_limit_int(Remoter_Ch1, 1000, 2000) - 1500;
+        if (forward > -Threshold && forward < Threshold) forward = 0;
+        if (right > -Threshold && right < Threshold) right = 0;
+        if (thrice > 0U) {
+            --thrice;
+            manual_heading_locked = 0U;
+            Move_X = Move_Y = Move_Z = 0.0f;
+            Drive_Motor(0.0f, 0.0f, 0.0f);
+            return;
+        }
+        ManualMecanum_Drive(forward * RC_Velocity / 500000.0f,
+                           -right * RC_Velocity / 500000.0f);
+        return;
+    }
+
 		Remoter_Ch1=target_limit_int(Remoter_Ch1,1000,2000);
 		Remoter_Ch2=target_limit_int(Remoter_Ch2,1000,2000);
 		Remoter_Ch3=target_limit_int(Remoter_Ch3,1000,2000);
@@ -1163,9 +1242,14 @@ void Smooth_control(float vx,float vy,float vz)
 	else if(vy<0)		smooth_control.VY-=step;
 	else if(vy==0)	smooth_control.VY=smooth_control.VY*0.9f;
 
-	if	   (vz>0) 	smooth_control.VZ+=step;
-	else if(vz<0)		smooth_control.VZ-=step;
-	else if(vz==0)	smooth_control.VZ=smooth_control.VZ*0.9f;
+    /* 航向减速、停车和反向制动立即跟随指令；仅同向加速保留平滑，避免旧方向延迟。 */
+    if (vz == 0.0f || vz * smooth_control.VZ < 0.0f || fabsf(vz) <= fabsf(smooth_control.VZ)) {
+        smooth_control.VZ = vz;
+    } else if (vz > smooth_control.VZ) {
+        smooth_control.VZ += step;
+    } else {
+        smooth_control.VZ -= step;
+    }
 
 	smooth_control.VX=target_limit_float(smooth_control.VX,-float_abs(vx),float_abs(vx));
 	smooth_control.VY=target_limit_float(smooth_control.VY,-float_abs(vy),float_abs(vy));

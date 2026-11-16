@@ -601,7 +601,7 @@ static uint8_t observe_wall(RouteController *c, const RouteInputs *in,
         if (c->wall_sample_count < ROUTE_CAPTURE_FRAMES) ++c->wall_sample_count;
         if (c->wall_sample_start - remaining >= ROUTE_WALL_CAPTURE_PROGRESS_MM)
             c->wall_approach_seen = 1U;
-        if (mm <= ROUTE_REFERENCE_MAX_MM && raw <= ROUTE_REFERENCE_MAX_MM) {
+        if (mm <= RoutePlan_ReferenceMax(s) && raw <= RoutePlan_ReferenceMax(s)) {
             if (c->status.capture_confirmed < ROUTE_CAPTURE_FRAMES) ++c->status.capture_confirmed;
         } else c->status.capture_confirmed = 0U;
 
@@ -621,7 +621,7 @@ static uint8_t observe_wall(RouteController *c, const RouteInputs *in,
             }
         }
     }
-    if (mm > ROUTE_REFERENCE_MAX_MM || raw > ROUTE_REFERENCE_MAX_MM) {
+    if (mm > RoutePlan_ReferenceMax(s) || raw > RoutePlan_ReferenceMax(s)) {
         c->status.reject_reason = ROUTE_REJECT_FAR;
         return ROUTE_STOP_FAR_REFERENCE;
     }
@@ -826,7 +826,8 @@ static void run_wall(RouteController *c, const RouteInputs *in, const RouteSegme
     if (fabsf(remaining) <= band) {
         c->overrun_count = 0U;
         c->status.phase = ROUTE_CONFIRM;
-        if (accepted && fabsf(raw_remaining) <= band) {
+        if (accepted && fabsf(raw_remaining) <= band &&
+            (c->status.target_point != 1U || in->chassis_stopped)) {
             if (c->status.confirmed < ROUTE_CONFIRM_FRAMES) ++c->status.confirmed;
         } else if (new_frame) c->status.confirmed = 0U;
         if (c->status.confirmed >= ROUTE_CONFIRM_FRAMES) complete_point(c, in, out);
