@@ -4,6 +4,7 @@
 #include "servo_task.h"
 #include <stdio.h>
 #include "camera_protocol.h"
+#include "vision_align.h"
 #include "can_test.h"
 #include "my_chassis_task.h"
 #include "route_io.h"
@@ -182,11 +183,22 @@ static void Camera_DrawOLED(void)
     TickType_t now=xTaskGetTickCount();
     char line[24];
     unsigned fresh;
+    static const char * const align_labels[] = {
+        "", "ALIGN ACQUIRE", "ALIGN RUN", "ALIGN DONE",
+        "ALIGN LOST", "ALIGN TIMEOUT", "ALIGN WAIT"
+    };
+    uint8_t align_phase = VisionAlign_GetPhase();
+    const char *status;
+
     Camera_GetData(&data);
     if (data.frames!=previous_frames) { previous_frames=data.frames; last_valid=now; }
     if (data.bytes!=previous_bytes) { previous_bytes=data.bytes; last_rx=now; }
     fresh=data.frames && (TickType_t)(now-last_valid)<pdMS_TO_TICKS(1000U);
-    OLED_ShowString(0,0,(const u8 *)(fresh?"CAM3 LINK OK":data.bytes==0?"CAM3 WAIT RX":(TickType_t)(now-last_rx)>=pdMS_TO_TICKS(1000U)?"CAM3 STALE":"CAM3 BAD DATA"));
+    status = fresh?"CAM3 LINK OK":data.bytes==0?"CAM3 WAIT RX":(TickType_t)(now-last_rx)>=pdMS_TO_TICKS(1000U)?"CAM3 STALE":"CAM3 BAD DATA";
+    if (align_phase > VISION_ALIGN_IDLE && align_phase <= VISION_ALIGN_WAIT)
+        status = align_labels[align_phase];
+    snprintf(line,sizeof(line),"%-16s",status);
+    OLED_ShowString(0,0,(const u8 *)line);
     if (fresh) {
         if (data.pole) snprintf(line,sizeof(line),"B:%u DX:%+d",(unsigned)data.pole,(int)data.offset);
         else snprintf(line,sizeof(line),"B:0 DX:---");

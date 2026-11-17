@@ -2,7 +2,8 @@
 #define __IMU_TASK_H
 #include "system.h"
 
-#define IMU_TASK_PRIO      3
+#include "task_priority.h"
+#define IMU_TASK_PRIO      TASK_PRIORITY_IMU
 #define IMU_STK_SIZE       256
 #define IMU_TASK_RATE      RATE_100_HZ
 

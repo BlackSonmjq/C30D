@@ -10,10 +10,10 @@
 #define HEADING_CONTROL_ENABLE                1       // 航向保持开关
 #define HEADING_CONTROL_RATE_HZ               100.0f  // 控制频率，Hz
 #define HEADING_CONTROL_GYRO_FULL_SCALE_DPS   500.0f   // 陀螺仪量程，度/秒，与 IMU 配置一致
-#define HEADING_CONTROL_KP                    0.80f   // 比例：原 1.32，降低同角度误差下的驱动力度
+#define HEADING_CONTROL_KP                    1.20f   // 加强同角度误差下的纠偏
 #define HEADING_CONTROL_KI                    0.0f    // 积分：重载试调阶段保持关闭
-#define HEADING_CONTROL_KD                    0.40f   // 角速度阻尼：原 0.18，提前抑制仍在继续的旋转
-#define HEADING_CONTROL_MAX_ANGULAR_VELOCITY   0.35f   // 最大纠偏角速度：原 1.0，限制大角度纠偏强度
+#define HEADING_CONTROL_KD                    0.55f   // 配套提高角速度阻尼
+#define HEADING_CONTROL_MAX_ANGULAR_VELOCITY   0.50f   // 加大纠偏上限，仍需实车标定
 #define HEADING_CONTROL_MIN_ANGULAR_VELOCITY   0.08f   // 大误差且近乎静止时的起转助力，不是永久最低输出
 #define HEADING_CONTROL_MIN_FULL_ERROR_RAD    0.0872665f // 5度：小于此误差时，起转助力随误差逐渐减小
 #define HEADING_CONTROL_MIN_ASSIST_RATE       0.03f   // 超过此角速度不再强加最低起转输出，保留阻尼结果

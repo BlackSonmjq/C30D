@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,11 +33,17 @@ typedef struct { float yaw_rad; uint32_t tick_ms; u8 valid; } ChassisOdomFrame;
 #define ROUTE_ODOM_MAX_GAP_MS 100U
 #define CONTROL_DELAY 1000U
 #define HEADING_CONTROL_ENABLE 1
+#define MANUAL_RC_MAX_MMPS 200.0f
 static u8 manual_heading_locked;
 static float manual_heading_target;
 static int EN=1,Flag_Stop,Car_Mode=1,RC_Velocity=500;
 enum { Mec_Car=1, Mec_Car_V550=2 };
 static float Voltage=12,Move_X,Move_Y,Move_Z,dx,dy,dz;
+static struct { float VX,VY,VZ; } smooth_control;
+static int PS2_ON_Flag=1;
+static float float_abs(float x){return fabsf(x);}
+static float target_limit_float(float x,float low,float high){return x<low?low:x>high?high:x;}
+void Smooth_control(float x,float y,float z);
 static struct { unsigned Time_count; } SysVal={2000};
 static struct { struct { short z; } gyro; } imu;
 static struct { int LY,RX; } gamepad={127,127}, *GamePadInterface=&gamepad;
@@ -47,37 +54,47 @@ static void ChassisOdom_Read(ChassisOdomFrame *p){*p=pose;}
 static unsigned xTaskGetTickCount(void){return now;}
 static void HeadingControl_Reset(void){++resets;}
 static float HeadingControl_HoldYaw(float target,float yaw,short gyro){(void)gyro;return target-yaw;}
-static void Drive_Motor(float x,float y,float z){dx=x;dy=y;dz=z;}
+static void Drive_Motor(float x,float y,float z){dx=x;dy=y;dz=z;Smooth_control(x,y,z);}
 static int target_limit_int(int x,int low,int high){return x<low?low:x>high?high:x;}
 '''
 main = r'''
 int main(void){
   Remoter_Ch2=2000;Remoter_Ch1=1500;remote();
-  assert(fabsf(dx-.5f)<1e-6f && dy==0 && dz==0);
+  assert(fabsf(dx-.2f)<1e-6f && dy==0 && dz==0);
   Remoter_Ch2=1500;Remoter_Ch1=2000;remote();
-  assert(dx==0 && fabsf(dy+.5f)<1e-6f);
+  assert(dx==0 && fabsf(dy+.2f)<1e-6f);
   Remoter_Ch2=1000;Remoter_Ch1=1000;remote();
-  assert(fabsf(dx+.5f)<1e-6f && fabsf(dy-.5f)<1e-6f);
+  assert(fabsf(dx+.2f)<1e-6f && fabsf(dy-.2f)<1e-6f);
   Remoter_Ch2=1500;Remoter_Ch1=1500;pose.yaw_rad=1.2f;remote();
   assert(dx==0 && dy==0 && dz<-.19f && resets==1);
   EN=0;remote();assert(dx==0 && dy==0 && dz==0 && !manual_heading_locked);
   EN=1;remote();assert(dz==0 && resets==2);
   gamepad.LY=254;gamepad.RX=0;ps2();
-  assert(fabsf(dx-.5f)<1e-6f && fabsf(dy-.5f)<1e-6f);
+  assert(fabsf(dx-.2f)<1e-6f && fabsf(dy-.2f)<1e-6f);
+  smooth_control.VX=.5f;smooth_control.VY=.5f;
   gamepad.LY=0;gamepad.RX=254;ps2();
-  assert(fabsf(dx+.5f)<1e-6f && fabsf(dy+.5f)<1e-6f);
+  assert(fabsf(dx+.2f)<1e-6f && fabsf(dy+.2f)<1e-6f);
+  assert(smooth_control.VX<0 && smooth_control.VY<0);
+  assert(smooth_control.VX>=-.051f && smooth_control.VY>=-.051f);
   gamepad.LY=130;gamepad.RX=125;ps2();assert(dx==0 && dy==0);
   now+=101;ps2();assert(dx==0 && dy==0 && dz==0 && !manual_heading_locked);
-  puts("PASS: radio/PS2 axes, diagonal motion, deadband, yaw latch, disable/reacquire and stale IMU stop");
+  puts("PASS: radio axes, reversed PS2 mapping LY-127/127-RX, immediate reversal ramp, yaw latch and stale IMU stop");
 }
 '''
 compiler = os.environ.get('ROUTE_HOST_CC') or shutil.which('gcc')
-if not compiler:
-    raise SystemExit('Set ROUTE_HOST_CC to a C compiler')
 with tempfile.TemporaryDirectory(prefix='manual-control-') as temp:
     build = Path(temp)
-    test = stub + helper + '\nvoid ps2(void){' + branches[0] + '}\n'
-    test += 'void remote(void){int Threshold=100;static u8 thrice=0;' + branches[1] + '}\n' + main
+    test = stub + helper + '\nstatic void VisionAlign_Drive(float x,float y){ManualMecanum_Drive(x,y);}' + '\nvoid ps2(void){' + branches[0] + '}\n'
+    test += 'void remote(void){int Threshold=100;static u8 thrice=0;' + branches[1] + '}\n'
+    test += block(source.index('void Smooth_control(')) + '\n' + main
+    if not compiler:
+        # Reuse the repository's ARMCC/Unicorn runner on Windows without GCC.
+        arm_build = ROOT / 'tests/mango/.build'
+        arm_build.mkdir(parents=True, exist_ok=True)
+        arm_source = arm_build / 'manual_controls.c'
+        arm_source.write_text(test, encoding='utf-8')
+        subprocess.run([sys.executable, str(ROOT / 'tests/mango/run_tests.py'), str(arm_source)], cwd=ROOT, check=True)
+        raise SystemExit(0)
     (build / 'test.c').write_text(test, encoding='utf-8')
     exe = build / 'test.exe'
     subprocess.run([compiler, '-std=c99', '-Wall', '-Wextra', '-Werror', str(build / 'test.c'), '-o', str(exe)], check=True)

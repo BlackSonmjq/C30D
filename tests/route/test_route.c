@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <setjmp.h>
 #include "balance.h"
+#include "vision_align.h"
 #include "route_nav.c"
 #include "route_io.c"
 #include "my_chassis_task.c"
@@ -25,6 +26,10 @@ static uint32_t integration_at,tool_end;
 static uint8_t injected,work_starts;
 static jmp_buf integration_done;
 static StepperTask_Data simulated_tool;
+static Camera_Data simulated_camera;
+void Camera_GetData(Camera_Data *data){*data=simulated_camera;}
+void VisionStrike_Process(void) { }
+void VisionAlign_GetDiagnostics(VisionAlign_Diagnostics *data) { memset(data,0,sizeof(*data)); }
 USART_TypeDef route_test_usart1,route_test_usart2,route_test_usart3;
 static uint8_t tx_interrupt, tx_ready=1, rx_pending;
 static uint8_t transmitted[ROUTE_VOFA_FRAME_BYTES * 2U];
@@ -1316,7 +1321,11 @@ static void test_diagnostics_and_vofa(void)
     RouteDebugFrame saved,after;
     uint8_t expected[ROUTE_VOFA_FRAME_BYTES];
     RouteDebug_Reset();
-    assert(!RouteDebug_Read(&saved)&&!RouteDebug_BuildPacket(expected,sizeof(expected)));
+    assert(!RouteDebug_Read(&saved)&&RouteDebug_BuildPacket(expected,sizeof(expected))==sizeof(expected));
+    simulated_camera.pole=1;simulated_camera.offset=-20;
+    simulated_camera.green=1;simulated_camera.region=3;
+    simulated_camera.bytes=120;simulated_camera.frames=19;
+    simulated_camera.bad=2;simulated_camera.uart_errors=1;
     fixture(&c,&in,4);
     in.odom.sample_dt_ms=20;in.odom.max_sample_dt_ms=50;
     for(unsigned n=0;n<90&&c.status.phase!=ROUTE_FAULT;++n){
@@ -1326,6 +1335,8 @@ static void test_diagnostics_and_vofa(void)
     assert(c.status.phase==ROUTE_FAULT&&c.status.reason==ROUTE_ERROR_STALL);
     assert(c.status.stop_flags==0&&!c.status.odom_untrusted); /* Far reference was never accepted. */
     assert(RouteDebug_ReadFault(&saved)&&saved.frozen&&saved.route.target_point==4);
+    /* Route snapshot freezes; visual telemetry continues to read live camera data. */
+    simulated_camera.offset=127;simulated_camera.region=4;simulated_camera.frames=20;
     assert(saved.route.odom_remaining_mm==724&&saved.route.laser_remaining_mm==2103);
     assert(saved.route.mismatch_mm==1379);
     assert(fabsf(saved.route.gate_mm-1733.42f)<0.01f);
@@ -1337,20 +1348,11 @@ static void test_diagnostics_and_vofa(void)
     assert(RouteDebug_BuildPacket(expected,sizeof(expected))==sizeof(expected));
     assert(expected[sizeof(expected)-4]==0&&expected[sizeof(expected)-3]==0&&
            expected[sizeof(expected)-2]==0x80&&expected[sizeof(expected)-1]==0x7f);
-    assert(packet_channel(expected,1)==4&&packet_channel(expected,9)==2223);
-    assert(packet_channel(expected,12)==724&&packet_channel(expected,14)==1379);
-    assert(packet_channel(expected,15)==20&&packet_channel(expected,16)==50);
-    assert(packet_channel(expected,22)==0&&packet_channel(expected,23)==1);
-    assert(packet_channel(expected,32)==2600&&packet_channel(expected,35)==0);
-    assert(packet_channel(expected,36)==0&&packet_channel(expected,37)==0);
-    assert(packet_channel(expected,38)>0&&packet_channel(expected,39)>=ROUTE_WALL_NO_PROGRESS_MS);
-    assert(ROUTE_VOFA_CHANNEL_COUNT==64U&&ROUTE_VOFA_FRAME_BYTES==260U);
-    assert(packet_channel(expected,40)==ROUTE_CONF_CANDIDATE);
-    assert(packet_channel(expected,41)==ROUTE_REJECT_FAR);
-    assert(packet_channel(expected,42)==ROUTE_CONF_RESTORE_FRAMES&&packet_channel(expected,43)==0);
-    for(unsigned n=44;n<48U;n++)assert(packet_channel(expected,n)==0);
-    assert(packet_channel(expected,48)==0&&packet_channel(expected,54)==ROUTE_LIDAR_COUNT);
-    assert(packet_channel(expected,62)==ROUTE_CONTROL_ODOM);
+    assert(ROUTE_VOFA_CHANNEL_COUNT==32U&&ROUTE_VOFA_FRAME_BYTES==132U);
+    assert(packet_channel(expected,0)==1&&packet_channel(expected,1)==127);
+    assert(packet_channel(expected,2)==1&&packet_channel(expected,3)==4);
+    assert(packet_channel(expected,4)==120&&packet_channel(expected,5)==20);
+    assert(packet_channel(expected,6)==2&&packet_channel(expected,7)==1);
 
     clock_ms=1000000;transmitted_count=0;tx_interrupt=0;tx_ready=1;
     RouteVofa_Poll();
@@ -1370,7 +1372,7 @@ static void test_diagnostics_and_vofa(void)
     route_test_usart2_irq();assert(!tx_interrupt&&transmitted_count==0);
 #endif
     RouteDebug_Reset();assert(!RouteDebug_ReadFault(&saved));
-    puts("Trust diagnostics, immutable fault snapshot, 64-channel JustFloat bytes and nonblocking UART TX passed.");
+    puts("Route fault snapshot, live 8-channel visual JustFloat and nonblocking UART TX passed.");
 }
 
 static void test_bluetooth_port_isolation(void)

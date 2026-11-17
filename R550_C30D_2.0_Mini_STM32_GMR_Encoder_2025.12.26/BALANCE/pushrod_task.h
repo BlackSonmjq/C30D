@@ -5,7 +5,8 @@
 #include "task.h"
 #include "pushrod.h"
 
-#define PUSHROD_TASK_PRIO 5 /* 快速处理启停请求；定时关断由 TIM6 中断完成。 */
+#include "task_priority.h"
+#define PUSHROD_TASK_PRIO TASK_PRIORITY_SERVO /* 快速处理启停请求；定时关断由 TIM6 中断完成。 */
 #define PUSHROD_STK_SIZE 128
 #define MANGO_STRIKE_MS 5000UL /* 从对应输出实际拉高开始计时，持续 5 秒。 */
 

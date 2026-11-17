@@ -5,7 +5,8 @@
 #include "task.h"
 #include "vl53l0x.h"
 
-#define DISTANCE_TASK_PRIO 1
+#include "task_priority.h"
+#define DISTANCE_TASK_PRIO TASK_PRIORITY_DISTANCE
 #define DISTANCE_STK_SIZE 256
 #define DISTANCE_OLED_PAGE 2U
 

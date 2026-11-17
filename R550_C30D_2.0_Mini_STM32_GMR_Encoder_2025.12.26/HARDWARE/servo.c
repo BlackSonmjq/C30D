@@ -23,6 +23,9 @@ static uint32_t device_baud[SERVO_COUNT]; /* Initialized by Servo_Init, then lea
 static uint8_t tx_buffer[SERVO_COMMAND_LIMIT];
 #define SERVO_DMA_FLAGS (DMA_HIFCR_CTCIF4 | DMA_HIFCR_CHTIF4 | DMA_HIFCR_CTEIF4 | DMA_HIFCR_CDMEIF4 | DMA_HIFCR_CFEIF4)
 static volatile uint8_t sending;
+/* Ownership outlives the TC IRQ so a preempting task cannot replace the
+ * completed command's result before its original caller consumes it. */
+static volatile uint8_t send_owned;
 static volatile Servo_Result tx_result;
 static volatile uint8_t receiving;
 static volatile uint8_t probing;
@@ -95,7 +98,7 @@ void Servo_Init(void)
     (void)discard;
     NVIC_ClearPendingIRQ(UART4_IRQn);
     Servo_ClearRx();
-    sending = 0;
+    sending = send_owned = 0;
     irq.NVIC_IRQChannel = UART4_IRQn;
     /* Above FreeRTOS syscall threshold 5: RX ISR must not call RTOS APIs.
      * Shared RX state is protected with PRIMASK, not task critical sections. */
@@ -117,7 +120,7 @@ Servo_Result Servo_StartRxProbe(void)
     if (!SERVO_RX_IRQ_ENABLED) return SERVO_RX_DISABLED;
     mask = __get_PRIMASK();
     __disable_irq();
-    if (sending || receiving || probing || frame_length != 0U) {
+    if (send_owned || sending || receiving || probing || frame_length != 0U) {
         __set_PRIMASK(mask);
         return SERVO_BUSY;
     }
@@ -180,7 +183,7 @@ Servo_Result Servo_SetBusBaud(uint32_t baud)
     if (baud!=9600UL && baud!=115200UL) return SERVO_INVALID_ARGUMENT;
     if (!initialized) return SERVO_NOT_INITIALIZED;
     mask=__get_PRIMASK(); __disable_irq();
-    if (sending || probing) { __set_PRIMASK(mask); return SERVO_BUSY; }
+    if (send_owned || sending || probing) { __set_PRIMASK(mask); return SERVO_BUSY; }
     Servo_ClearRx();
     USART_Cmd(UART4,DISABLE);
     USART_StructInit(&uart);
@@ -257,7 +260,6 @@ Servo_Result Servo_SendCommand(const char *command)
 {
     uint32_t mask;
     uint16_t length = 0, i;
-    uint8_t scheduler_locked = 0;
     uint32_t remaining;
     Servo_Result result = SERVO_OK;
     volatile uint32_t discard;
@@ -266,20 +268,15 @@ Servo_Result Servo_SendCommand(const char *command)
     if (length < 2U || length > SERVO_COMMAND_LIMIT ||
         command[0] != '#' || command[length - 1U] != '!') return SERVO_INVALID_ARGUMENT;
     if (!initialized) return SERVO_NOT_INITIALIZED;
-    /* Keep the whole frame in one task execution slice. IRQs remain enabled
-     * except for the existing short direction-switch critical section. */
-    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
-        vTaskSuspendAll();
-        scheduler_locked = 1;
-    }
+    /* DMA keeps bytes continuous even when chassis/vision/input tasks preempt
+     * this caller. Never suspend the scheduler for a slow UART frame. */
     mask = __get_PRIMASK();
     __disable_irq();
-    if (sending || probing) {
+    if (send_owned || sending || probing) {
         __set_PRIMASK(mask);
-        if (scheduler_locked) (void)xTaskResumeAll();
         return SERVO_BUSY;
     }
-    sending = 1;
+    sending = send_owned = 1;
     /* Switch atomically relative to UART IRQ. Discard any partial old reply. */
     stop_rx();
     discard = UART4->SR;
@@ -317,8 +314,10 @@ Servo_Result Servo_SendCommand(const char *command)
             __set_PRIMASK(mask);
         }
     }
+    mask=__get_PRIMASK(); __disable_irq();
     result=tx_result;
-    if (scheduler_locked) (void)xTaskResumeAll();
+    send_owned=0;
+    __set_PRIMASK(mask);
     return result;
 }
 

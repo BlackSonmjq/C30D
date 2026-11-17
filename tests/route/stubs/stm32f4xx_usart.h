@@ -22,3 +22,8 @@ void USART_SendData(USART_TypeDef *uart, uint16_t byte);
 #define USART_CR1_TE 8U
 #define USART_SR_TXE 0x80U
 #define USART_SR_TC 0x40U
+#define USART_SR_RXNE 0x20U
+#define USART_SR_ORE 0x08U
+#define USART_SR_NE 0x04U
+#define USART_SR_FE 0x02U
+#define USART_SR_PE 0x01U

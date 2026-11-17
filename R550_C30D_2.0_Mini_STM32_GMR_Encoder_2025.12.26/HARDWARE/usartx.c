@@ -7,6 +7,7 @@
 #include "distance_task.h"
 #include "servo.h"
 #include "camera_protocol.h"
+#include "vision_strike.h"
 #include "servo_task.h"
 #include "stepper_task.h"
 #include "usart.h"
@@ -539,9 +540,6 @@ void data_task(void *pvParameters)
                 if (CAN1_TakeLidar(&lidar))
                     RouteIO_PublishLidar(lidar.front_mm,lidar.behind_mm,lidar.left_mm,lidar.right_mm);
             }
-#if ROUTE_DEMO_ENABLE && ROUTE_DEBUG_MODE && ROUTE_VOFA_ENABLE
-            RouteVofa_Poll();
-#endif
             USART1_CommandLogProcess();
             CameraReport_Process();
             ServoDebug_Process();
@@ -904,7 +902,7 @@ void uart2_init(u32 bound)
 	//UsartNVIC configuration //UsartNVIC����
 	NVIC_InitStructure.NVIC_IRQChannel = USART2_IRQn;
 	//Preempt priority //��ռ���ȼ�
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=1 ;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=IRQ_PRIORITY_TELEMETRY;
 	//Subpriority //�����ȼ�
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
   //Enable the IRQ channel //IRQͨ��ʹ��
@@ -955,7 +953,7 @@ void uart3_init(u32 bound)
   //UsartNVIC configuration //UsartNVIC����
   NVIC_InitStructure.NVIC_IRQChannel = USART3_IRQn;
 	//Preempt priority //��ռ���ȼ�
-	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=1 ;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority=IRQ_PRIORITY_VISION;
 	//Preempt priority //��ռ���ȼ�
 	NVIC_InitStructure.NVIC_IRQChannelSubPriority = 0;
 	//Enable the IRQ channel //IRQͨ��ʹ��
@@ -1060,6 +1058,24 @@ int USART3_IRQHandler(void)
         } else Camera_Push(&camera_receiver,byte);
     }
     return 0;
+}
+
+void VisionStrike_Process(void)
+{
+#if VISION_STRIKE_ENABLE
+    static VisionStrike_State state;
+    Camera_Data data;
+    uint8_t id, accepted, blocked;
+    Camera_GetData(&data);
+    blocked = Check != 0 || !RouteIO_Ready() || StepperTask_IsBusy() ||
+              ServoTask_IsBusy() || USART_ServoControlBusy() || RouteIO_WorkReserved();
+    id = VisionStrike_Update(&state, &data,
+                            (uint32_t)xTaskGetTickCount() * portTICK_PERIOD_MS, blocked);
+    if (!id) return;
+    if (RouteIO_ControlOwned()) accepted = RouteIO_QueueWorkFromISR(id);
+    else accepted = StepperTask_RequestMango(id);
+    if (accepted) VisionStrike_Accept(&state);
+#endif
 }
 
 static uint8_t ATCommandFeedBack_BT04A(uint8_t recv)
@@ -1341,7 +1357,17 @@ uint8_t FlashWriteFlag = 0;
 int USART2_IRQHandler(void)
 {
     RouteVofa_Uart2TxIRQ();
-    if (RouteVofa_IsActive()) return 0;
+    if (RouteVofa_IsActive()) {
+        /* RXNE remains enabled for this port. Read SR then DR to clear RXNE
+         * and receive errors even though APP commands are disabled in VOFA
+         * mode; otherwise one incoming byte can continuously retrigger IRQ. */
+        uint32_t status = USART2->SR;
+        if (status & (USART_SR_RXNE | USART_SR_ORE | USART_SR_FE | USART_SR_NE | USART_SR_PE)) {
+            volatile uint32_t discarded = USART2->DR;
+            (void)discarded;
+        }
+        return 0;
+    }
 	int Usart_Receive;
 	if(USART_GetITStatus(USART2, USART_IT_RXNE) != RESET) //Check if data is received //�ж��Ƿ���յ�����
 	{

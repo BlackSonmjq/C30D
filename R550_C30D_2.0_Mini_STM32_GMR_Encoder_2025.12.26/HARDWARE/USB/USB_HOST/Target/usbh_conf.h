@@ -96,7 +96,8 @@
   #include "stm32f4xx_hal_hcd.h"
   #include "stm32f4xx_ll_usb.h"
   #include "delay.h"
-  #define USBH_PROCESS_PRIO          osPriorityNormal
+#include "task_priority.h"
+  #define USBH_PROCESS_PRIO          TASK_PRIORITY_INPUT
   #define USBH_PROCESS_STACK_SIZE    ((uint16_t)1024)
 #endif /* (USBH_USE_OS == 1) */
 

@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdarg.h>
 #include "servo.h"
+#include "camera_protocol.h"
+void Camera_GetData(Camera_Data *data) { memset(data, 0, sizeof(*data)); }
 typedef uint8_t u8;
 typedef uint32_t TickType_t;
 #define USART1 ((void *)0)

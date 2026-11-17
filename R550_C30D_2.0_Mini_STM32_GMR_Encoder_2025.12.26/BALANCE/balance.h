@@ -3,7 +3,9 @@
 #include "sys.h"
 #include "system.h"
 
-#define BALANCE_TASK_PRIO		4     //Task priority //任务优先级
+#define MANUAL_RC_MAX_MMPS 200.0f
+#include "task_priority.h"
+#define BALANCE_TASK_PRIO		TASK_PRIORITY_CHASSIS     //Task priority //任务优先级
 #define BALANCE_STK_SIZE 		512   //Task stack size //任务堆栈大小
 
 //Parameter of kinematics analysis of omnidirectional trolley

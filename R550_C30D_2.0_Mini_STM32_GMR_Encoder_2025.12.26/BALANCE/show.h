@@ -4,7 +4,8 @@
 #include "oled.h"
 #include "system.h"
 #include "bsp_gamepad.h"
-#define SHOW_TASK_PRIO		3
+#include "task_priority.h"
+#define SHOW_TASK_PRIO		TASK_PRIORITY_DISPLAY
 #define SHOW_STK_SIZE 		512
 
 void show_task(void *pvParameters);

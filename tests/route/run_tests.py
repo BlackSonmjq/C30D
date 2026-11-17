@@ -17,10 +17,11 @@ with tempfile.TemporaryDirectory(prefix="mango-route-tests-") as temporary:
     for name in ("route_config.h", "route_io.h", "route_io.c", "route_plan.h", "route_plan.c",
                  "route_nav.h", "route_nav.c", "my_chassis_task.h", "my_chassis_task.c",
                  "chassis_odometry.h", "chassis_odometry.c", "route_debug.h",
-                 "route_debug.c", "route_vofa.c"):
+                 "route_debug.c", "route_vofa.c", "task_priority.h", "vision_strike.h", "vision_align.h"):
         shutil.copyfile(FW / "USER" / name, build / name)
     for name in ("heading_control.h", "heading_control.c"):
         shutil.copyfile(FW / "BALANCE" / name, build / name)
+    shutil.copyfile(FW / "HARDWARE/camera_protocol.h", build / "camera_protocol.h")
     config = (build / "route_config.h").read_text(encoding="utf-8")
 
     def extract_function(source, signature):

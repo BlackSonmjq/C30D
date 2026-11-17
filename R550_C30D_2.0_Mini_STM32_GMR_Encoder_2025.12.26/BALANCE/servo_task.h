@@ -5,7 +5,8 @@
 #include "task.h"
 #include "servo.h"
 
-#define SERVO_TASK_PRIO 5
+#include "task_priority.h"
+#define SERVO_TASK_PRIO TASK_PRIORITY_SERVO
 #define SERVO_STK_SIZE 256
 #define MANGO_SERVO_PHASE_TIMEOUT_MS 3000UL
 #define MANGO_SERVO_QUERY_MS 150UL

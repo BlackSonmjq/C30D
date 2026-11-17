@@ -15,7 +15,8 @@ typedef struct
 	unsigned char Usart3_rec_count;
 }Check_parameter;
 
-#define CHECK_TASK_PRIO		4     //Task priority //任务优先级
+#include "task_priority.h"
+#define CHECK_TASK_PRIO		TASK_PRIORITY_CHASSIS     //Task priority //任务优先级
 #define CHECK_STK_SIZE 		512   //Task stack size //任务堆栈大小
 
 extern Check_parameter check_parameter;

@@ -31,6 +31,7 @@ void RouteIO_ApplyDrive(void);
 uint8_t RouteIO_ChassisStopped(void);
 /* 中断只锁存一个疏果请求；任务层停车后再调用机构，完成/失败均有反馈。 */
 uint8_t RouteIO_QueueWorkFromISR(uint8_t mango_id);
+uint8_t RouteIO_WorkReserved(void);
 uint8_t RouteIO_TakeWorkRequest(void);
 void RouteIO_AllowWork(uint8_t allowed);
 void RouteIO_CompleteWork(void);

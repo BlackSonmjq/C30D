@@ -3,7 +3,8 @@
 #include "sys.h"
 #include "system.h"
 
-#define LED_TASK_PRIO		3     //Task priority //任务优先级
+#include "task_priority.h"
+#define LED_TASK_PRIO		TASK_PRIORITY_STATUS     //Task priority //任务优先级
 #define LED_STK_SIZE 		128   //Task stack size //任务堆栈大小
 
 

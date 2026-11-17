@@ -19,11 +19,16 @@ source = ROOT / "tests/camera/test_camera.c"
 firmware = ROOT / "R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26"
 includes = [firmware / p for p in ["USER", "CORE", "FWLIB/inc", "FreeRTOS/include", "FreeRTOS/portable/RVDS/ARM_CM4F"]]
 includes += [firmware / p for p in ["SYSTEM/sys", "SYSTEM/delay", "SYSTEM/usart", "HARDWARE", "HARDWARE/ICM20948", "BALANCE", "AutoRecharge"]]
-subprocess.run([str(BIN / "armcc.exe"), "--cpu", "Cortex-M4.fp", "--c99", "-O0", "-g",
-    "-DSTM32F40_41xxx", "-DUSE_STDPERIPH_DRIVER", "-DARM_MATH_CM4"] +
-    ["-I" + str(p) for p in includes] + ["-c", str(source), "-o", str(BUILD / "test_mango.o")], check=True)
+includes.insert(0, ROOT / "tests/route/stubs")
+objects = []
+for unit in (source, firmware / "USER/route_debug.c"):
+    obj = BUILD / (unit.stem + ".o")
+    subprocess.run([str(BIN / "armcc.exe"), "--cpu", "Cortex-M4.fp", "--c99", "-O0", "-g",
+        "-DSTM32F40_41xxx", "-DUSE_STDPERIPH_DRIVER", "-DARM_MATH_CM4"] +
+        ["-I" + str(p) for p in includes] + ["-c", str(unit), "-o", str(obj)], check=True)
+    objects.append(str(obj))
 subprocess.run([str(BIN / "armlink.exe"), "--cpu", "Cortex-M4.fp", "--ro_base", "0x0",
-    "--rw_base", "0x20000000", "--entry", "__main", str(BUILD / "test_mango.o"),
+    "--rw_base", "0x20000000", "--entry", "__main"] + objects + [
     "-o", str(BUILD / "test_mango.axf")], check=True)
 
 cpu = Uc(UC_ARCH_ARM, UC_MODE_THUMB | UC_MODE_MCLASS)

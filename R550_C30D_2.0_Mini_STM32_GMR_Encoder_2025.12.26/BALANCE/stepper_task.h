@@ -3,7 +3,8 @@
 
 #include "stepper_motor.h"
 
-#define STEPPER_TASK_PRIO 1
+#include "task_priority.h"
+#define STEPPER_TASK_PRIO TASK_PRIORITY_STEPPER
 #define STEPPER_STK_SIZE 384
 
 /* 左右步进方向一致：DIR 低电平靠近芒果，高电平返程。 */

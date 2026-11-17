@@ -1,9 +1,10 @@
 #include "route_debug.h"
 #include "route_config.h"
-
-#if ROUTE_DEMO_ENABLE && ROUTE_DEBUG_MODE && ROUTE_VOFA_ENABLE
+#include "vision_strike.h"
 #include "FreeRTOS.h"
 #include "task.h"
+
+#if ROUTE_DEMO_ENABLE && ROUTE_DEBUG_MODE && ROUTE_VOFA_ENABLE
 #include "stm32f4xx_usart.h"
 #include "sys.h"
 #include <string.h>
@@ -25,7 +26,7 @@ void RouteVofa_Poll(void)
     length = RouteDebug_BuildPacket(packet, sizeof(packet));
     if (length == 0U) return;
 
-    /* USART2 优先级高于 FreeRTOS 屏蔽阈值；只在提交一个短缓冲区时屏蔽中断。
+    /* 只在提交一个短缓冲区时屏蔽中断。
      * 通道编码和实际串口发送都在临界区外，不调用阻塞 printf。 */
     mask = __get_PRIMASK();
     __disable_irq();
@@ -60,3 +61,14 @@ uint8_t RouteVofa_IsActive(void) { return 0U; }
 void RouteVofa_Poll(void) { }
 void RouteVofa_Uart2TxIRQ(void) { }
 #endif
+
+void RouteVofa_Task(void *parameters)
+{
+    TickType_t wake = xTaskGetTickCount();
+    (void)parameters;
+    for (;;) {
+        VisionStrike_Process();
+        RouteVofa_Poll();
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(50U));
+    }
+}

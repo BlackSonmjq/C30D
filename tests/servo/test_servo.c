@@ -17,6 +17,7 @@ static unsigned rx_irq_enabled, nvic_enabled, cleared_pending;
 static uint8_t pc10_high = 1;
 static BaseType_t scheduler_state = taskSCHEDULER_NOT_STARTED;
 static unsigned scheduler_depth, suspend_calls, resume_calls;
+static unsigned nested_after_tc;
 #define CHECK(e) do { ++checks; if (!(e)) { printf("FAIL line %u: %s\n", (unsigned)__LINE__, #e); exit(1); } } while (0)
 BaseType_t xTaskGetSchedulerState(void) {
     return scheduler_depth ? taskSCHEDULER_SUSPENDED : scheduler_state;
@@ -60,18 +61,24 @@ void USART_ITConfig(USART_TypeDef *p, uint16_t i, FunctionalState e) {
 }
 FlagStatus USART_GetFlagStatus(USART_TypeDef *p, uint16_t f) {
     CHECK(!irq_mask); /* Never wait a 9600-baud byte with IRQs masked. */
-    CHECK(scheduler_state == taskSCHEDULER_NOT_STARTED || scheduler_depth > 0);
+    CHECK(scheduler_depth == 0); /* Higher-priority chassis/vision remain schedulable. */
     if (f == USART_FLAG_TC) {
         ++tc_checks;
         if (tc_delay) { --tc_delay; return RESET; }
         if (complete_via_irq && f!=fail_flag) {
             complete_via_irq=0; p->SR=USART_SR_TC; UART4_IRQHandler();
+            if (nested_after_tc) {
+                nested_after_tc=0;
+                CHECK(!sending && send_owned);
+                CHECK(Servo_Home(2,100)==SERVO_BUSY);
+                CHECK(Servo_SetBusBaud(115200)==SERVO_BUSY);
+            }
         }
     }
     return f == fail_flag ? RESET : SET;
 }
 void USART_SendData(USART_TypeDef *p, uint16_t data) {
-    CHECK(scheduler_state == taskSCHEDULER_NOT_STARTED || scheduler_depth > 0);
+    CHECK(scheduler_depth == 0);
     /* DMA feeds every byte independently of CPU interrupt masking. */
     CHECK((p->CR1 & (USART_CR1_TE | USART_CR1_RE)) == USART_CR1_TE);
     CHECK(tx_size < sizeof(tx) - 1);
@@ -101,8 +108,8 @@ static void expect(const char *command) {
     CHECK(strcmp(tx, command) == 0);
     CHECK((UART4->CR1 & (USART_CR1_TE | USART_CR1_RE)) == (receiving ? USART_CR1_RE : 0U));
     CHECK(rx_irq_enabled == receiving);
-    CHECK(!sending && !irq_mask);
-    CHECK(!scheduler_depth && suspend_calls == resume_calls);
+    CHECK(!sending && !send_owned && !irq_mask);
+    CHECK(!scheduler_depth && !suspend_calls && !resume_calls);
     tx_size = 0; tx[0] = 0;
 }
 static void receive(const char *frame) {
@@ -177,9 +184,9 @@ int main(void) {
     }
     nested = 1; tc_delay = 3; before = tc_checks;
     CHECK(Servo_Home(1, 1000) == SERVO_OK); expect("#001P0500T1000!"); CHECK(tc_checks - before == 4);
-    complete_via_irq=1;
+    complete_via_irq=1; nested_after_tc=1;
     CHECK(Servo_Home(2,500)==SERVO_OK); expect("#002P0500T0500!");
-    CHECK(!complete_via_irq && !(UART4->CR1 & USART_CR1_TCIE) && receiving);
+    CHECK(!complete_via_irq && !nested_after_tc && !(UART4->CR1 & USART_CR1_TCIE) && receiving);
     CHECK(Servo_MoveAngle(2, 180, 9999) == SERVO_OK); expect("#002P1833T9999!");
     CHECK(Servo_MoveAngle(3, 270, 20) == SERVO_OK); expect("#003P2500T0020!");
     CHECK(Servo_SetMode(4, 1) == SERVO_OK); expect("#004PMOD1!");

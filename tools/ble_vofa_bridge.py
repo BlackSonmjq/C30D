@@ -1,4 +1,4 @@
-"""Receive FFE1 BLE notifications and forward complete 64-channel JustFloat frames.
+"""Receive FFE1 BLE notifications and forward 32-channel wheel-load, alignment, vision or legacy JustFloat frames.
 
 No GATT writes or chassis commands are sent. start_notify enables the CCCD.
 API reference: https://bleak.readthedocs.io/en/stable/api/client.html
@@ -13,7 +13,7 @@ import struct
 import sys
 import time
 
-from vofa_capture import Framer, TAIL, FIELDS, PHASES, ERRORS, stamp
+from vofa_capture import Framer, TAIL, PHASES, ERRORS, stamp, fields_for, camera_summary
 
 SERVICE = '0000ffe0-0000-1000-8000-00805f9b34fb'
 CHARACTERISTIC = '0000ffe1-0000-1000-8000-00805f9b34fb'
@@ -23,35 +23,22 @@ class Forwarder:
     def __init__(self, sock, destination, record=None):
         self.sock, self.destination = sock, destination
         self.record = record
-        self.buffer = bytearray()
+        self.parser = Framer()
+        self.buffer = self.parser.buffer
         self.bytes = self.frames = self.discarded = 0
         self.last_rx = time.monotonic()
 
     def receive(self, _sender, data):
         self.bytes += len(data)
         self.last_rx = time.monotonic()
-        self.buffer.extend(data)
-        cursor = 0
-        while True:
-            tail = self.buffer.find(TAIL, cursor)
-            if tail < 0:
-                break
-            # BLE fragments have no relation to UART frame boundaries. Validate
-            # exactly 64 floats before forwarding one complete UDP datagram.
-            if tail >= 256 and Framer.decode(self.buffer[tail - 256:tail]) is not None:
-                packet = bytes(self.buffer[tail - 256:tail + 4])
-                self.sock.sendto(packet, self.destination)
-                if self.record:
-                    self.record(struct.unpack('<64f', packet[:256]))
-                self.frames += 1
-                self.discarded += tail - 256
-                del self.buffer[:tail + 4]
-                cursor = 0
-            else:
-                cursor = tail + 1
-        if len(self.buffer) > 8192:
-            self.discarded += len(self.buffer) - 4096
-            del self.buffer[:-4096]
+        # One shared parser handles arbitrary BLE fragments and all supported layouts.
+        for values in self.parser.feed(data):
+            packet = struct.pack(f'<{len(values)}f', *values) + TAIL
+            self.sock.sendto(packet, self.destination)
+            if self.record:
+                self.record(values)
+            self.frames += 1
+        self.discarded = self.parser.discarded
 
 
 async def run(args):
@@ -96,7 +83,7 @@ async def run(args):
                         if idle > 5:
                             print('No BLE data: check module UART 9600 and flashed firmware.', flush=True)
                         elif forwarder.bytes and not forwarder.frames:
-                            print('Bytes received but no valid 64-channel frame; check UART/data loss.', flush=True)
+                            print('Bytes received but no valid 8/20/32/48/64/72-channel frame; check UART/data loss.', flush=True)
                 # Partial data from a previous connection must never join a new one.
                 print('Disconnected; reconnecting...', flush=True)
             except (OSError, RuntimeError) as exc:
@@ -124,10 +111,13 @@ def main():
             receiver.bind(('127.0.0.1', 0))
             receiver.settimeout(2)
             forwarder = Forwarder(sender, receiver.getsockname())
-            packet = struct.pack('<64f', *([0.] * 64)) + TAIL
-            for i in range(0, len(packet), 20):
-                forwarder.receive(None, packet[i:i+20])
-            assert receiver.recv(1024) == packet and forwarder.frames == 1
+            values = [1, -20, 1, 3, 600, 100, 2, 1, 2, 1, 127, 127, 0, 1, 0, .06, 0, 500, 81, 0]
+            values += [.125, -.125, .125, -.125, .0625, -.125, .125, -.0625, 4000, -1600, 1600, -4000]
+            packet = struct.pack('<32f', *values) + TAIL
+            stream = packet + packet
+            for i in range(0, len(stream), 20):
+                forwarder.receive(None, stream[i:i+20])
+            assert receiver.recv(1024) == packet and receiver.recv(1024) == packet and forwarder.frames == 2
         print('PASS: Windows BLE dependencies, fragmented frame and UDP forwarding')
         return
     if not (1 <= args.port <= 65535 and 0 <= args.local_port <= 65535):
@@ -138,16 +128,26 @@ def main():
         base = Path(sys.executable).parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent
         folder = args.log_dir or base / 'logs'
         folder.mkdir(parents=True, exist_ok=True)
-        path = folder / ('route-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.csv')
+        path = folder / ('vision-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.csv')
         with path.open('x', newline='', encoding='utf-8-sig') as log:
             writer = csv.writer(log)
-            writer.writerow(['received_at'] + FIELDS)
-            log.flush()
+            channel_count = None
             last_status = None
             def record(values):
-                nonlocal last_status
+                nonlocal last_status, channel_count
+                if channel_count is None:
+                    channel_count = len(values)
+                    writer.writerow(['received_at'] + fields_for(channel_count))
+                elif len(values) != channel_count:
+                    raise SystemExit('Telemetry layout changed; restart the bridge to create a new CSV.')
                 writer.writerow([stamp()] + list(values))
                 log.flush()
+                if len(values) in (8, 20, 32):
+                    status = values[:4] + (values[8:14] + values[19:20] if len(values) in (20, 32) else ())
+                    if status != last_status:
+                        print(camera_summary(values), flush=True)
+                        last_status = status
+                    return
                 status = tuple(int(values[i]) for i in (1, 2, 3))
                 if status != last_status:
                     point, phase, error = status

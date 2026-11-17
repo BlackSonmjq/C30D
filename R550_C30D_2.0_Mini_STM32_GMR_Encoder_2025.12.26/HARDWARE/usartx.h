@@ -8,7 +8,8 @@
 #include "distance_protocol.h"
 
 #define DATA_STK_SIZE   512 
-#define DATA_TASK_PRIO  4
+#include "task_priority.h"
+#define DATA_TASK_PRIO  TASK_PRIORITY_COMMS
 
 #define IP_CONFIRM_COUNT     50     // 确认次数：收到50次有效IP后停止请求(约2.5秒@20Hz)
 

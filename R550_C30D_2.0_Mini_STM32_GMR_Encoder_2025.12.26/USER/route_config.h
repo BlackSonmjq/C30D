@@ -51,13 +51,13 @@
 /* VOFA 调试输出开关，无单位；仅在导航开启且处于调试模式时生效。
  * 1：蓝牙接口 USART2 专用于 JustFloat，暂停该口的 APP 解析与文本打印。
  * 使用 9600 波特率，TX=PD5、RX=PD6；关闭时恢复原蓝牙 9600 波特率和协议。
- * USART3 恢复原有反馈方式，USART1 仍用于原疏果通信。
+ * USART3 接收视觉协议，USART1 仍用于原疏果通信。
  */
 #define ROUTE_VOFA_ENABLE              1
 
 /* VOFA 调试帧计划发送周期，单位 ms；100 ms 对应 10 Hz。
- * 由原 20 Hz 通信任务检查，实际间隔以其 50 ms 周期为粒度；建议不小于 50 ms。
- * 串口忙时跳过该次输出，不等待串口、不阻塞导航；故障后重复发送冻结快照。
+ * 由独立 20 Hz 视觉任务检查，实际间隔以其 50 ms 周期为粒度；建议不小于 50 ms。
+ * 串口忙时跳过该次输出，不等待串口、不阻塞导航；视觉数据不随路线故障冻结。
  */
 #define ROUTE_VOFA_PERIOD_MS           271U
 /* UART side of the original Bluetooth module; independent of PC BLE connection. */
@@ -68,7 +68,8 @@
 /* 导航任务的 FreeRTOS 优先级，无单位；数值越大，优先级越高。
  * 影响导航任务获得处理时间的顺序，不改变底层轮速 PI 参数。
  */
-#define ROUTE_TASK_PRIO                2U
+#include "task_priority.h"
+#define ROUTE_TASK_PRIO                TASK_PRIORITY_ROUTE
 
 /* 导航任务栈大小，单位为 StackType_t 个数；本 STM32 工程每个为 4 字节。
  * 例如 512 对应 2048 字节栈空间，不包含任务控制块；调小会减少任务可用栈。

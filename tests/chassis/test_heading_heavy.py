@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -32,12 +33,12 @@ int main(void) {
     float medium=HeadingControl_HoldYaw(.05f,0,0);
     assert(small>0 && small<.02f && medium>small && medium<.08f);
     assert(HeadingControl_HoldYaw(-.011f,0,0)<0);
-    assert(fabsf(HeadingControl_HoldYaw(2,0,0)-.35f)<1e-6f);
-    assert(fabsf(HeadingControl_HoldYaw(-2,0,0)+.35f)<1e-6f);
+    assert(fabsf(HeadingControl_HoldYaw(2,0,0)-.50f)<1e-6f);
+    assert(fabsf(HeadingControl_HoldYaw(-2,0,0)+.50f)<1e-6f);
     /* Already turning toward target: brake before the angle crosses zero. */
     assert(HeadingControl_Output(.05f,.2f,.01f)<0);
     assert(HeadingControl_Output(-.05f,-.2f,.01f)>0);
-    assert(fabsf(HeadingControl_Output(.05f,.1f,.01f))<1e-6f);
+    assert(fabsf(HeadingControl_Output(.05f,.05f*1.20f/.55f,.01f))<1e-6f);
     assert(HeadingControl_Output(0,.2f,.01f)<0);
     assert(HeadingControl_Output(.005f,.01f,.01f)==0);
     /* Public entry uses the measured gyro, not an error difference. */
@@ -62,7 +63,14 @@ int main(void) {
 '''
 compiler = os.environ.get('ROUTE_HOST_CC') or shutil.which('gcc')
 if not compiler:
-    raise SystemExit('Set ROUTE_HOST_CC to a C compiler')
+    build = ROOT / 'tests/mango/.build/heading-heavy'
+    build.mkdir(parents=True, exist_ok=True)
+    (build / 'test.c').write_text(test, encoding='utf-8')
+    for name in ('heading_control.c', 'heading_control.h'):
+        shutil.copyfile(FW / 'BALANCE' / name, build / name)
+    shutil.copyfile(ROOT / 'tests/chassis/stubs/sys.h', build / 'sys.h')
+    subprocess.run([sys.executable, str(ROOT / 'tests/mango/run_tests.py'), str(build / 'test.c')], cwd=ROOT, check=True)
+    raise SystemExit(0)
 with tempfile.TemporaryDirectory(prefix='heading-heavy-') as temp:
     build = Path(temp)
     (build / 'test.c').write_text(test, encoding='utf-8')

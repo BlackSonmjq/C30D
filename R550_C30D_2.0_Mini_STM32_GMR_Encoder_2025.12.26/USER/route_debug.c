@@ -1,5 +1,6 @@
 #include "route_debug.h"
 #include "route_config.h"
+#include "vision_align.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <string.h>
@@ -69,78 +70,42 @@ uint8_t RouteDebug_ReadFault(RouteDebugFrame *frame)
 
 uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
 {
-    RouteDebugFrame f;
+    Camera_Data camera;
+    VisionAlign_Diagnostics align;
     float channels[ROUTE_VOFA_CHANNEL_COUNT];
     uint32_t bits;
     uint16_t channel;
-    if (bytes == 0 || capacity < ROUTE_VOFA_FRAME_BYTES || !RouteDebug_Read(&f)) return 0U;
+    if (bytes == 0 || capacity < ROUTE_VOFA_FRAME_BYTES) return 0U;
+    /* Visual telemetry remains live before route start and after a route fault. */
+    Camera_GetData(&camera);
+    channels[0] = (float)camera.pole;
+    channels[1] = (float)camera.offset;
+    channels[2] = (float)camera.green;
+    channels[3] = (float)camera.region;
+    channels[4] = (float)camera.bytes;
+    channels[5] = (float)camera.frames;
+    channels[6] = (float)camera.bad;
+    channels[7] = (float)camera.uart_errors;
+    VisionAlign_GetDiagnostics(&align);
+    channels[8] = (float)align.phase;
+    channels[9] = (float)align.locked;
+    channels[10] = (float)align.ly;
+    channels[11] = (float)align.rx;
+    channels[12] = (float)align.stick_active;
+    channels[13] = (float)align.ready;
+    channels[14] = align.vx_mps;
+    channels[15] = align.vy_mps;
+    channels[16] = align.wz_radps;
+    channels[17] = align.rc_velocity_mmps;
+    channels[18] = (float)align.control_flags;
+    channels[19] = (float)align.blocked;
+    for (channel = 0U; channel < 4U; ++channel) {
+        channels[20U + channel] = align.wheel_target[channel];
+        channels[24U + channel] = align.wheel_feedback[channel];
+        channels[28U + channel] = align.wheel_pwm[channel];
+    }
 
-    channels[0] = (float)f.tick_ms;
-    channels[1] = (float)f.route.target_point;
-    channels[2] = (float)f.route.phase;
-    channels[3] = (float)f.route.reason;
-    channels[4] = f.route.progress_mm;
-    channels[5] = f.route.length_mm;
-    channels[6] = (float)f.raw_mm[ROUTE_LIDAR_FRONT];
-    channels[7] = (float)f.raw_mm[ROUTE_LIDAR_BEHIND];
-    channels[8] = (float)f.raw_mm[ROUTE_LIDAR_LEFT];
-    channels[9] = (float)f.raw_mm[ROUTE_LIDAR_RIGHT];
-    channels[10] = (float)f.route.measured_mm;
-    channels[11] = (float)f.route.target_mm;
-    channels[12] = f.route.odom_remaining_mm;
-    channels[13] = f.route.laser_remaining_mm;
-    channels[14] = f.route.mismatch_mm;
-    channels[15] = (float)f.odom.sample_dt_ms;
-    channels[16] = (float)f.odom.max_sample_dt_ms;
-    channels[17] = f.odom.yaw_rad * (180.0f / 3.14159265358979323846f);
-    channels[18] = f.command_vx_mps;
-    channels[19] = f.command_vy_mps;
-    channels[20] = f.odom.vx_mps;
-    channels[21] = f.odom.vy_mps;
-    channels[22] = (float)f.route.stop_flags;
-    channels[23] = (float)f.frozen;
-    channels[24] = (float)f.lidar_sequence;
-    channels[25] = f.lidar_age_ms;
-    channels[26] = (float)f.can_fresh;
-    channels[27] = (float)f.odom.valid;
-    channels[28] = f.odom.x_mm;
-    channels[29] = f.odom.y_mm;
-    channels[30] = f.route.gate_mm;
-    channels[31] = (float)f.route.lane;
-    channels[32] = f.route.estimated_end_mm;
-    channels[33] = f.route.control_remaining_mm;
-    channels[34] = f.route.wall_innovation_mm;
-    channels[35] = (float)f.route.wall_locked;
-    channels[36] = (float)f.route.capture_confirmed;
-    channels[37] = (float)f.route.odom_untrusted;
-    channels[38] = (float)f.route.search_elapsed_ms;
-    channels[39] = (float)f.route.reference_idle_ms;
-    channels[40] = (float)f.route.confidence;
-    channels[41] = (float)f.route.reject_reason;
-    channels[42] = (float)f.route.good_frames;
-    channels[43] = (float)f.route.bad_frames;
-    channels[44] = (float)f.route.speed_limited;
-    channels[45] = (float)f.route.odom_warn_count;
-    channels[46] = (float)f.route.recovering;
-    channels[47] = (float)f.route.recovery_resets;
-    channels[48] = (float)f.route.edge_state;
-    channels[49] = (float)f.route.edge_confirmed;
-    channels[50] = f.route.edge_last_near_mm;
-    channels[51] = f.route.edge_first_far_mm;
-    channels[52] = f.route.edge_anchor_mm;
-    channels[53] = f.route.edge_uncertainty_mm;
-    channels[54] = (float)f.route.aux_sensor;
-    channels[55] = (float)f.route.aux_measured_mm;
-    channels[56] = (float)f.route.aux_target_mm;
-    channels[57] = f.route.aux_remaining_mm;
-    channels[58] = (float)f.route.aux_confidence;
-    channels[59] = (float)f.route.aux_reject_reason;
-    channels[60] = (float)f.route.aux_good_frames;
-    channels[61] = (float)f.route.aux_bad_frames;
-    channels[62] = (float)f.route.control_source;
-    channels[63] = f.route.edge_speed_cap_mps;
-
-    /* 显式输出小端字节，不依赖结构体填充或发送端的整数端序。 */
+    /* Emit little-endian float32 without depending on structure padding. */
     for (channel = 0U; channel < ROUTE_VOFA_CHANNEL_COUNT; ++channel) {
         memcpy(&bits, &channels[channel], sizeof(bits));
         bytes[channel * 4U] = (uint8_t)bits;

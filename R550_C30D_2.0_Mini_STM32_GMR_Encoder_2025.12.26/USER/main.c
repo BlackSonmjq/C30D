@@ -23,6 +23,8 @@ All rights reserved
 #include "distance_task.h"
 #include "route_config.h"
 #include "my_chassis_task.h"
+#include "route_debug.h"
+#include "vision_strike.h"
 //Task priority    //任务优先级
 #define START_TASK_PRIO	0
 
@@ -80,6 +82,11 @@ void start_task(void *pvParameters)
         Route_TaskCreated = (xTaskCreate(my_chassis_task, "route_demo",
                                          ROUTE_TASK_STACK, NULL,
                                          ROUTE_TASK_PRIO, NULL) == pdPASS);
+    }
+
+    if (RouteVofa_IsActive() || (VISION_STRIKE_ENABLE && Check == 0)) {
+        xTaskCreate(RouteVofa_Task, "vision_vofa", ROUTE_VOFA_TASK_STACK,
+                    NULL, ROUTE_VOFA_TASK_PRIO, NULL);
     }
 
     vTaskDelete(StartTask_Handler); // 删除启动任务

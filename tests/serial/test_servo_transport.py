@@ -17,11 +17,11 @@ def simulate(mode=2, ignore_outward=0, extra_ack=False, inject_error=False,
              noisy=False, short_mode=False, miss_mode_queries=0):
     cpu=support['fresh'](); cpu.mem_map(0xe000e000,0x4000)
     tick=0; position=541; sends=0; frame=bytearray(); wire=[]; replies=[]; logs=[]; cr1_checks=0; errors=0
-    scheduler_depth=0; mode_queries=0
+    mode_queries=0
     hook_names=['xTaskGetTickCount','USART_GetFlagStatus','USART_Cmd',
                 'USART_HalfDuplexCmd','GPIO_ReadInputDataBit','any_printf',
-                'xTaskGetSchedulerState','vTaskSuspendAll','xTaskResumeAll']
-    addresses={sym[n]&~1:n for n in hook_names}
+                'vTaskSuspendAll']
+    addresses={sym[n]&~1:n for n in hook_names if n in sym}
     def word(addr): return int.from_bytes(cpu.mem_read(addr,4),'little')
     def put(addr,value): cpu.mem_write(addr,struct.pack('<I',value))
     def cstring(addr):
@@ -52,12 +52,12 @@ def simulate(mode=2, ignore_outward=0, extra_ack=False, inject_error=False,
             else: position=541
         else: raise AssertionError(command)
     def hook(uc,address,size,user):
-        nonlocal tick,position,sends,frame,cr1_checks,scheduler_depth,mode_queries
+        nonlocal tick,position,sends,frame,cr1_checks,mode_queries
         # Execute one complete normal-mode DMA transfer. Direction and scheduler
         # ownership are checked against the actual compiled driver registers.
         stream=0x40026070
         if word(stream)&1 and word(UART4+20)&128 and word(stream+4):
-            assert (word(UART4+12)&12)==8 and scheduler_depth==1
+            assert (word(UART4+12)&12)==8
             length=word(stream+4)
             command=bytes(uc.mem_read(word(stream+12),length)).decode('ascii')
             assert word(stream+8)==UART4+4
@@ -68,16 +68,11 @@ def simulate(mode=2, ignore_outward=0, extra_ack=False, inject_error=False,
         if name is None: return
         a=uc.reg_read(UC_ARM_REG_R0); b=uc.reg_read(UC_ARM_REG_R1); r=0
         if name=='xTaskGetTickCount': r=tick
-        elif name=='xTaskGetSchedulerState': r=0 if scheduler_depth else 2
         elif name=='vTaskSuspendAll':
-            assert not uc.reg_read(UC_ARM_REG_PRIMASK)
-            scheduler_depth+=1
-        elif name=='xTaskResumeAll':
-            assert scheduler_depth==1 and not uc.reg_read(UC_ARM_REG_PRIMASK)
-            assert not (word(UART4+12)&8)
-            scheduler_depth-=1
+            raise AssertionError('Servo TX must allow chassis/vision tasks to preempt')
         elif name=='USART_GetFlagStatus':
             assert a==UART4
+            assert not uc.reg_read(UC_ARM_REG_PRIMASK), 'TC wait must not mask interrupts'
             r=1 # Model UART ready; TC boundary is covered by the driver unit test.
         elif name=='USART_Cmd':
             put(a+12,(word(a+12)|0x2000) if b else (word(a+12)&~0x2000))
@@ -107,7 +102,6 @@ def simulate(mode=2, ignore_outward=0, extra_ack=False, inject_error=False,
         if not support['read'](cpu,'servo_debug_busy'): break
         tick+=50
     else: raise AssertionError('did not finish')
-    assert not scheduler_depth
     if mode is None: assert mode_queries==3
     if miss_mode_queries and mode is not None: assert mode_queries==miss_mode_queries+1
     moves=[cmd for _,cmd in wire if 'T' in cmd]
@@ -115,7 +109,7 @@ def simulate(mode=2, ignore_outward=0, extra_ack=False, inject_error=False,
 
 normal=['#002P0500T0500!','#002P1833T0500!','#002P0500T0500!']
 m,l,t,c=simulate(); assert m==normal,(m,l)
-print('PASS: real S2 move encoding, UART4 direction and scheduler protection for',c,'bytes')
+print('PASS: real S2 encoding and UART4 direction without scheduler suspension for',c,'bytes')
 m,l,t,c=simulate(ignore_outward=1); assert m==normal[:2]+normal[1:],m
 m,l,t,c=simulate(ignore_outward=99); assert m==normal[:1]+[normal[1]]*3+normal[-1:],m
 assert any('POSITION TIMEOUT' in f for f in l)

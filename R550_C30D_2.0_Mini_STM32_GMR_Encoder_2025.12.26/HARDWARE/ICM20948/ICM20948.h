@@ -102,7 +102,8 @@
 
 #define MAG_DATA_LEN    6
 
-#define ICM20948_TASK_PRIO		3    
+#include "task_priority.h"
+#define ICM20948_TASK_PRIO		TASK_PRIORITY_IMU
 #define ICM20948_STK_SIZE 		256  
 
 typedef struct icm20948_st_sensor_data_tag

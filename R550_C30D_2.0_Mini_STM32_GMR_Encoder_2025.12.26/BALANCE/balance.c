@@ -1,11 +1,12 @@
 #include "balance.h"
 #include "heading_control.h"
-#include "lateral_friction.h"
 #include "wheel_output.h"
 #include "stepper_task.h"
 #include "route_config.h"
 #include "route_io.h"
 #include "chassis_odometry.h"
+#include "vision_align.h"
+#include "servo_task.h"
 //int Time_count=0; //Time variable //计时变量
 
 // Robot mode is wrong to detect flag bits
@@ -29,6 +30,63 @@ void auto_pwm_clear(void);
 /* 麦轮手动平移：左杆前后、右杆左右；进入手动时锁定当前 IMU 航向。 */
 static u8 manual_heading_locked;
 static float manual_heading_target;
+static VisionAlign_State vision_align;
+static uint8_t vision_align_ready;
+static uint16_t vision_align_blocked = 8192U;
+uint8_t VisionAlign_GetPhase(void)
+{ return vision_align.phase; }
+static void VisionAlign_Drive(float forward, float left);
+static uint8_t VisionAlign_ControlAllowed(void)
+{
+    return VISION_ALIGN_ENABLE && !RouteIO_ControlOwned() && !APP_ON_Flag &&
+        !Remote_ON_Flag && !CAN_ON_Flag && !Usart1_ON_Flag && !Usart5_ON_Flag &&
+        !Allow_Recharge && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+}
+static void VisionAlign_ReleaseControl(void)
+{
+    VisionAlign_Cancel(&vision_align);
+    vision_align_ready = 0U;
+    vision_align_blocked = 8192U;
+}
+/* Small live snapshot for VOFA; no formatting or UART wait in control code. */
+void VisionAlign_GetDiagnostics(VisionAlign_Diagnostics *data)
+{
+    uint32_t mask;
+    if (!data) return;
+    mask = __get_PRIMASK();
+    __disable_irq();
+    data->phase = VisionAlign_GetPhase();
+    data->locked = vision_align.phase == VISION_ALIGN_ACQUIRE || vision_align.phase == VISION_ALIGN_TRACK ||
+        (vision_align.phase == VISION_ALIGN_DONE &&
+         (uint32_t)(xTaskGetTickCount() - vision_align.stopped_ms) < VISION_ALIGN_DONE_HOLD_MS);
+    data->ly = GamePadInterface ? GamePadInterface->LY : 127U;
+    data->rx = GamePadInterface ? GamePadInterface->RX : 127U;
+    data->stick_active = fabsf((float)data->ly - 127.0f) >= 20.0f ||
+                         fabsf((float)data->rx - 127.0f) >= 20.0f;
+    data->ready = vision_align_ready;
+    data->blocked = vision_align_blocked;
+    data->vx_mps = Move_X;
+    data->vy_mps = Move_Y;
+    data->wz_radps = Move_Z;
+    data->rc_velocity_mmps = RC_Velocity;
+    data->wheel_target[0] = MOTOR_A.Target;
+    data->wheel_feedback[0] = MOTOR_A.Encoder;
+    data->wheel_pwm[0] = EN && !Flag_Stop && Voltage >= 10.0f ? MOTOR_A.Motor_Pwm : 0.0f;
+    data->wheel_target[1] = MOTOR_B.Target;
+    data->wheel_feedback[1] = MOTOR_B.Encoder;
+    data->wheel_pwm[1] = EN && !Flag_Stop && Voltage >= 10.0f ? MOTOR_B.Motor_Pwm : 0.0f;
+    data->wheel_target[2] = MOTOR_C.Target;
+    data->wheel_feedback[2] = MOTOR_C.Encoder;
+    data->wheel_pwm[2] = EN && !Flag_Stop && Voltage >= 10.0f ? MOTOR_C.Motor_Pwm : 0.0f;
+    data->wheel_target[3] = MOTOR_D.Target;
+    data->wheel_feedback[3] = MOTOR_D.Encoder;
+    data->wheel_pwm[3] = EN && !Flag_Stop && Voltage >= 10.0f ? MOTOR_D.Motor_Pwm : 0.0f;
+    data->control_flags = (PS2_ON_Flag ? 1U : 0U) | (Remote_ON_Flag ? 2U : 0U) |
+        (APP_ON_Flag ? 4U : 0U) | (RouteIO_ControlOwned() ? 8U : 0U) |
+        (EN ? 16U : 0U) | (Flag_Stop ? 32U : 0U) |
+        (GamePadInterface && GamePadInterface->getKeyState ? 64U : 0U);
+    __set_PRIMASK(mask);
+}
 static void ManualMecanum_Drive(float forward, float left)
 {
     ChassisOdomFrame pose;
@@ -48,6 +106,10 @@ static void ManualMecanum_Drive(float forward, float left)
     }
     if (HEADING_CONTROL_ENABLE)
         angular = HeadingControl_HoldYaw(manual_heading_target, pose.yaw_rad, imu.gyro.z);
+    /* On a manual reversal, discard the old direction's ramp. Smooth_control
+     * still ramps up the new direction; do not spend cycles driving the old one. */
+    if (forward * smooth_control.VX < 0.0f) smooth_control.VX = 0.0f;
+    if (left * smooth_control.VY < 0.0f) smooth_control.VY = 0.0f;
     Move_X = forward;
     Move_Y = left;
     Move_Z = angular;
@@ -103,8 +165,9 @@ void FlashParam_Read(void)
 	if( read!=0xffffffff ) LineDiffParam = read;
 
 	//异常速度数据,过滤
-	if( RC_Velocity < 0 || RC_Velocity > 10000 )
-		RC_Velocity = 500;
+	if( !(RC_Velocity >= 0) || RC_Velocity > 10000 )
+		RC_Velocity = MANUAL_RC_MAX_MMPS;
+    RC_Velocity = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
 
 	//纠偏系数异常,过滤
 	if( LineDiffParam  > 100 )
@@ -138,12 +201,9 @@ static float wheelCoefficient(uint32_t diffparam,uint8_t isLeftWheel)
 }
 
 
-static float lateral_friction_requested_x, lateral_friction_requested_y;
 
 void Drive_Motor(float Vx,float Vy,float Vz)
 {
-    lateral_friction_requested_x = Vx;
-    lateral_friction_requested_y = Vy;
 	float amplitude=3.5; //Wheel target speed limit //车轮目标速度限幅
 
 	Vx=target_limit_float(Vx,-amplitude,amplitude);
@@ -176,6 +236,7 @@ void Drive_Motor(float Vx,float Vy,float Vz)
 	//麦克纳姆轮小车
 	if (Car_Mode==Mec_Car||Car_Mode==Mec_Car_V550)
 	{
+        WheelOutput_SetMotion(Vx, Vy);
 		//Inverse kinematics //运动学逆解
 		MOTOR_A.Target   = +Vy+Vx-Vz*(Axle_spacing+Wheel_spacing);
 		MOTOR_B.Target   = -Vy+Vx-Vz*(Axle_spacing+Wheel_spacing);
@@ -321,7 +382,7 @@ void Balance_task(void *pvParameters)
 	u32 lastWakeTime = getSysTickCnt();
 	float chassis_vz;
 	u8 heading_control_active;
-	u8 chassis_allowed, actuator_parked;
+	u8 chassis_allowed, actuator_parked, wheel_output_active;
 	static u8 imu_ready_beeped = 0;
 
     while(1)
@@ -337,7 +398,7 @@ void Balance_task(void *pvParameters)
 		//and convert to transposition international units
 		//获取编码器数据，即车轮实时速度，并转换位国际单位
         Get_Velocity_Form_Encoder();
-        if (ROUTE_DEMO_ENABLE) {
+        if (ROUTE_DEMO_ENABLE || VISION_ALIGN_ENABLE) {
             /* Encoder 按固定 CONTROL_FREQUENCY 换算过速度；除以同一频率恢复
              * 本次计数对应的位移，平移里程不再重复乘实际采样时间。单位 mm。 */
             ChassisOdom_UpdateDelta((MOTOR_A.Encoder + MOTOR_B.Encoder + MOTOR_C.Encoder + MOTOR_D.Encoder) *
@@ -360,8 +421,13 @@ void Balance_task(void *pvParameters)
 			imu_ready_beeped = 1;
 		}
 
-        if (RouteIO_ControlOwned() || APP_ON_Flag || (!Remote_ON_Flag && !PS2_ON_Flag) || !EN || Flag_Stop)
+        if (RouteIO_ControlOwned() || APP_ON_Flag ||
+            (!Remote_ON_Flag && !PS2_ON_Flag &&
+             !(VISION_ALIGN_ENABLE && (vision_align.phase == VISION_ALIGN_ACQUIRE || vision_align.phase == VISION_ALIGN_TRACK))) ||
+            !EN || Flag_Stop)
             manual_heading_locked = 0U;
+        if (!VisionAlign_ControlAllowed() || !EN || Flag_Stop)
+            VisionAlign_ReleaseControl();
 
         if (RouteIO_ControlOwned())
         {
@@ -424,6 +490,7 @@ void Balance_task(void *pvParameters)
 			if      (APP_ON_Flag)      Get_RC();         //Handle the APP remote commands //处理APP遥控命令
 			else if (Remote_ON_Flag)   Remote_Control(); //Handle model aircraft remote commands //处理航模遥控命令
 			else if (PS2_ON_Flag)      PS2_control();    //Handle PS2 controller commands //处理PS2手柄控制命令
+            else if (VisionAlign_ControlAllowed()) VisionAlign_Drive(0.0f, 0.0f);
 
 			//CAN, Usart 1, Usart 3, Uart5 control can directly get the three axis target speed,
 			//without additional processing
@@ -448,26 +515,17 @@ void Balance_task(void *pvParameters)
 			//Speed closed-loop control to calculate the PWM value of each motor,
 			//PWM represents the actual wheel speed
 			//速度闭环控制计算各电机PWM值，PWM代表车轮实际转速
+            wheel_output_active = !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
 			MOTOR_A.Motor_Pwm=Incremental_PI_A(MOTOR_A.Encoder, MOTOR_A.Target);
 			MOTOR_B.Motor_Pwm=Incremental_PI_B(MOTOR_B.Encoder, MOTOR_B.Target);
 			MOTOR_C.Motor_Pwm=Incremental_PI_C(MOTOR_C.Encoder, MOTOR_C.Target);
 			MOTOR_D.Motor_Pwm=Incremental_PI_D(MOTOR_D.Encoder, MOTOR_D.Target);
 
-            MOTOR_A.Motor_Pwm = WheelOutput_Apply(MOTOR_A.Motor_Pwm, MOTOR_A.Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
-            MOTOR_B.Motor_Pwm = WheelOutput_Apply(MOTOR_B.Motor_Pwm, MOTOR_B.Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
-            MOTOR_C.Motor_Pwm = WheelOutput_Apply(MOTOR_C.Motor_Pwm, MOTOR_C.Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
-            MOTOR_D.Motor_Pwm = WheelOutput_Apply(MOTOR_D.Motor_Pwm, MOTOR_D.Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+            MOTOR_A.Motor_Pwm = WheelOutput_Apply(0U, MOTOR_A.Motor_Pwm, MOTOR_A.Target, MOTOR_A.Encoder, wheel_output_active);
+            MOTOR_B.Motor_Pwm = WheelOutput_Apply(1U, MOTOR_B.Motor_Pwm, MOTOR_B.Target, MOTOR_B.Encoder, wheel_output_active);
+            MOTOR_C.Motor_Pwm = WheelOutput_Apply(2U, MOTOR_C.Motor_Pwm, MOTOR_C.Target, MOTOR_C.Encoder, wheel_output_active);
+            MOTOR_D.Motor_Pwm = WheelOutput_Apply(3U, MOTOR_D.Motor_Pwm, MOTOR_D.Target, MOTOR_D.Encoder, wheel_output_active);
 
-            if ((Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550) && !start_clear) {
-                MOTOR_A.Motor_Pwm = LateralFriction_Apply(0U, MOTOR_A.Motor_Pwm, MOTOR_A.Target,
-                    MOTOR_A.Encoder, lateral_friction_requested_x, lateral_friction_requested_y);
-                MOTOR_B.Motor_Pwm = LateralFriction_Apply(1U, MOTOR_B.Motor_Pwm, MOTOR_B.Target,
-                    MOTOR_B.Encoder, lateral_friction_requested_x, lateral_friction_requested_y);
-                MOTOR_C.Motor_Pwm = LateralFriction_Apply(2U, MOTOR_C.Motor_Pwm, MOTOR_C.Target,
-                    MOTOR_C.Encoder, lateral_friction_requested_x, lateral_friction_requested_y);
-                MOTOR_D.Motor_Pwm = LateralFriction_Apply(3U, MOTOR_D.Motor_Pwm, MOTOR_D.Target,
-                    MOTOR_D.Encoder, lateral_friction_requested_x, lateral_friction_requested_y);
-            }
 
 			Limit_Pwm(16700);
 
@@ -639,7 +697,7 @@ int Incremental_PI_A (float Encoder,float Target)
 	 static float Bias,Pwm,Last_bias;
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
-     Pwm = WheelOutput_ClampPi(Pwm, Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+     Pwm = WheelOutput_ClampPi(0U, Pwm, Target, Encoder, !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550));
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 
 	//清除PWM标志位，该位为1时代表需要清除PWM
@@ -661,7 +719,7 @@ int Incremental_PI_B (float Encoder,float Target)
 	 static float Bias,Pwm,Last_bias;
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
-     Pwm = WheelOutput_ClampPi(Pwm, Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+     Pwm = WheelOutput_ClampPi(1U, Pwm, Target, Encoder, !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550));
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 	if( start_clear )
 	{
@@ -678,7 +736,7 @@ int Incremental_PI_C (float Encoder,float Target)
 	 static float Bias,Pwm,Last_bias;
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
-     Pwm = WheelOutput_ClampPi(Pwm, Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+     Pwm = WheelOutput_ClampPi(2U, Pwm, Target, Encoder, !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550));
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 
 	if(Car_Mode==Diff_Car || Car_Mode==Akm_Car || Car_Mode==Tank_Car) Pwm = 0;
@@ -698,7 +756,7 @@ int Incremental_PI_D (float Encoder,float Target)
 
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
 	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
-     Pwm = WheelOutput_ClampPi(Pwm, Target, Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+     Pwm = WheelOutput_ClampPi(3U, Pwm, Target, Encoder, !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550));
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 
 	if(Car_Mode==Diff_Car || Car_Mode==Akm_Car || Car_Mode==Tank_Car || Car_Mode==Omni_Car ) Pwm = 0;
@@ -814,7 +872,7 @@ void Xbox360GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 		else if( keyid == Xbox360KEY_RB && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK )  )
 			RC_Velocity += 50;
 
-		if( RC_Velocity < 0 ) RC_Velocity = 0;
+		RC_Velocity = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
 	}
 	else if(  gamepad_brand == PS2_USB_Wiredless )
 	{
@@ -822,7 +880,7 @@ void Xbox360GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 			RC_Velocity += 50;
 		else if( keyid == Xbox360_PaddingBit && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK ) )
 			RC_Velocity -= 50;
-		if( RC_Velocity < 0 ) RC_Velocity = 0;
+		RC_Velocity = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
 	}
 
 
@@ -857,7 +915,7 @@ void Wired_USB_PS2GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t 
 	else if( keyid == PS2KEY_L1 && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK )  )
 		RC_Velocity += 50;
 
-	if( RC_Velocity < 0 ) RC_Velocity = 0;
+	RC_Velocity = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
 }
 
 //经典PS2手柄回调函数,非USB款
@@ -873,7 +931,7 @@ void Classic_PS2GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t ev
 	else if( keyid == PS2KEY_L1 && (event == GamePadKeyEvent_DOUBLECLICK || event == GamePadKeyEvent_SINGLECLICK )  )
 		RC_Velocity+= 50;
 
-	if( RC_Velocity < 0 ) RC_Velocity = 0;
+	RC_Velocity = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
 }
 
 
@@ -891,16 +949,60 @@ static uint8_t map_to_vib(float x) {
 }
 
 
+/* Automatic DX alignment is available without a controller.
+ * Vision owns ACQUIRE/TRACK; manual input is only used outside an attempt. */
+static void VisionAlign_Drive(float forward, float left)
+{
+#if VISION_ALIGN_ENABLE
+    Camera_Data camera;
+    ChassisOdomFrame pose;
+    VisionAlign_Output command;
+    uint32_t now = (uint32_t)xTaskGetTickCount();
+    uint8_t ready;
+    uint8_t was_automatic = vision_align.phase == VISION_ALIGN_ACQUIRE || vision_align.phase == VISION_ALIGN_TRACK;
+    uint8_t manual_active = PS2_ON_Flag && GamePadInterface && GamePadInterface->getKeyState &&
+        (fabsf((float)GamePadInterface->LY - 127.0f) >= 20.0f ||
+         fabsf((float)GamePadInterface->RX - 127.0f) >= 20.0f);
+    Camera_GetData(&camera);
+    ChassisOdom_Read(&pose);
+    vision_align_blocked = (!VisionAlign_ControlAllowed() ? 8192U : 0U) | (Check != 0 ? 2U : 0U) |
+        (!EN ? 4U : 0U) | (Flag_Stop ? 8U : 0U) | (!(Voltage >= 10.0f) ? 16U : 0U) |
+        (SysVal.Time_count < CONTROL_DELAY ? 32U : 0U) | (!pose.valid ? 64U : 0U) |
+        ((uint32_t)(now - pose.tick_ms) > ROUTE_ODOM_MAX_GAP_MS ? 128U : 0U) |
+        (RouteIO_ControlOwned() ? 256U : 0U) | (StepperTask_IsBusy() ? 512U : 0U) |
+        (ServoTask_IsBusy() ? 1024U : 0U) | (USART_ServoControlBusy() ? 2048U : 0U) |
+        (RouteIO_WorkReserved() ? 4096U : 0U);
+    ready = vision_align_ready = vision_align_blocked == 0U;
+    command = VisionAlign_Update(&vision_align, &camera, now, manual_active, ready);
+    if ((!ready && (!manual_active || was_automatic)) ||
+        (command.owned && command.x_mps == 0.0f && command.y_mps == 0.0f)) {
+        /* Full zero, including yaw hold, until fresh target confirmation or manual input. */
+        smooth_control.VX = smooth_control.VY = smooth_control.VZ = 0.0f;
+        Move_X = Move_Y = Move_Z = 0.0f;
+        manual_heading_locked = 0U;
+        HeadingControl_Reset();
+        Drive_Motor(0.0f, 0.0f, 0.0f);
+        return;
+    }
+    if (command.owned) {
+        ManualMecanum_Drive(command.x_mps, command.y_mps);
+        return;
+    }
+#endif
+    ManualMecanum_Drive(forward, left);
+}
+
 void PS2_control(void)
 {
     if (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550) {
         /* 左杆前后控制前后，右杆左右控制横移；取消摇杆自转和扳机替代。 */
+        float rc_velocity = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
         float forward = (float)GamePadInterface->LY - 127.0f;
         float left = 127.0f - (float)GamePadInterface->RX;
         if (fabsf(forward) < 20.0f) forward = 0.0f;
         if (fabsf(left) < 20.0f) left = 0.0f;
-        ManualMecanum_Drive(forward * RC_Velocity / (127.0f * 1000.0f),
-                           left * RC_Velocity / (127.0f * 1000.0f));
+        VisionAlign_Drive(forward * rc_velocity / (127.0f * 1000.0f),
+                           left * rc_velocity / (127.0f * 1000.0f));
         return;
     }
 
@@ -1022,6 +1124,7 @@ void Remote_Control(void)
     int LX,LY,RY,RX,Remote_RCvelocity;
     if (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550) {
         /* 航模通道：CH2 为左杆前后，CH1 为右杆左右；CH3/CH4 不参与麦轮平移与自转。 */
+        float rc_velocity = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
         int forward = target_limit_int(Remoter_Ch2, 1000, 2000) - 1500;
         int right = target_limit_int(Remoter_Ch1, 1000, 2000) - 1500;
         if (forward > -Threshold && forward < Threshold) forward = 0;
@@ -1033,8 +1136,8 @@ void Remote_Control(void)
             Drive_Motor(0.0f, 0.0f, 0.0f);
             return;
         }
-        ManualMecanum_Drive(forward * RC_Velocity / 500000.0f,
-                           -right * RC_Velocity / 500000.0f);
+        ManualMecanum_Drive(forward * rc_velocity / 500000.0f,
+                           -right * rc_velocity / 500000.0f);
         return;
     }
 

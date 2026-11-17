@@ -905,8 +905,9 @@ static USBH_StatusTypeDef USBH_HandleEnum(USBH_HandleTypeDef *phost)
       }
       else
       {
-		  static uint32_t testtime = 0;
-		  if( ++ testtime>=500 ) NVIC_SystemReset();
+          /* BUSY is a normal asynchronous control-transfer state. The USB
+           * request state machine owns retries and reports NOT_SUPPORTED on
+           * failure; never reset the whole robot for a slow USB receiver. */
 		  USBH_UsrLog("state:%d",ReqStatus);
         /* .. */
       }

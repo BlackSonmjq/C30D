@@ -187,6 +187,7 @@ uint8_t RouteIO_TakeWorkRequest(void)
     __set_PRIMASK(mask);
     return id;
 }
+uint8_t RouteIO_WorkReserved(void) { return work_reserved; }
 void RouteIO_AllowWork(uint8_t allowed) { work_allowed = allowed; }
 void RouteIO_CompleteWork(void)
 {

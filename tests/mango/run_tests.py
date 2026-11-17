@@ -91,7 +91,8 @@ def semihosting(uc, number, _):
 
 cpu.hook_add(UC_HOOK_INTR, semihosting)
 cpu.reg_write(UC_ARM_REG_SP, 0x201ff000)
-cpu.emu_start(entry | 1, 0xffffffff, timeout=30_000_000, count=20_000_000)
+cpu.emu_start(entry | 1, 0xffffffff, timeout=30_000_000,
+              count=int(os.environ.get("ARM_TEST_MAX_INSTRUCTIONS", "20000000")))
 message = b"".join(output).decode("utf-8", errors="replace")
 print(message, end="")
 if not exited or "PASS:" not in message or "FAIL" in message:
