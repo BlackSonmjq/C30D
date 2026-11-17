@@ -33,6 +33,8 @@ uv run --with unicorn --with pyelftools python tests/serial/test_task_commands.p
 
 测试覆盖四个编号、分次发送、CR/LF、连续请求的忙碌拒绝、无效编号、重复前缀、UART 错误恢复及原数字/舵机调试指令。
 
+USART1 的 `SJ` 命令每次回传一份最近有效视觉快照，格式为 `CMD SJ: B=1 DX=-20 G=1 REGION=3 F=12 R=72 E=0 U=0`；尚无有效帧时回传 `CMD SJ: NO DATA R=0 E=0 U=0`。测试直接执行新固件的 USART1/USART3 中断入口和数据回传函数，覆盖请求拆包、忙碌时只读查询、无帧、DX 的有符号边界及无效帧不覆盖有效快照。运行测试时应显式传入当前构建的 AXF 路径。
+
 # 串口3测距接收协议
 
 本板是接收端。正常运行模式（`Check == 0`）下，USART3 使用 **115200、8N1**，接收外部设备发送的 **11 字节二进制帧**。四路距离为16位无符号数，单位 mm，高字节在前。图中标注的 `1Bit` 按一个字节（8 bit）实现。

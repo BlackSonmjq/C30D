@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
+#include <stdarg.h>
 #define DistanceTask_SelectLaser Mock_SelectLaser
 #define DistanceTask_GetData Mock_GetDistance
 #include "../../R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/BALANCE/servo_task.c"
@@ -31,14 +32,24 @@ static s32 last_move;
 static Mango_Result expected_result;
 /* Independent expected values: do not derive boundary inputs from production macros. */
 static const u16 expected_targets[4] = {108, 60, 45, 35};
-/* Hardware direction: left approaches low, right approaches high. */
-static int outward(s32 pulses) { return active_motor == 1 ? pulses < 0 : pulses > 0; }
+/* Hardware direction: both motors approach low and return high. */
+static int outward(s32 pulses) { return pulses < 0; }
 
 #define CHECK(expr) do { ++checks; if (!(expr)) { \
     printf("FAIL case %u line %u: %s\n", case_id, (unsigned int)__LINE__, #expr); exit(1); } } while (0)
 
 TickType_t xTaskGetTickCount(void) { return tick; }
-void any_printf(void *port, char *format, ...) { (void)port; (void)format; }
+static char command_report[256];
+static unsigned int command_reports;
+void any_printf(void *port, char *format, ...) {
+    va_list args;
+    (void)port;
+    if (strncmp(format, "CMD ", 4) != 0) return;
+    va_start(args, format);
+    vsnprintf(command_report, sizeof(command_report), format, args);
+    va_end(args);
+    ++command_reports;
+}
 u8 StepperMotor_SetSpeed(u8 motor, u16 arr) { CHECK(arr == 199); return motor <= 2; }
 u32 StepperMotor_GetCompletedPulses(u8 motor) { return count[motor]; }
 u8 StepperMotor_IsRunning(u8 motor) { return running[motor]; }
@@ -209,6 +220,59 @@ static void reset(void) {
     sparse_lossy=stalled_replies=0;
     ++case_id;
 }
+static void test_manual_reports(void) {
+    u8 id;
+    ManualLaserReport report;
+    DistanceTask_Data data;
+    char expected[96];
+    memset(&data, 0, sizeof(data));
+    for (id = 1; id <= 4; ++id) {
+        ++case_id;
+        report.id = id; report.started = 100; report.previous_update = 90;
+        data.laser_id = id; data.valid = 1; data.status = VL53L0X_OK;
+        data.distance_mm = 100 + id; data.update_tick = 90;
+        command_reports = 0;
+        report_manual_laser(&report, &data, 110);
+        CHECK(!command_reports && report.id == id); /* Cached distance forbidden. */
+        data.update_tick = 120; data.laser_id = id == 4 ? 1 : id + 1;
+        report_manual_laser(&report, &data, 120);
+        CHECK(!command_reports && report.id == id); /* Other channel forbidden. */
+        data.laser_id = id;
+        report_manual_laser(&report, &data, 120);
+        sprintf(expected, "CMD %u: laser=%u distance=%u mm\r\n", id, id, 100 + id);
+        CHECK(command_reports == 1 && !strcmp(command_report, expected) && report.id == id);
+        report_manual_laser(&report, &data, 130);
+        CHECK(command_reports == 1); /* Do not repeat the same sensor update. */
+        data.update_tick = 240; data.distance_mm = 200 + id;
+        report_manual_laser(&report, &data, 240);
+        sprintf(expected, "CMD %u: laser=%u distance=%u mm\r\n", id, id, 200 + id);
+        CHECK(command_reports == 2 && !strcmp(command_report, expected) && report.id == id);
+    }
+    ++case_id;
+    report.id = 2; report.started = 100; report.previous_update = 90;
+    data.laser_id = 2; data.valid = 0; data.status = VL53L0X_ERROR_I2C; data.update_tick = 120;
+    command_reports = 0;
+    report_manual_laser(&report, &data, 120);
+    CHECK(command_reports == 1 && strstr(command_report, "I2C communication failed"));
+    CHECK(!strstr(command_report, "distance=") && report.id == 2);
+    data.valid = 1; data.status = VL53L0X_OK; data.update_tick = 240;
+    report_manual_laser(&report, &data, 240);
+    CHECK(command_reports == 2 && strstr(command_report, "distance=") && report.id == 2);
+    ++case_id;
+    report.id = 3; report.started = 0xfffffff0U; report.previous_update = 90;
+    data.status = VL53L0X_NOT_READY;
+    command_reports = 0;
+    report_manual_laser(&report, &data, report.started + 4999U);
+    CHECK(!command_reports && report.id == 3);
+    report_manual_laser(&report, &data, report.started + 5000U);
+    CHECK(command_reports == 1 && strstr(command_report, "5000 ms") && report.id == 3);
+    report_manual_laser(&report, &data, report.started + 1U);
+    CHECK(command_reports == 1); /* Rate-limit a stalled sensor. */
+    data.laser_id = 3; data.valid = 1; data.status = VL53L0X_OK; data.update_tick = 5100;
+    report_manual_laser(&report, &data, 5100);
+    CHECK(command_reports == 2 && strstr(command_report, "distance=") && report.id == 3);
+}
+
 int main(void) {
     u8 id;
     CHECK(MANGO_MAX_PULSES == 26000UL);
@@ -276,6 +340,7 @@ int main(void) {
     reset(); CHECK(!ServoTask_Start(0) && !ServoTask_Start(5));
     CHECK(ServoTask_Start(1) && !ServoTask_Start(2));
     ServoTask_Cancel(); CHECK(!ServoTask_IsBusy() && !move_count && !stops);
+    test_manual_reports();
     test_distance_flow();
     printf("PASS: %u scenarios, %u completed jobs, %u checks\n", case_id, completed_jobs, checks);
     return 0;

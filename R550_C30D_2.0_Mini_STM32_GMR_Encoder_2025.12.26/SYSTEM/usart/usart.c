@@ -75,7 +75,8 @@ void any_printf(USART_TypeDef *USARTx, char *format, ...)
     va_list args;
 #if USART1_SERVO_LOG_ONLY
     if (USARTx == USART1 && strncmp(format, "SERVO ", 6U) != 0 &&
-        strncmp(format, "servo ", 6U) != 0) return;
+        strncmp(format, "servo ", 6U) != 0 &&
+        strncmp(format, "CMD ", 4U) != 0) return;
 #endif
     if (USARTx==USART2 && RouteVofa_IsActive()) return;
     va_start(args, format);

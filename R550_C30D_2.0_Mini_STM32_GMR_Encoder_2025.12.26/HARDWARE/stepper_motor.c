@@ -215,6 +215,10 @@ static u8 StepperMotor_Start(u8 motor, s32 signed_pulses, u8 continuous)
 
     primask = __get_PRIMASK();
     __disable_irq();
+    if (!A4988_SetDir(motor, signed_pulses > 0)) {
+        __set_PRIMASK(primask);
+        return 0; /* Keep STEP stopped and preserve the previous pulse count. */
+    }
     stepper_completed[index] = 0;
     stepper_continuous[index] = continuous;
     stepper_count[index] = count;
@@ -223,7 +227,6 @@ static u8 StepperMotor_Start(u8 motor, s32 signed_pulses, u8 continuous)
     target = stepper_target_period_us[index];
     stepper_period[index] = (target > STEPPER_START_PERIOD_US) ?
         target : STEPPER_START_PERIOD_US;
-    A4988_SetDir(motor, signed_pulses > 0);
     /* Reset CNT while the STEP pin is still a low GPIO, avoiding a
        spurious rising edge when restarting an externally stopped move. */
     TIM_SetCounter(timer, 0);

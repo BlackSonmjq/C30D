@@ -23,6 +23,7 @@ u8 StepperMotor_SetSpeed(u8 motor, u16 arr);
 u32 StepperMotor_MovePulses(u8 motor, s32 signed_pulses);
 
 /* 非阻塞运动会重新开始计数，定长运动由定时器中断到数停止。
+ * 启动前恢复 DIR 输出模式并校验引脚电平，不符时返回 0 且不输出 STEP。
  * 连续运动 forward=1 时 DIR 高、0 时 DIR 低；同一电机只能有一个控制方。
  * 获取最终计数前先调用 Disable，以计入停止瞬间已输出的上升沿。
  * 计数为指令 STEP 边沿，包含细分，不能检测机械失步；u32 在 2^32 回绕。 */

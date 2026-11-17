@@ -29,6 +29,114 @@ static volatile uint8_t usart3_raw[USART3_RAW_CAPTURE_SIZE], usart3_raw_write, u
 static volatile u8 servo_probe_command, servo_probe_active;
 static volatile u8 servo_debug_pending, servo_debug_busy;
 static u8 servo_debug_prefix;
+static volatile u8 camera_report_pending;
+
+/* SJ requests a single verified vision snapshot; never transmit in the RX ISR. */
+static void CameraReport_Process(void)
+{
+    Camera_Data data;
+    uint32_t mask = __get_PRIMASK();
+    u8 requested;
+    __disable_irq();
+    requested = camera_report_pending;
+    camera_report_pending = 0;
+    __set_PRIMASK(mask);
+    if (!requested) return;
+    Camera_GetData(&data);
+    if (!data.frames) {
+        any_printf(USART1, "CMD SJ: NO DATA R=%lu E=%lu U=%lu\r\n",
+                   (unsigned long)data.bytes, (unsigned long)data.bad,
+                   (unsigned long)data.uart_errors);
+        return;
+    }
+    any_printf(USART1, "CMD SJ: B=%u DX=%d G=%u REGION=%u F=%lu R=%lu E=%lu U=%lu\r\n",
+               (unsigned)data.pole, (int)data.offset, (unsigned)data.green,
+               (unsigned)data.region, (unsigned long)data.frames, (unsigned long)data.bytes,
+               (unsigned long)data.bad, (unsigned long)data.uart_errors);
+}
+
+/* USART1 IRQ is above the FreeRTOS syscall threshold: use a small mailbox,
+ * never printf or RTOS queue calls in the receive interrupt. */
+#define USART1_COMMAND_LOG_SIZE 64U
+typedef struct {
+    u8 prefix;
+    u8 argument;
+} USART1_CommandLog;
+static volatile USART1_CommandLog usart1_command_log[USART1_COMMAND_LOG_SIZE];
+static volatile u8 usart1_command_log_read, usart1_command_log_write;
+static volatile uint32_t usart1_command_log_dropped;
+
+static void USART1_CommandLogPush(u8 prefix, u8 argument)
+{
+    u8 next = (u8)((usart1_command_log_write + 1U) % USART1_COMMAND_LOG_SIZE);
+    if (next == usart1_command_log_read) {
+        ++usart1_command_log_dropped;
+        return;
+    }
+    usart1_command_log[usart1_command_log_write].prefix = prefix;
+    usart1_command_log[usart1_command_log_write].argument = argument;
+    usart1_command_log_write = next;
+}
+
+static void USART1_CommandLogProcess(void)
+{
+    unsigned int budget = USART1_COMMAND_LOG_SIZE - 1U;
+    uint32_t mask, dropped;
+    u8 prefix, argument;
+    const char *description;
+    /* Bound each pass so command bursts cannot starve other DATA_task work. */
+    while (budget--) {
+        mask = __get_PRIMASK();
+        __disable_irq();
+        if (usart1_command_log_read == usart1_command_log_write) {
+            __set_PRIMASK(mask);
+            break;
+        }
+        prefix = usart1_command_log[usart1_command_log_read].prefix;
+        argument = usart1_command_log[usart1_command_log_read].argument;
+        usart1_command_log_read = (u8)((usart1_command_log_read + 1U) % USART1_COMMAND_LOG_SIZE);
+        __set_PRIMASK(mask);
+
+        description = "invalid command";
+        switch (prefix) {
+        case 0:
+            description = "select upper laser";
+            break;
+        case 'K':
+            if (argument >= '1' && argument <= '4') description = "complete mango job";
+            break;
+        case 'S':
+            if (argument == 'J') description = "send vision data snapshot";
+            else if (argument == '0') description = "home all servos";
+            else if (argument >= '1' && argument <= '4') description = "servo motion test";
+            break;
+        case 'M':
+            if (argument >= '1' && argument <= '4') description = "set and verify servo mode";
+            break;
+        case 'B':
+            if (argument == '0') description = "set servo bus to 9600 baud";
+            else if (argument == '?') description = "scan servo baud rates";
+            break;
+        case 'V':
+            if (argument >= '0' && argument <= '4') description = "query servo firmware version";
+            break;
+        }
+        /* RX acknowledges receipt only; execution still uses the existing busy checks. */
+        if (prefix && argument >= 0x20U && argument <= 0x7EU)
+            any_printf(USART1, "CMD RX %c%c: %s\r\n", (int)prefix, (int)argument, description);
+        else if (prefix)
+            any_printf(USART1, "CMD RX %c[0x%02X]: %s\r\n", (int)prefix, (unsigned)argument, description);
+        else
+            any_printf(USART1, "CMD RX %c: %s\r\n", (int)argument, description);
+    }
+    mask = __get_PRIMASK();
+    __disable_irq();
+    dropped = usart1_command_log_dropped;
+    usart1_command_log_dropped = 0;
+    __set_PRIMASK(mask);
+    if (dropped)
+        any_printf(USART1, "CMD RX log overflow: %lu messages dropped\r\n", (unsigned long)dropped);
+}
 
 u8 USART_ServoControlBusy(void)
 {
@@ -434,6 +542,8 @@ void data_task(void *pvParameters)
 #if ROUTE_DEMO_ENABLE && ROUTE_DEBUG_MODE && ROUTE_VOFA_ENABLE
             RouteVofa_Poll();
 #endif
+            USART1_CommandLogProcess();
+            CameraReport_Process();
             ServoDebug_Process();
             /* Consume the UART1 diagnostic request in task context. */
             taskENTER_CRITICAL();
@@ -1412,6 +1522,7 @@ int USART1_IRQHandler(void)
      * Prefix persists across IRQs; a fresh K restarts an incomplete command. */
     if (byte == 'K') { servo_debug_prefix = 3U; return 0; }
     if (servo_debug_prefix == 3U) {
+        USART1_CommandLogPush('K', byte);
         servo_debug_prefix = 0;
         if (byte >= '1' && byte <= '4' && !USART_ServoControlBusy() && !ServoTask_IsBusy())
         {
@@ -1422,6 +1533,7 @@ int USART1_IRQHandler(void)
     }
     if (byte=='V') { servo_debug_prefix=5U; return 0; }
     if (servo_debug_prefix==5U) {
+        USART1_CommandLogPush('V', byte);
         servo_debug_prefix=0;
         if (byte>='0' && byte<='4' && !servo_debug_busy && !servo_probe_active && !StepperTask_IsBusy() && !ServoTask_IsBusy()) {
             servo_debug_busy=1; servo_debug_pending=(u8)(12U+byte-'0');
@@ -1430,6 +1542,7 @@ int USART1_IRQHandler(void)
     }
     if (byte=='B') { servo_debug_prefix=4U; return 0; }
     if (servo_debug_prefix==4U) {
+        USART1_CommandLogPush('B', byte);
         servo_debug_prefix=0;
         if ((byte=='0' || byte=='?') && !servo_debug_busy && !servo_probe_active && !StepperTask_IsBusy() && !ServoTask_IsBusy()) {
             servo_debug_busy=1; servo_debug_pending=byte=='?'?11U:10U;
@@ -1438,6 +1551,7 @@ int USART1_IRQHandler(void)
     }
     /* ASCII S0 homes all; S1..S4 exercises one servo. */
     if (servo_debug_prefix == 2U) {
+        USART1_CommandLogPush('M', byte);
         servo_debug_prefix=0;
         if ((byte>='1' && byte<='4') && !servo_debug_busy && !servo_probe_active && !StepperTask_IsBusy() && !ServoTask_IsBusy()) {
             servo_debug_busy=1;
@@ -1446,7 +1560,14 @@ int USART1_IRQHandler(void)
         return 0;
     }
     if (byte == 'M') { servo_debug_prefix=2U; return 0; }
+    if (servo_debug_prefix == 1U && byte == 'J') {
+        USART1_CommandLogPush('S', byte);
+        servo_debug_prefix = 0;
+        camera_report_pending = 1;
+        return 0;
+    }
     if (servo_debug_prefix) {
+        USART1_CommandLogPush('S', byte);
         servo_debug_prefix = 0;
         if (byte >= '0' && byte <= '4' && (byte == '0' || !servo_debug_busy) && !servo_probe_active && !StepperTask_IsBusy() && !ServoTask_IsBusy()) {
             servo_debug_busy = 1;
@@ -1457,6 +1578,7 @@ int USART1_IRQHandler(void)
     if (byte == 'S') { servo_debug_prefix = 1; return 0; }
     /* USART1 ASCII 1..4 select a local upper laser; do not forward commands. */
     if (byte >= '1' && byte <= '4') {
+        USART1_CommandLogPush(0, byte);
         StepperTask_RequestLaserFromISR((u8)(byte - '0'));
         return 0;
     }

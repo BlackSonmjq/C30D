@@ -9,7 +9,8 @@
 /* 左路：PB14=DIR、PB15=STEP；右路：PC7=DIR、PC8=STEP。
    两路 EN 均须由外部电路提供确定电平。 */
 void A4988_Init(void);
-void A4988_SetDir(u8 motor, u8 high);
+/* Restore GPIO output, set DIR and wait 2 us. Return 1 only if pin readback matches. */
+u8 A4988_SetDir(u8 motor, u8 high);
 void A4988_Step(u8 motor);
 
 #endif

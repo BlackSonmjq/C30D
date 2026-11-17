@@ -6,10 +6,11 @@ Build the EIDE firmware first, then run with unicorn and pyelftools installed:
 from pathlib import Path
 import struct
 import sys
+import re
 
 from elftools.elf.elffile import ELFFile
-from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS
-from unicorn.arm_const import UC_ARM_REG_LR, UC_ARM_REG_SP
+from unicorn import Uc, UC_ARCH_ARM, UC_MODE_THUMB, UC_MODE_MCLASS, UC_HOOK_CODE, UC_HOOK_MEM_WRITE
+from unicorn.arm_const import UC_ARM_REG_LR, UC_ARM_REG_SP, UC_ARM_REG_PC, UC_ARM_REG_R1, UC_ARM_REG_R2, UC_ARM_REG_R3
 
 ROOT = Path(__file__).resolve().parents[2]
 FIRMWARE = Path(sys.argv[1]) if len(sys.argv) > 1 else (
@@ -131,4 +132,112 @@ cpu = fresh()
 receive(cpu,"V0")
 check(read(cpu,"servo_debug_pending")==12)
 
-print(f"PASS: compiled USART1 K1-K4 commands, busy/error recovery, existing controls ({checks} checks)")
+cpu = fresh()
+receive(cpu, "S")
+check(read(cpu, "camera_report_pending") == 0)
+receive(cpu, "J\r\n")
+check(read(cpu, "camera_report_pending") == 1)
+check(read(cpu, "servo_debug_pending") == 0 and read(cpu, "job_busy") == 0)
+
+cpu = fresh()
+receive(cpu, "K3SJ")
+check(read(cpu, "camera_report_pending") == 1 and read(cpu, "pending_mango") == 3)
+check(read(cpu, "pending_laser") == 0 and read(cpu, "servo_debug_pending") == 0)
+
+cpu = fresh()
+receive(cpu, "S")
+receive(cpu, "J", status=0x28)
+receive(cpu, "J")
+check(read(cpu, "camera_report_pending") == 0)
+receive(cpu, "SJ")
+check(read(cpu, "camera_report_pending") == 1)
+
+cpu = fresh()
+receive(cpu, "JG")
+check(read(cpu, "camera_report_pending") == 0)
+receive(cpu, "SSJ")
+check(read(cpu, "camera_report_pending") == 0)  # Existing malformed-S recovery.
+receive(cpu, "SJ")
+check(read(cpu, "camera_report_pending") == 1)
+
+
+def invoke(cpu, name):
+    cpu.reg_write(UC_ARM_REG_SP, 0x2001FFF0)
+    cpu.reg_write(UC_ARM_REG_LR, 0x1001)
+    cpu.emu_start(symbols[name] | 1, 0x1000, count=1000000)
+    check(cpu.reg_read(UC_ARM_REG_PC) == 0x1000)
+
+
+def camera_bytes(cpu, data):
+    for byte in data:
+        cpu.mem_write(0x40004800, struct.pack("<II", 0x20, byte))
+        invoke(cpu, "USART3_IRQHandler")
+
+
+cpu = fresh()
+reports = []
+
+
+def capture_report(uc, address, size, context):
+    if address != symbols["any_printf"] & ~1:
+        return
+    ptr = uc.reg_read(UC_ARM_REG_R1)
+    text = bytearray()
+    while bytes(uc.mem_read(ptr + len(text), 1)) != b"\0":
+        text.extend(uc.mem_read(ptr + len(text), 1))
+    fmt = text.decode("ascii")
+    specifiers = re.findall(r"%(?:l)?[ud]", fmt)
+    values = [uc.reg_read(UC_ARM_REG_R2), uc.reg_read(UC_ARM_REG_R3)]
+    if len(specifiers) > 2:
+        values.extend(struct.unpack("<" + "I" * (len(specifiers) - 2),
+                                    uc.mem_read(uc.reg_read(UC_ARM_REG_SP), 4 * (len(specifiers) - 2))))
+    values = values[:len(specifiers)]
+    for i, spec in enumerate(specifiers):
+        if spec.endswith("d") and values[i] >= 0x80000000:
+            values[i] -= 0x100000000
+    reports.append(fmt.replace("%lu", "%u") % tuple(values))
+    uc.reg_write(UC_ARM_REG_PC, uc.reg_read(UC_ARM_REG_LR))
+
+
+cpu.hook_add(UC_HOOK_CODE, capture_report)
+receive(cpu, "SJ")
+invoke(cpu, "CameraReport_Process")
+check(reports == ["CMD SJ: NO DATA R=0 E=0 U=0\r\n"])
+check(read(cpu, "camera_report_pending") == 0)
+invoke(cpu, "CameraReport_Process")
+check(len(reports) == 1)  # One snapshot per request, no unsolicited stream.
+
+for offset in (-20, -128, 127):
+    camera_bytes(cpu, bytes([0x63, 1, offset & 0xFF, 1, 3, 0x66]))
+    receive(cpu, "SJ")
+    invoke(cpu, "CameraReport_Process")
+    check(f"CMD SJ: B=1 DX={offset} G=1 REGION=3 F=" in reports[-1])
+    check(read(cpu, "job_busy") == 0 and read(cpu, "servo_debug_pending") == 0)
+
+camera_bytes(cpu, bytes([0x63, 0, 1, 1, 2, 0x66]))  # Invalid candidate preserves verified data.
+receive(cpu, "SJ")
+invoke(cpu, "CameraReport_Process")
+check("B=1 DX=127 G=1 REGION=3 F=3 R=24 E=1 U=0" in reports[-1])
+
+# Also execute the real formatter and UART sender, capturing peripheral writes.
+cpu = fresh()
+wire = bytearray()
+cpu.mem_write(UART1 + 0x0C, struct.pack("<I", 0x2008))  # UART enabled, TX enabled.
+
+
+def capture_wire(uc, access, address, size, value, context):
+    if address == UART1 + 4:
+        wire.append(value & 0xFF)
+
+
+cpu.hook_add(UC_HOOK_MEM_WRITE, capture_wire)
+for frame in (None, bytes([0x63, 1, 0xEC, 1, 3, 0x66])):
+    if frame:
+        camera_bytes(cpu, frame)
+    receive(cpu, "SJ")
+    cpu.mem_write(UART1, struct.pack("<I", 0xC0))  # TXE and TC remain ready.
+    invoke(cpu, "CameraReport_Process")
+check(wire == b"CMD SJ: NO DATA R=0 E=0 U=0\r\n"
+              b"CMD SJ: B=1 DX=-20 G=1 REGION=3 F=1 R=6 E=0 U=0\r\n")
+
+print(f"PASS: compiled USART1 K1-K4/SJ commands, vision snapshots, real UART bytes, busy/error recovery ({checks} checks)")

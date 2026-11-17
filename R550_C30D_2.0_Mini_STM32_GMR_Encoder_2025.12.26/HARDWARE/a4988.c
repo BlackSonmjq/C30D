@@ -24,7 +24,7 @@ void A4988_Init(void)
 
 }
 
-void A4988_SetDir(u8 motor, u8 high)
+u8 A4988_SetDir(u8 motor, u8 high)
 {
     GPIO_TypeDef *port;
     u16 pin;
@@ -36,11 +36,25 @@ void A4988_SetDir(u8 motor, u8 high)
         port = GPIOC;
         pin = GPIO_Pin_7;
     } else {
-        return;
+        return 0;
     }
 
+    /* Preload the requested level before restoring DIR as a GPIO output.
+     * STEP is stopped by the caller throughout the direction change. */
     if (high) GPIO_SetBits(port, pin);
     else      GPIO_ResetBits(port, pin);
+    {
+        GPIO_InitTypeDef gpio;
+        gpio.GPIO_Pin = pin;
+        gpio.GPIO_Mode = GPIO_Mode_OUT;
+        gpio.GPIO_OType = GPIO_OType_PP;
+        gpio.GPIO_PuPd = GPIO_PuPd_NOPULL;
+        gpio.GPIO_Speed = GPIO_Speed_2MHz;
+        GPIO_Init(port, &gpio);
+    }
+    delay_us(2);
+    /* Check the physical MCU pin, not just the output latch. */
+    return GPIO_ReadInputDataBit(port, pin) == (high ? 1U : 0U);
 }
 
 void A4988_Step(u8 motor)

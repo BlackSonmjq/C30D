@@ -23,3 +23,6 @@ uv run --with unicorn --with pyelftools python tests/mango/run_tests.py
 - 当前 PA2、PA3、PA6、PC11 四路 XSHUT 互斥切换、全关及过期数据失效。
 
 断言中的中间等待会重复执行，因此检查次数大于场景数量。仿真通过不能证明实物不失步或准确回到机械原点，现场联调应以实际机构表现为准。
+
+方向脚底层回归测试：`uv run --with unicorn --with pyelftools python tests/mango/run_stepper_dir_tests.py`。
+此测试执行生产 `a4988.c` 的函数体，模拟 GPIO，检查左右 DIR 低/高切换、输出模式恢复、STEP 引脚不受影响，以及 DIR 卡高或卡低时返回失败。

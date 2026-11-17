@@ -23,7 +23,7 @@ u8 StepperTask_RequestLaserFromISR(u8 laser_id)
 {
     if (laser_id < 1U || laser_id > 4U) return 0;
     if (job_busy) {
-        rejected_laser = 1;
+        rejected_laser = laser_id;
         return 0;
     }
     pending_laser = laser_id;
@@ -113,13 +113,15 @@ static void begin_return(StepperTask_Data *job, TickType_t *phase_started)
         DistanceTask_SelectLaser(0);
         job->result = MANGO_RETURN_FAILED;
         job->state = STEPPER_FAULT;
-        any_printf(USART1, "mango %u fault return failed\r\n", (unsigned int)job->mango_id);
+        any_printf(USART1, "mango %u fault return failed dir=%u\r\n",
+                   (unsigned int)job->mango_id, (unsigned int)(signed_pulses > 0));
         return; /* 原点不确定，保留忙碌锁定，人工检查原点并复位后再运行。 */
     }
     *phase_started = xTaskGetTickCount();
     job->state = STEPPER_RETURNING;
-    any_printf(USART1, "mango %u returning %lu\r\n", (unsigned int)job->mango_id,
-               (unsigned long)job->outward_pulses);
+    any_printf(USART1, "mango %u returning %lu dir=%u pulses=%ld\r\n",
+               (unsigned int)job->mango_id, (unsigned long)job->outward_pulses,
+               (unsigned int)(signed_pulses > 0), (long)signed_pulses);
 }
 
 static void begin_strike(StepperTask_Data *job, TickType_t *phase_started)
@@ -139,12 +141,51 @@ static void begin_strike(StepperTask_Data *job, TickType_t *phase_started)
                (unsigned long)job->outward_pulses);
 }
 
+/* Stream each new sample from the manually selected laser; never repeat cached data. */
+typedef struct {
+    u8 id;
+    TickType_t started;
+    TickType_t previous_update;
+} ManualLaserReport;
+
+static void report_manual_laser(ManualLaserReport *report, const DistanceTask_Data *data,
+                                TickType_t now)
+{
+    const char *error;
+    if (!report->id) return;
+    if (data->laser_id == report->id && data->update_tick != report->previous_update &&
+        data->status != VL53L0X_NOT_READY) {
+        if (data->valid) {
+            any_printf(USART1, "CMD %u: laser=%u distance=%u mm\r\n",
+                       (unsigned)report->id, (unsigned)report->id, (unsigned)data->distance_mm);
+        } else {
+            switch (data->status) {
+            case VL53L0X_ERROR_I2C: error = "I2C communication failed"; break;
+            case VL53L0X_ERROR_TIMEOUT: error = "measurement timeout"; break;
+            case VL53L0X_ERROR_ID: error = "sensor ID mismatch"; break;
+            case VL53L0X_ERROR_RANGE: error = "invalid range"; break;
+            case VL53L0X_ERROR_CONFIG: error = "sensor configuration failed"; break;
+            default: error = "sensor not ready"; break;
+            }
+            any_printf(USART1, "CMD %u: laser=%u ERROR %s\r\n",
+                       (unsigned)report->id, (unsigned)report->id, error);
+        }
+        report->previous_update = data->update_tick;
+        report->started = now;
+    } else if ((TickType_t)(now - report->started) >= pdMS_TO_TICKS(5000U)) {
+        any_printf(USART1, "CMD %u: laser=%u ERROR no new measurement within 5000 ms\r\n",
+                   (unsigned)report->id, (unsigned)report->id);
+        report->started = now; /* Keep waiting and report again at most every 5 seconds. */
+    }
+}
+
 void stepper_Task(void *pvParameters)
 {
     DistanceTask_Data distance;
     ServoTask_Data servo;
     StepperTask_Data job = {0, STEPPER_WAITING_COMMAND, 0, 0, 0, MANGO_OK};
     TickType_t phase_started = 0, now;
+    ManualLaserReport laser_report = {0, 0, 0};
     u32 primask;
     u8 selected, rejected, laser, laser_busy;
     s32 signed_pulses;
@@ -165,15 +206,24 @@ void stepper_Task(void *pvParameters)
         rejected_laser = 0;
         /* A pending picking request takes precedence over manual selection. */
         if (laser && !job_busy) DistanceTask_SelectLaser(laser);
-        else if (laser) { laser = 0; laser_busy = 1; }
+        else if (laser) { laser_busy = laser; laser = 0; }
         selected = pending_mango;
         pending_mango = 0;
         rejected = rejected_command;
         rejected_command = 0;
         __set_PRIMASK(primask);
         if (rejected) any_printf(USART1, "mango busy\r\n");
-        if (laser_busy) any_printf(USART1, "UPPER laser busy\r\n");
-        if (laser) any_printf(USART1, "UPPER laser=%u selected\r\n", (unsigned)laser);
+        if (laser_busy) any_printf(USART1, "CMD %u: laser busy\r\n", (unsigned)laser_busy);
+        if ((laser || selected) && laser_report.id) {
+            any_printf(USART1, "CMD %u: measurement cancelled by new command\r\n", (unsigned)laser_report.id);
+            laser_report.id = 0;
+        }
+        if (laser) {
+            DistanceTask_GetData(&distance);
+            laser_report.id = laser;
+            laser_report.started = xTaskGetTickCount();
+            laser_report.previous_update = distance.update_tick;
+        }
 
         if (selected != 0U) {
             job.mango_id = selected;
@@ -193,6 +243,7 @@ void stepper_Task(void *pvParameters)
 
         DistanceTask_GetData(&distance);
         now = xTaskGetTickCount();
+        report_manual_laser(&laser_report, &distance, now);
         switch (job.state) {
         case STEPPER_WAITING_DISTANCE:
             /* 只使用当前选中激光的有效数据；未接入模块最多等待 5 秒。 */
@@ -205,7 +256,9 @@ void stepper_Task(void *pvParameters)
                     if (StepperMotor_StartMove(job.motor, signed_pulses)) {
                         job.state = STEPPER_MOVING;
                         phase_started = now;
-                        any_printf(USART1, "mango %u approaching\r\n", (unsigned int)job.mango_id);
+                        any_printf(USART1, "mango %u approaching dir=%u pulses=%ld\r\n",
+                                   (unsigned int)job.mango_id,
+                                   (unsigned int)(signed_pulses > 0), (long)signed_pulses);
                     } else {
                         job.result = MANGO_MOVE_FAILED;
                         begin_return(&job, &phase_started);
