@@ -10,19 +10,21 @@
 #define HEADING_CONTROL_ENABLE                1       // 航向保持开关
 #define HEADING_CONTROL_RATE_HZ               100.0f  // 控制频率，Hz
 #define HEADING_CONTROL_GYRO_FULL_SCALE_DPS   500.0f   // 陀螺仪量程，度/秒，与 IMU 配置一致
-#define HEADING_CONTROL_KP                    1.20f   // 加强同角度误差下的纠偏
-#define HEADING_CONTROL_KI                    0.0f    // 积分：重载试调阶段保持关闭
-#define HEADING_CONTROL_KD                    0.55f   // 配套提高角速度阻尼
-#define HEADING_CONTROL_MAX_ANGULAR_VELOCITY   0.50f   // 加大纠偏上限，仍需实车标定
-#define HEADING_CONTROL_MIN_ANGULAR_VELOCITY   0.08f   // 大误差且近乎静止时的起转助力，不是永久最低输出
-#define HEADING_CONTROL_MIN_FULL_ERROR_RAD    0.0872665f // 5度：小于此误差时，起转助力随误差逐渐减小
+#define HEADING_CONTROL_KP                    2.40f   // 加强同角度误差下的纠偏
+#define HEADING_CONTROL_KI                    0.40f   // Limited integral for sustained load bias
+#define HEADING_CONTROL_KD                    0.75f   // 配套提高角速度阻尼
+#define HEADING_CONTROL_MAX_ANGULAR_VELOCITY   0.80f   // 加大纠偏上限，仍需实车标定
+#define HEADING_CONTROL_MIN_ANGULAR_VELOCITY   0.16f   // 大误差且近乎静止时的起转助力，不是永久最低输出
+#define HEADING_CONTROL_MIN_FULL_ERROR_RAD    0.0523599f // Full startup assist at 3 degrees
 #define HEADING_CONTROL_MIN_ASSIST_RATE       0.03f   // 超过此角速度不再强加最低起转输出，保留阻尼结果
+#define HEADING_CONTROL_INTEGRAL_RELEASE_RAD   0.003f  // Release parked effort within about 0.17 degrees
 #define HEADING_CONTROL_INTEGRAL_LIMIT        0.5f    // 积分状态限幅
 #define HEADING_CONTROL_YAW_TOLERANCE          0.01f   // 航向容差，约 0.57度
 #define HEADING_CONTROL_GYRO_TOLERANCE         0.03f   // 同时满足角度和角速度容差后输出零
 #define HEADING_CONTROL_GYRO_INTEGRATION_DEADZONE 0.002f // 角速度积分死区
 
 void HeadingControl_Reset(void);
+float HeadingControl_GetIntegralOutput(void);
 float HeadingControl_Update(short gyro_z_raw);
 float HeadingControl_HoldYaw(float target_yaw, float measured_yaw, short gyro_z_raw);
 

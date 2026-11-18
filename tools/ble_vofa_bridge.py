@@ -1,4 +1,4 @@
-"""Receive FFE1 BLE notifications and forward 32-channel wheel-load, alignment, vision or legacy JustFloat frames.
+"""Receive FFE1 BLE notifications and forward 38-channel wheel/IMU S21C range and wheel-load, alignment, vision or legacy JustFloat frames.
 
 No GATT writes or chassis commands are sent. start_notify enables the CCCD.
 API reference: https://bleak.readthedocs.io/en/stable/api/client.html
@@ -6,6 +6,7 @@ API reference: https://bleak.readthedocs.io/en/stable/api/client.html
 import argparse
 import asyncio
 import csv
+import errno
 from datetime import datetime
 from pathlib import Path
 import socket
@@ -83,7 +84,7 @@ async def run(args):
                         if idle > 5:
                             print('No BLE data: check module UART 9600 and flashed firmware.', flush=True)
                         elif forwarder.bytes and not forwarder.frames:
-                            print('Bytes received but no valid 8/20/32/48/64/72-channel frame; check UART/data loss.', flush=True)
+                            print('Bytes received but no valid 8/13/20/21/31/32/33/34/35/37/38/40/48/64/72-channel frame; check UART/data loss.', flush=True)
                 # Partial data from a previous connection must never join a new one.
                 print('Disconnected; reconnecting...', flush=True)
             except (OSError, RuntimeError) as exc:
@@ -111,9 +112,13 @@ def main():
             receiver.bind(('127.0.0.1', 0))
             receiver.settimeout(2)
             forwarder = Forwarder(sender, receiver.getsockname())
-            values = [1, -20, 1, 3, 600, 100, 2, 1, 2, 1, 127, 127, 0, 1, 0, .06, 0, 500, 81, 0]
-            values += [.125, -.125, .125, -.125, .0625, -.125, .125, -.0625, 4000, -1600, 1600, -4000]
-            packet = struct.pack('<32f', *values) + TAIL
+            values = [1, -20, 1, 3, 100, 3, 5, 60, 1, 0, 0, 3, 1]
+            values += [0, -5, 5, -1, .125, 1, 1, 0]
+            values += [.125, -.125, .25, -.25, 0, -.125, .25, 0, 16700, -1500, 1500, -16700]
+            values = values[:6] + [values[8], values[7], 120] + values[9:11] + values[13:]
+            values += [186, 127, 81, 200]
+            values += [600, 0, 0]
+            packet = struct.pack('<38f', *values) + TAIL
             stream = packet + packet
             for i in range(0, len(stream), 20):
                 forwarder.receive(None, stream[i:i+20])
@@ -142,8 +147,12 @@ def main():
                     raise SystemExit('Telemetry layout changed; restart the bridge to create a new CSV.')
                 writer.writerow([stamp()] + list(values))
                 log.flush()
-                if len(values) in (8, 20, 32):
-                    status = values[:4] + (values[8:14] + values[19:20] if len(values) in (20, 32) else ())
+                if len(values) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40):
+                    status = values[:4] + (values[8:14] + values[19:20] if len(values) in (20, 32, 37, 40) else ()) + (values[37:40] if len(values) == 40 else ())
+                    if len(values) in (13, 21, 33, 34):
+                        status = values[:4] + values[5:9] + values[11:13] + (values[13:] if len(values) in (21, 33, 34) else ())
+                    if len(values) == 38:
+                        status += values[35:]
                     if status != last_status:
                         print(camera_summary(values), flush=True)
                         last_status = status
@@ -158,6 +167,15 @@ def main():
             args.record = record
             print(f'CSV: {path.resolve()}', flush=True)
             asyncio.run(run(args))
+    except OSError as exc:
+        if exc.errno != errno.EADDRINUSE and getattr(exc, 'winerror', None) != 10048:
+            raise
+        print(f'UDP {args.local_port} is already in use. Close the running bridge before restarting, '
+              'or choose a different --local-port.', flush=True)
+        if path.stat().st_size == 0:
+            path.unlink()
+        if getattr(sys, 'frozen', False):
+            input('Press Enter to close this window...')
     except KeyboardInterrupt:
         print('Stopped.')
 

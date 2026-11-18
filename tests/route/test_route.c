@@ -1348,11 +1348,11 @@ static void test_diagnostics_and_vofa(void)
     assert(RouteDebug_BuildPacket(expected,sizeof(expected))==sizeof(expected));
     assert(expected[sizeof(expected)-4]==0&&expected[sizeof(expected)-3]==0&&
            expected[sizeof(expected)-2]==0x80&&expected[sizeof(expected)-1]==0x7f);
-    assert(ROUTE_VOFA_CHANNEL_COUNT==32U&&ROUTE_VOFA_FRAME_BYTES==132U);
+    assert(ROUTE_VOFA_CHANNEL_COUNT==33U&&ROUTE_VOFA_FRAME_BYTES==136U);
     assert(packet_channel(expected,0)==1&&packet_channel(expected,1)==127);
     assert(packet_channel(expected,2)==1&&packet_channel(expected,3)==4);
-    assert(packet_channel(expected,4)==120&&packet_channel(expected,5)==20);
-    assert(packet_channel(expected,6)==2&&packet_channel(expected,7)==1);
+    assert(packet_channel(expected,4)==20&&packet_channel(expected,5)==0);
+    assert(packet_channel(expected,6)==0&&packet_channel(expected,11)==0&&packet_channel(expected,12)==0);
 
     clock_ms=1000000;transmitted_count=0;tx_interrupt=0;tx_ready=1;
     RouteVofa_Poll();

@@ -40,7 +40,7 @@ u8 Car_Mode=0;
 
 //Default speed of remote control car, unit: mm/s
 //ң��С����Ĭ���ٶȣ���λ��mm/s
-float RC_Velocity=200;
+float RC_Velocity=300;
 
 //Vehicle three-axis target moving speed, unit: m/s
 //С������Ŀ���˶��ٶȣ���λ��m/s

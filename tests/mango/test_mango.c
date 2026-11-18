@@ -50,7 +50,7 @@ void any_printf(void *port, char *format, ...) {
     va_end(args);
     ++command_reports;
 }
-u8 StepperMotor_SetSpeed(u8 motor, u16 arr) { CHECK(arr == 199); return motor <= 2; }
+u8 StepperMotor_SetSpeed(u8 motor, u16 arr) { CHECK(arr == 139); return motor <= 2; }
 u32 StepperMotor_GetCompletedPulses(u8 motor) { return count[motor]; }
 u8 StepperMotor_IsRunning(u8 motor) { return running[motor]; }
 void StepperMotor_Disable(u8 motor) {

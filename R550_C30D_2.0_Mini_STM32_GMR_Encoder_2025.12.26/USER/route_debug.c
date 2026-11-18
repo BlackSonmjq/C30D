@@ -71,6 +71,7 @@ uint8_t RouteDebug_ReadFault(RouteDebugFrame *frame)
 uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
 {
     Camera_Data camera;
+    RouteLidarFrame lidar;
     VisionAlign_Diagnostics align;
     float channels[ROUTE_VOFA_CHANNEL_COUNT];
     uint32_t bits;
@@ -78,32 +79,42 @@ uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
     if (bytes == 0 || capacity < ROUTE_VOFA_FRAME_BYTES) return 0U;
     /* Visual telemetry remains live before route start and after a route fault. */
     Camera_GetData(&camera);
+    VisionAlign_GetDiagnostics(&align);
+    RouteIO_ReadLidar(&lidar);
     channels[0] = (float)camera.pole;
     channels[1] = (float)camera.offset;
     channels[2] = (float)camera.green;
     channels[3] = (float)camera.region;
-    channels[4] = (float)camera.bytes;
-    channels[5] = (float)camera.frames;
-    channels[6] = (float)camera.bad;
-    channels[7] = (float)camera.uart_errors;
-    VisionAlign_GetDiagnostics(&align);
-    channels[8] = (float)align.phase;
-    channels[9] = (float)align.locked;
-    channels[10] = (float)align.ly;
-    channels[11] = (float)align.rx;
-    channels[12] = (float)align.stick_active;
-    channels[13] = (float)align.ready;
-    channels[14] = align.vx_mps;
-    channels[15] = align.vy_mps;
-    channels[16] = align.wz_radps;
-    channels[17] = align.rc_velocity_mmps;
-    channels[18] = (float)align.control_flags;
-    channels[19] = (float)align.blocked;
+    channels[4] = (float)camera.frames;
+    channels[5] = (float)align.phase;
+    channels[6] = (float)lidar.fresh;
+    channels[7] = (float)lidar.mm[ROUTE_LIDAR_BEHIND];
+    channels[8] = (float)lidar.mm[ROUTE_LIDAR_FRONT];
+    channels[9] = align.vy_mps;
+    channels[10] = align.wz_radps;
+    channels[11] = align.yaw_target_deg;
+    channels[12] = align.yaw_deg;
+    channels[13] = align.yaw_error_deg;
+    channels[14] = align.gyro_z_dps;
+    channels[15] = align.heading_i_radps;
+    channels[16] = (float)align.heading_locked;
+    channels[17] = (float)align.imu_fresh;
+    channels[18] = (float)align.blocked;
     for (channel = 0U; channel < 4U; ++channel) {
-        channels[20U + channel] = align.wheel_target[channel];
-        channels[24U + channel] = align.wheel_feedback[channel];
-        channels[28U + channel] = align.wheel_pwm[channel];
+        channels[19U + channel] = align.wheel_target[channel];
+        channels[23U + channel] = align.wheel_feedback[channel];
+        channels[27U + channel] = align.wheel_pwm[channel];
     }
+
+
+    channels[31] = (float)align.ly;
+    channels[32] = (float)align.rx;
+    channels[33] = (float)align.control_flags;
+    channels[34] = align.rc_velocity_mmps;
+
+    channels[35] = (float)camera.bytes;
+    channels[36] = (float)camera.bad;
+    channels[37] = (float)camera.uart_errors;
 
     /* Emit little-endian float32 without depending on structure padding. */
     for (channel = 0U; channel < ROUTE_VOFA_CHANNEL_COUNT; ++channel) {

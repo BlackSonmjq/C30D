@@ -1,4 +1,4 @@
-"""Receive 32-channel wheel-load, alignment, vision or legacy route telemetry."""
+"""Receive 38-channel wheel/IMU S21C range and wheel-load, alignment, vision or legacy route telemetry."""
 import argparse
 import csv
 import json
@@ -31,7 +31,13 @@ ALIGN_FIELDS = VISION_FIELDS + (
 ).split()
 LOAD_FIELDS = ALIGN_FIELDS + [f'wheel_{w}_target_mps' for w in 'abcd'] + [
     f'wheel_{w}_feedback_mps' for w in 'abcd'] + [f'wheel_{w}_pwm' for w in 'abcd']
-CHANNEL_COUNTS = (72, 64, 48, 32, 20, 8)
+S21C_FIELDS = LOAD_FIELDS + "s21c_left_mm s21c_front_mm s21c_right_mm s21c_behind_mm s21c_fresh".split()
+COMPACT_FIELDS = "camera_pole camera_offset camera_green camera_region camera_frames align_phase pick_phase s21c_behind_mm s21c_fresh drive_vy_mps drive_wz_radps hit_region hit_count".split()
+IMU_FIELDS = COMPACT_FIELDS + "yaw_target_deg yaw_deg yaw_error_deg gyro_z_dps heading_i_radps heading_locked imu_fresh align_blocked".split()
+WHEEL_IMU_FIELDS = IMU_FIELDS + LOAD_FIELDS[20:32]
+CHANNEL_COUNTS = (72, 64, 48, 40, 38, 37, 35, 34, 33, 32, 31, 21, 20, 13, 8)
+HIT_FIELDS = S21C_FIELDS + "pick_phase hit_region hit_count".split()
+PICK_PHASES = ("IDLE", "WAIT", "HOLD", "REPORT", "COOLDOWN", "WORK")
 ALIGN_PHASES = ('IDLE', 'ACQUIRE', 'TRACK', 'DONE', 'LOST', 'TIMEOUT', 'WAIT')
 PHASES = ("WAIT", "ODOM", "APPROACH", "CONFIRM", "WAIT_LIDAR", "WAIT_READY",
           "WORK_STOP", "WAIT_TOOL", "DONE", "FAULT", "CAPTURE", "RECOVER")
@@ -44,21 +50,73 @@ def stamp():
     return datetime.now(TZ).isoformat(timespec="milliseconds")
 
 
+CURRENT_FIELDS = WHEEL_IMU_FIELDS[:6] + ["s21c_fresh", "s21c_behind_mm", "s21c_front_mm"] + WHEEL_IMU_FIELDS[9:11] + WHEEL_IMU_FIELDS[13:]
+
+def expand_current(values):
+    return tuple(values[:6]) + (0, values[7], values[6]) + tuple(values[9:11]) + (0, 0) + tuple(values[11:])
+
 def fields_for(count):
+    if count == 38:
+        return fields_for(35) + ["camera_bytes", "camera_bad", "camera_uart_errors"]
+    if count == 35:
+        return CURRENT_FIELDS + ["gamepad_ly", "gamepad_rx", "control_flags", "rc_velocity_mmps"]
+    if count == 31:
+        return CURRENT_FIELDS
+    if count == 34:
+        return WHEEL_IMU_FIELDS + ["s21c_front_mm"]
+    if count == 33:
+        return WHEEL_IMU_FIELDS
+    if count == 21:
+        return IMU_FIELDS
+    if count == 13:
+        return COMPACT_FIELDS
+    if count == 40:
+        return HIT_FIELDS
+    if count == 37:
+        return S21C_FIELDS
     return LOAD_FIELDS if count == 32 else ALIGN_FIELDS if count == 20 else VISION_FIELDS if count == 8 else FIELDS[:count]
 
 
 def camera_summary(values):
+    if len(values) == 38:
+        return camera_summary(values[:35]) + f" CAM_RX={values[35]:.0f} BAD={values[36]:.0f} UART_ERR={values[37]:.0f}"
+    if len(values) == 35:
+        return camera_summary(values[:31]) + f" LY/RX={values[31]:.0f}/{values[32]:.0f} CTRL=0x{int(values[33]):02X} RC={values[34]:.0f}"
+    if len(values) == 31:
+        return camera_summary(expand_current(values)).replace(" PICK=IDLE", "").replace(" HIT_DONE=0 COUNT=0", "") + f" FRONT={values[8]:.0f}mm"
+    if len(values) in (13, 21, 33, 34):
+        summary = (f"VISION B={values[0]:.0f} DX={values[1]:+.0f} G={values[2]:.0f} REGION={values[3]:.0f}"
+                f" frames={values[4]:.0f} ALIGN={ALIGN_PHASES[int(values[5])]}"
+                f" PICK={PICK_PHASES[int(values[6])]} REAR={values[7]:.0f}mm fresh={values[8]:.0f}"
+                f" VY={values[9]:+.3f} WZ={values[10]:+.3f}"
+                f" HIT_DONE={values[11]:.0f} COUNT={values[12]:.0f}")
+        if len(values) in (21, 33, 34):
+            summary += (f" YAW={values[14]:+.2f}/{values[13]:+.2f}deg ERR={values[15]:+.2f}deg"
+                        f" GZ={values[16]:+.2f}deg/s I={values[17]:+.3f}rad/s"
+                        f" HOLD={values[18]:.0f} IMU_FRESH={values[19]:.0f} BLOCK=0x{int(values[20]):04X}")
+        if len(values) in (33, 34):
+            summary += " TARGET=" + "/".join(f"{v:+.3f}" for v in values[21:25])
+            summary += " ACTUAL=" + "/".join(f"{v:+.3f}" for v in values[25:29])
+            summary += " PWM=" + "/".join(f"{v:.0f}" for v in values[29:33])
+        if len(values) == 34:
+            summary += f" FRONT={values[33]:.0f}mm"
+        return summary
+
     summary = (f'VISION B={values[0]:.0f} DX={values[1]:+.0f} G={values[2]:.0f} '
             f'REGION={values[3]:.0f} bytes={values[4]:.0f} frames={values[5]:.0f} '
             f'bad={values[6]:.0f} uart_errors={values[7]:.0f}')
-    if len(values) in (20, 32):
+    if len(values) in (20, 32, 37, 40):
         summary += (f' ALIGN={ALIGN_PHASES[int(values[8])]} LOCK={values[9]:.0f}'
                     f' LY/RX={values[10]:.0f}/{values[11]:.0f}'
                     f' v=({values[14]:+.3f},{values[15]:+.3f},{values[16]:+.3f})'
                     f' RC={values[17]:.0f} BLOCK=0x{int(values[19]):04X}')
-    if len(values) == 32:
+    if len(values) in (32, 37, 40):
         summary += ' PWM=' + '/'.join(f'{v:.0f}' for v in values[28:32])
+    if len(values) in (37, 40):
+        summary += " S21C(L/F/R/B) mm=" + "/".join(f"{v:.0f}" for v in values[32:36])
+        summary += f" fresh={values[36]:.0f}"
+    if len(values) == 40:
+        summary += f" PICK={PICK_PHASES[int(values[37])]} HIT_DONE={values[38]:.0f} COUNT={values[39]:.0f}"
     return summary
 
 
@@ -74,10 +132,37 @@ class Framer:
     def decode(payload):
         if len(payload) not in tuple(count * 4 for count in CHANNEL_COUNTS):
             return None
+        if len(payload) == 38 * 4:
+            values = struct.unpack("<38f", payload)
+            if any(not math.isfinite(v) or not 0 <= v <= 4294967296 or v != round(v) for v in values[35:]):
+                return None
+            return values if Framer.decode(payload[:35*4]) is not None else None
+        if len(payload) == 35 * 4:
+            values = struct.unpack("<35f", payload)
+            if not all(math.isfinite(v) for v in values[31:]):
+                return None
+            if any(v != round(v) or not 0 <= v <= 255 for v in values[31:33]) or not 0 <= values[33] <= 127 or values[33] != round(values[33]) or not 0 <= values[34] <= 65535:
+                return None
+            return values if Framer.decode(payload[:31*4]) is not None else None
+        if len(payload) == 31 * 4:
+            values = struct.unpack("<31f", payload)
+            if not math.isfinite(values[8]) or not 0 <= values[8] <= 65535:
+                return None
+            return values if Framer.decode(struct.pack("<33f", *expand_current(values))) is not None else None
         values = struct.unpack(f"<{len(payload)//4}f", payload)
         limits = {1: 17, 2: 11, 3: 15, 23: 1, 26: 1, 27: 1, 31: 7} if len(values) >= 48 else {0: 1, 2: 1, 3: 4}
-        if len(values) in (20, 32):
+        if len(values) in (13, 21, 33, 34):
+            limits.update({4: 4294967296, 5: 6, 6: 5, 7: 65535, 8: 1, 11: 4, 12: 4294967296})
+        if len(values) == 34:
+            limits.update({33: 65535})
+        if len(values) in (21, 33, 34):
+            limits.update({18: 1, 19: 1, 20: 16383})
+        if len(values) in (20, 32, 37, 40):
             limits.update({8: 6, 9: 1, 10: 255, 11: 255, 12: 1, 13: 1, 18: 127, 19: 16383})
+        if len(values) in (37, 40):
+            limits.update({32: 65535, 33: 65535, 34: 65535, 35: 65535, 36: 1})
+        if len(values) == 40:
+            limits.update({37: 5, 38: 4, 39: 4294967296})
         if len(values) >= 64:
             limits.update({48: 2, 54: 4, 58: 3, 62: 3})
         if len(values) >= 72:
@@ -91,10 +176,12 @@ class Framer:
         if not all(0 <= values[i] <= limit and values[i] == round(values[i])
                    for i, limit in limits.items()):
             return None
-        if len(values) == 32 and any(abs(v) > 16700 or v != round(v) for v in values[28:32]):
+        if len(values) in (33, 34) and any(abs(v) > 16700 or v != round(v) for v in values[29:33]):
             return None
-        if len(values) in (8, 20, 32, 72):
-            camera = values[:8] if len(values) in (8, 20, 32) else values[64:72]
+        if len(values) in (32, 37, 40) and any(abs(v) > 16700 or v != round(v) for v in values[28:32]):
+            return None
+        if len(values) in (8, 13, 20, 21, 32, 33, 34, 37, 40, 72):
+            camera = values[:4] if len(values) in (13, 21, 33, 34) else values[:8] if len(values) in (8, 20, 32, 37, 40) else values[64:72]
             pole, offset, green, region = camera[:4]
             if not (-128 <= offset <= 127 and offset == round(offset)):
                 return None
@@ -154,7 +241,7 @@ def capture(args):
     folder = args.output_root / datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
     folder.mkdir(parents=True, exist_ok=False)
     metadata = {"started": stamp(), "port": args.port, "baud": args.baud,
-                "format": "8/20/32/48/64/72 little-endian float32 + 00 00 80 7f", "fields": None,
+                "format": "8/13/20/21/31/32/33/34/35/37/38/40/48/64/72 little-endian float32 + 00 00 80 7f", "fields": None,
                 "channel_count": None,
                 "dtr": args.dtr, "rts": args.rts,
                 "stop_file": str(folder / "stop.request")}
@@ -201,7 +288,7 @@ def capture(args):
                     item = {"at": stamp(), "event": kind, "frame": count,
                             "data": dict(zip(fields_for(len(values)), values))}
                     eventfile.write(json.dumps(item) + "\n")
-                    if len(values) in (8, 20, 32):
+                    if len(values) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40):
                         print(f"{kind}: {camera_summary(values)}", flush=True)
                         return
                     print(f"{kind}: P{int(values[1]):02d} {PHASES[int(values[2])]} "
@@ -239,8 +326,10 @@ def capture(args):
                         first = first or values
                         count += 1
                         writer.writerow([stamp()] + list(values))
-                        if len(values) in (8, 20, 32):
-                            key = values[:4] + (values[8:10] + values[19:20] if len(values) in (20, 32) else ())
+                        if len(values) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40):
+                            key = values[:4] + (values[8:10] + values[19:20] if len(values) in (20, 32, 37, 40) else ()) + (values[37:40] if len(values) == 40 else ())
+                            if len(values) in (13, 21, 33, 34):
+                                key = values[:4] + values[5:9] + values[11:13] + (values[13:] if len(values) in (21, 33, 34) else ())
                             if key != previous:
                                 event("VISION", values)
                                 previous = key
@@ -265,7 +354,7 @@ def capture(args):
                         save_status()
                         last_flush = now
                     if now - last_report >= 10:
-                        if last and len(last) in (8, 20, 32):
+                        if last and len(last) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40):
                             print(f"LIVE: frames={count} bytes={total_bytes} {camera_summary(last)}", flush=True)
                         elif last:
                             print(f"LIVE: frames={count} bytes={total_bytes} tick={last[0]:.0f} "
@@ -274,7 +363,7 @@ def capture(args):
                                   f"L={last[8]:.0f} Rlaser={last[9]:.0f} "
                                   f"CAN={last[26]:.0f} seq={last[24]:.0f}", flush=True)
                         else:
-                            print(f"WAIT_DATA: bytes={total_bytes}, no valid 8/20/32/48/64/72-channel frame yet", flush=True)
+                            print(f"WAIT_DATA: bytes={total_bytes}, no valid 8/13/20/21/31/32/33/34/35/37/38/40/48/64/72-channel frame yet", flush=True)
                         last_report = now
                     if terminal_at is not None and now - terminal_at >= 5:
                         stop_reason = "fault_snapshot" if last[2] == 9 or last[23] == 1 else "route_done"

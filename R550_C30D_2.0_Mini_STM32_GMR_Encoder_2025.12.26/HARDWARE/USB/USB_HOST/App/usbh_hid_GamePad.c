@@ -32,6 +32,9 @@ extern USBH_StatusTypeDef USBH_HID_GamePadInit(USBH_HandleTypeDef *phost);
 void SwitchPro_GamePad_Init(USBH_HandleTypeDef *phost);
 
 //定义ps2的hid类
+/* Actual bytes in the immediately dispatched input report. */
+static uint16_t GamePadReceivedLength;
+
 USBH_ClassTypeDef  GamePad_HID_Class =
 {
   .Name = "HID",
@@ -451,6 +454,7 @@ static USBH_StatusTypeDef USBH_HID_Process(USBH_HandleTypeDef *phost)
         if ((HID_Handle->DataReady == 0U) && (XferSize != 0U) && (HID_Handle->fifo.buf != NULL))
         {
 		  //将保存在HID_Handle->pData的HID设备数据写入到fifo中，后续通过fifo来获取hid设备的数据
+          GamePadReceivedLength = XferSize <= HID_Handle->length ? (uint16_t)XferSize : 0U;
           (void)USBH_HID_FifoWrite(&HID_Handle->fifo, HID_Handle->pData, HID_Handle->length); 
           HID_Handle->DataReady = 1U;
           USBH_HID_EventCallback(phost);
@@ -612,6 +616,11 @@ USBH_StatusTypeDef USBH_HID_PS2_Decode(USBH_HandleTypeDef *phost)
 	if (USBH_HID_FifoRead(&HID_Handle->fifo, (uint8_t* )GamePadReportData, HID_Handle->length) == HID_Handle->length)
 	{
 		/* 根据实际接入的不同游戏手柄,调用不同的处理函数 */
+        /* Axis/key decoders access bytes 0..13 for XInput, 0..6 for PS2.
+         * A short status report must not reuse old bytes in the endpoint buffer. */
+        if (GamePadReceivedLength > HID_Handle->length ||
+            GamePadReceivedLength < ((gamepad_brand == Xbox360 || gamepad_brand == PS2_USB_Wiredless) ? 14U : 7U))
+            return USBH_FAIL;
 		GamePadDebug.ready = 1;//手柄调试,表示有数据接收
 		
 		//xbox360格式解码

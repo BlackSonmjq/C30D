@@ -21,7 +21,8 @@ BUILD.mkdir(exist_ok=True)
 SOURCE = sys.argv[1] if len(sys.argv) > 1 else "tests/mango/test_mango.c"
 subprocess.run([
     str(BIN / "armcc.exe"), "--cpu", "Cortex-M4", "--c99", "-O0", "-g",
-    "-I" + str(Path(SOURCE).parent), "-Itests/mango/stubs", "-c", SOURCE,
+        "-I" + str(Path(SOURCE).parent), "-Itests/mango/stubs",
+        "-I" + str(ROOT / "R550_C30D_2.0_Mini_STM32_GMR_Encoder_2025.12.26/USER"), "-c", SOURCE,
     "-o", str(BUILD / "test_mango.o"),
 ], cwd=ROOT, check=True)
 subprocess.run([

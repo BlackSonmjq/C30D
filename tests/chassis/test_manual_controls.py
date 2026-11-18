@@ -28,12 +28,20 @@ stub = r'''
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 typedef uint8_t u8;
+enum {ROUTE_LIDAR_FRONT,ROUTE_LIDAR_BEHIND};
+typedef struct {uint16_t mm[4];uint32_t sequence;uint8_t fresh;} RouteLidarFrame;
+static void RouteIO_ReadLidar(RouteLidarFrame *p){*p=(RouteLidarFrame){{1000,1000,1000,1000},1,1};}
+static float Velocity_KP,Velocity_KI;
+static unsigned LineDiffParam=50;
+static int flash_words[4]={-1,-1,-1,-1};
+static int Read_Flash(unsigned index){return flash_words[index];}
 typedef struct { float yaw_rad; uint32_t tick_ms; u8 valid; } ChassisOdomFrame;
 #define ROUTE_ODOM_MAX_GAP_MS 100U
 #define CONTROL_DELAY 1000U
 #define HEADING_CONTROL_ENABLE 1
-#define MANUAL_RC_MAX_MMPS 200.0f
+#define MANUAL_RC_MAX_MMPS 300.0f
 static u8 manual_heading_locked;
 static float manual_heading_target;
 static int EN=1,Flag_Stop,Car_Mode=1,RC_Velocity=500;
@@ -59,21 +67,26 @@ static int target_limit_int(int x,int low,int high){return x<low?low:x>high?high
 '''
 main = r'''
 int main(void){
+  float stored=200;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==300);
+  stored=150;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==150);
+  stored=0;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==0);
+  stored=500;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==300);
+  RC_Velocity=500;
   Remoter_Ch2=2000;Remoter_Ch1=1500;remote();
-  assert(fabsf(dx-.2f)<1e-6f && dy==0 && dz==0);
+  assert(fabsf(dx-.3f)<1e-6f && dy==0 && dz==0);
   Remoter_Ch2=1500;Remoter_Ch1=2000;remote();
-  assert(dx==0 && fabsf(dy+.2f)<1e-6f);
+  assert(dx==0 && fabsf(dy+.3f)<1e-6f);
   Remoter_Ch2=1000;Remoter_Ch1=1000;remote();
-  assert(fabsf(dx+.2f)<1e-6f && fabsf(dy-.2f)<1e-6f);
+  assert(fabsf(dx+.3f)<1e-6f && fabsf(dy-.3f)<1e-6f);
   Remoter_Ch2=1500;Remoter_Ch1=1500;pose.yaw_rad=1.2f;remote();
   assert(dx==0 && dy==0 && dz<-.19f && resets==1);
   EN=0;remote();assert(dx==0 && dy==0 && dz==0 && !manual_heading_locked);
   EN=1;remote();assert(dz==0 && resets==2);
   gamepad.LY=254;gamepad.RX=0;ps2();
-  assert(fabsf(dx-.2f)<1e-6f && fabsf(dy-.2f)<1e-6f);
+  assert(fabsf(dx-.3f)<1e-6f && fabsf(dy-.3f)<1e-6f);
   smooth_control.VX=.5f;smooth_control.VY=.5f;
   gamepad.LY=0;gamepad.RX=254;ps2();
-  assert(fabsf(dx+.2f)<1e-6f && fabsf(dy+.2f)<1e-6f);
+  assert(fabsf(dx+.3f)<1e-6f && fabsf(dy+.3f)<1e-6f);
   assert(smooth_control.VX<0 && smooth_control.VY<0);
   assert(smooth_control.VX>=-.051f && smooth_control.VY>=-.051f);
   gamepad.LY=130;gamepad.RX=125;ps2();assert(dx==0 && dy==0);
@@ -86,7 +99,7 @@ with tempfile.TemporaryDirectory(prefix='manual-control-') as temp:
     build = Path(temp)
     test = stub + helper + '\nstatic void VisionAlign_Drive(float x,float y){ManualMecanum_Drive(x,y);}' + '\nvoid ps2(void){' + branches[0] + '}\n'
     test += 'void remote(void){int Threshold=100;static u8 thrice=0;' + branches[1] + '}\n'
-    test += block(source.index('void Smooth_control(')) + '\n' + main
+    test += block(source.index('void Smooth_control(')) + '\n' + block(source.index('void FlashParam_Read(')) + '\n' + main
     if not compiler:
         # Reuse the repository's ARMCC/Unicorn runner on Windows without GCC.
         arm_build = ROOT / 'tests/mango/.build'

@@ -32,6 +32,8 @@ static volatile u8 servo_debug_pending, servo_debug_busy;
 static u8 servo_debug_prefix;
 static volatile u8 camera_report_pending;
 
+volatile uint8_t vision_hit_report;
+
 /* SJ requests a single verified vision snapshot; never transmit in the RX ISR. */
 static void CameraReport_Process(void)
 {
@@ -539,6 +541,10 @@ void data_task(void *pvParameters)
                 CAN_LidarFrame lidar;
                 if (CAN1_TakeLidar(&lidar))
                     RouteIO_PublishLidar(lidar.front_mm,lidar.behind_mm,lidar.left_mm,lidar.right_mm);
+            }
+            if (vision_hit_report) {
+                any_printf(USART1, "CMD HIT_DONE %u\r\n", (unsigned)vision_hit_report);
+                vision_hit_report = 0U;
             }
             USART1_CommandLogProcess();
             CameraReport_Process();

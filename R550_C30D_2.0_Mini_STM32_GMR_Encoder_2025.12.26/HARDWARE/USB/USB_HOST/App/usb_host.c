@@ -129,7 +129,13 @@ extern USBH_StatusTypeDef USBH_HID_PS2_Decode(USBH_HandleTypeDef *phost);
 void USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
 {
 	//游戏手柄数据解码
-	USBH_HID_PS2_Decode(phost);
+    if (USBH_HID_PS2_Decode(phost) != USBH_OK) {
+        GamePadInterface->LX = GamePadInterface->LY = 127U;
+        GamePadInterface->RX = GamePadInterface->RY = 127U;
+        GamePadInterface->LT = GamePadInterface->RT = 0U;
+        GamePadDebug.ready = 0U;
+        return;
+    }
 
 	//游戏手柄模式启动
 	if( GamePadInterface->StartFlag == 1 && PS2_ON_Flag==0 && SysVal.Time_count>=CONTROL_DELAY && GamePadInterface->LY > 150 )

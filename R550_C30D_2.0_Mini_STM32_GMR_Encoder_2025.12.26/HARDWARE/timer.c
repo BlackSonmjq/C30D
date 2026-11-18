@@ -167,7 +167,8 @@ void TIM8_CC_IRQHandler(void)
 	//连接航模遥遥控器后，需要推下前进杆，才可以正式航模控制小车
 	//After connecting the remote controller of the model aircraft, 
 	//you need to push down the forward lever to officially control the car of the model aircraft
-  if(Remoter_Ch2>1600&&Remote_ON_Flag==0&&SysVal.Time_count>=CONTROL_DELAY)
+  if(Remoter_Ch2>1600 && Remoter_Ch2<=2000 && Remote_ON_Flag==0 &&
+     PS2_ON_Flag==0 && SysVal.Time_count>=CONTROL_DELAY)
   {
 		//Model aircraft remote control mark position 1, other marks position 0
 		//航模遥控标志位置1，其它标志位置0

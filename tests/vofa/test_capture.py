@@ -19,6 +19,25 @@ spec.loader.exec_module(capture)
 
 
 def packet(count):
+    if count == 38:
+        return packet(35) + [600, 2, 1]
+    if count == 35:
+        return packet(31) + [186, 127, 81, 200]
+    if count == 31:
+        v = packet(33)
+        return v[:6] + [v[8], v[7], 120] + v[9:11] + v[13:]
+    if count == 34:
+        return packet(33) + [120]
+    if count == 33:
+        return packet(21) + [.125, -.125, .25, -.25, 0, -.125, .25, 0, 16700, -1500, 1500, -16700]
+    if count == 21:
+        return packet(13) + [0, -5, 5, -1, .125, 1, 1, 0]
+    if count == 13:
+        return [1, -20, 1, 3, 100, 3, 4, 60, 1, 0, 0, 3, 1]
+    if count == 40:
+        return packet(37) + [4, 3, 1]
+    if count == 37:
+        return packet(32) + [120, 320, 540, 760, 1]
     if count == 32:
         return packet(20) + [.125, -.125, .125, -.125, .0625, -.125, .125, -.0625, 4000, -1600, 1600, -4000]
     if count == 20:
@@ -36,8 +55,36 @@ def packet(count):
 
 
 class FramingTests(unittest.TestCase):
+    def test_camera_receive_diagnostics(self):
+        values=packet(38)
+        self.assertEqual(capture.fields_for(38)[35:], ['camera_bytes','camera_bad','camera_uart_errors'])
+        self.assertIn('CAM_RX=600 BAD=2 UART_ERR=1',capture.camera_summary(values))
+        for index in (35,36,37):
+            for bad in (-1, .5, float('nan'), 4294967808):
+                invalid=values.copy();invalid[index]=bad
+                self.assertIsNone(capture.Framer.decode(struct.pack('<38f',*invalid)))
+
+    def test_current_layout(self):
+        values = packet(31)
+        self.assertEqual(len(capture.fields_for(31)), 31)
+        self.assertEqual(capture.fields_for(31)[8], "s21c_front_mm")
+        self.assertEqual(capture.Framer.decode(struct.pack("<31f", *values)), tuple(values))
+        self.assertIn("FRONT=120mm", capture.camera_summary(values))
+
+    def test_front_range_channel(self):
+        values = packet(34)
+        self.assertEqual(capture.fields_for(34)[33], 's21c_front_mm')
+        self.assertEqual(capture.fields_for(34)[:33], capture.fields_for(33))
+        self.assertIn('FRONT=120mm', capture.camera_summary(values))
+        for distance in (0, 40, 65535):
+            values[33] = distance
+            self.assertIsNotNone(capture.Framer.decode(struct.pack('<34f', *values)))
+        for distance in (-1, 65536, float('nan')):
+            values[33] = distance
+            self.assertIsNone(capture.Framer.decode(struct.pack('<34f', *values)))
+
     def test_split_corrupt_and_partial_start(self):
-        for count in (8, 20, 32, 48, 64, 72):
+        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 48, 64, 72):
             values = packet(count)
             data = struct.pack(f"<{count}f", *values) + capture.TAIL
             stream = b"noise" + data[100:] + data + data[:-7] + b"bad" + data + data
@@ -46,6 +93,69 @@ class FramingTests(unittest.TestCase):
             for start in range(0, len(stream), 13):
                 frames.extend(parser.feed(stream[start:start+13]))
             self.assertEqual(frames, [tuple(values)] * 3)
+
+    def test_wheel_imu_layout_and_partial_start(self):
+        values = packet(33)
+        self.assertEqual(capture.fields_for(33)[:21], capture.IMU_FIELDS)
+        self.assertEqual(capture.fields_for(33)[21:], capture.LOAD_FIELDS[20:32])
+        self.assertIn("PWM=16700/-1500/1500/-16700", capture.camera_summary(values))
+        for index, value in ((29, 16701), (32, -16701), (30, .5), (20, 16384), (18, 2)):
+            invalid = values.copy()
+            invalid[index] = value
+            self.assertIsNone(capture.Framer.decode(struct.pack("<33f", *invalid)))
+        for record in (values, [0.] * 33):
+            data = struct.pack("<33f", *record) + capture.TAIL
+            for start in range(1, len(data)):
+                self.assertEqual(list(capture.Framer().feed(data[start:] + data + data)),
+                                 [tuple(record)] * 2, start)
+
+    def test_imu_layout_and_partial_start(self):
+        values = packet(21)
+        self.assertEqual(capture.fields_for(21)[:13], capture.COMPACT_FIELDS)
+        self.assertEqual(capture.fields_for(21)[15], "yaw_error_deg")
+        self.assertIn("ERR=+5.00deg", capture.camera_summary(values))
+        self.assertIn("I=+0.125rad/s", capture.camera_summary(values))
+        for index, value in ((18, 2), (19, -1), (20, 16384), (15, float("nan"))):
+            invalid = values.copy()
+            invalid[index] = value
+            self.assertIsNone(capture.Framer.decode(struct.pack("<21f", *invalid)))
+        for record in (values, [0.] * 21):
+            data = struct.pack("<21f", *record) + capture.TAIL
+            for start in range(1, len(data)):
+                self.assertEqual(list(capture.Framer().feed(data[start:] + data + data)),
+                                 [tuple(record)] * 2, start)
+
+    def test_compact_layout_and_partial_start(self):
+        values = packet(13)
+        self.assertEqual(capture.fields_for(13)[11:], ["hit_region", "hit_count"])
+        self.assertIn("PICK=COOLDOWN REAR=60mm fresh=1", capture.camera_summary(values))
+        working = values.copy()
+        working[6] = 5
+        self.assertIn("PICK=WORK", capture.camera_summary(working))
+        self.assertEqual(capture.Framer.decode(struct.pack("<13f", *working)), tuple(working))
+        for index, value in ((4, -1), (5, 7), (6, 6), (7, 65536), (8, 2), (11, 5), (12, -1)):
+            invalid = values.copy()
+            invalid[index] = value
+            self.assertIsNone(capture.Framer.decode(struct.pack("<13f", *invalid)))
+        for record in (values, [0.] * 13):
+            data = struct.pack("<13f", *record) + capture.TAIL
+            for start in range(1, len(data)):
+                self.assertEqual(list(capture.Framer().feed(data[start:] + data + data)),
+                                 [tuple(record)] * 2, start)
+
+    def test_completion_layout_and_partial_start(self):
+        values = packet(40)
+        self.assertEqual(capture.fields_for(40)[37:], ["pick_phase", "hit_region", "hit_count"])
+        self.assertIn("PICK=COOLDOWN HIT_DONE=3 COUNT=1", capture.camera_summary(values))
+        for index, value in ((37, 6), (38, 5), (39, -1)):
+            invalid = values.copy()
+            invalid[index] = value
+            self.assertIsNone(capture.Framer.decode(struct.pack("<40f", *invalid)))
+        for record in (values, [0.] * 40):
+            data = struct.pack("<40f", *record) + capture.TAIL
+            for start in range(1, len(data)):
+                self.assertEqual(list(capture.Framer().feed(data[start:] + data + data)),
+                                 [tuple(record)] * 2, start)
 
     def test_false_tail_straddling_finite_floats(self):
         values = packet(72)
@@ -85,7 +195,7 @@ class FramingTests(unittest.TestCase):
                 self.assertEqual(list(parser.feed(data[start:]+data+data)),[tuple(values)]*2,start)
 
     def test_layout_switch_is_exposed(self):
-        counts = (8, 8, 20, 32, 48, 64, 72, 64, 48, 72, 32, 20, 8)
+        counts = (8, 8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 48, 64, 72, 64, 48, 72, 32, 20, 8)
         stream = b''.join(struct.pack(f'<{n}f', *packet(n)) + capture.TAIL for n in counts)
         self.assertEqual([len(v) for v in capture.Framer().feed(stream)], list(counts))
         self.assertEqual(len(capture.FIELDS), 72)
@@ -146,7 +256,7 @@ class FramingTests(unittest.TestCase):
             self.assertEqual(frames, [tuple(values)] * 2, start)
 
     def test_visual_capture_csv_metadata_and_summary(self):
-        for count in (8, 20, 32):
+        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40):
             values = packet(count)
             data = struct.pack(f'<{count}f', *values) + capture.TAIL
 

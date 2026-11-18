@@ -6,6 +6,7 @@
 #include "route_io.h"
 #include "chassis_odometry.h"
 #include "vision_align.h"
+#include "vision_strike.h"
 #include "servo_task.h"
 //int Time_count=0; //Time variable //计时变量
 
@@ -30,7 +31,18 @@ void auto_pwm_clear(void);
 /* 麦轮手动平移：左杆前后、右杆左右；进入手动时锁定当前 IMU 航向。 */
 static u8 manual_heading_locked;
 static float manual_heading_target;
+/* Explicit visual stop: use wheel speed damping without stored drive effort. */
+static u8 vision_park_braking;
 static VisionAlign_State vision_align;
+static VisionPickPhase vision_pick_phase;
+static uint8_t vision_hit_region;
+static uint32_t vision_hit_count;
+#if VISION_PICK_ENABLE
+static VisionStrike_State vision_pick;
+static uint8_t vision_pick_id;
+static uint32_t vision_pick_phase_started;
+static uint32_t vision_pick_wait_started;
+#endif
 static uint8_t vision_align_ready;
 static uint16_t vision_align_blocked = 8192U;
 uint8_t VisionAlign_GetPhase(void)
@@ -45,6 +57,8 @@ static uint8_t VisionAlign_ControlAllowed(void)
 static void VisionAlign_ReleaseControl(void)
 {
     VisionAlign_Cancel(&vision_align);
+    if (vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD)
+        vision_pick_phase = PICK_IDLE;
     vision_align_ready = 0U;
     vision_align_blocked = 8192U;
 }
@@ -52,11 +66,26 @@ static void VisionAlign_ReleaseControl(void)
 void VisionAlign_GetDiagnostics(VisionAlign_Diagnostics *data)
 {
     uint32_t mask;
+    ChassisOdomFrame pose;
     if (!data) return;
     mask = __get_PRIMASK();
     __disable_irq();
+    ChassisOdom_Read(&pose);
+    data->heading_locked = manual_heading_locked;
+    data->imu_fresh = pose.valid &&
+        (uint32_t)(xTaskGetTickCount() - pose.tick_ms) <= ROUTE_ODOM_MAX_GAP_MS;
+    data->yaw_deg = pose.yaw_rad * 57.2957795f;
+    data->yaw_target_deg = (manual_heading_locked ? manual_heading_target : pose.yaw_rad) * 57.2957795f;
+    data->yaw_error_deg = data->yaw_target_deg - data->yaw_deg;
+    if (data->yaw_error_deg > 180.0f) data->yaw_error_deg -= 360.0f;
+    if (data->yaw_error_deg < -180.0f) data->yaw_error_deg += 360.0f;
+    data->gyro_z_dps = (float)imu.gyro.z * HEADING_CONTROL_GYRO_FULL_SCALE_DPS / 32768.0f;
+    data->heading_i_radps = HeadingControl_GetIntegralOutput();
     data->phase = VisionAlign_GetPhase();
-    data->locked = vision_align.phase == VISION_ALIGN_ACQUIRE || vision_align.phase == VISION_ALIGN_TRACK ||
+    data->pick_phase = (uint8_t)vision_pick_phase;
+    data->hit_region = vision_hit_region;
+    data->hit_count = vision_hit_count;
+    data->locked = vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD || vision_pick_phase == PICK_WORK || vision_pick_phase == PICK_REPORT || vision_align.phase == VISION_ALIGN_ACQUIRE || vision_align.phase == VISION_ALIGN_TRACK ||
         (vision_align.phase == VISION_ALIGN_DONE &&
          (uint32_t)(xTaskGetTickCount() - vision_align.stopped_ms) < VISION_ALIGN_DONE_HOLD_MS);
     data->ly = GamePadInterface ? GamePadInterface->LY : 127U;
@@ -91,6 +120,8 @@ static void ManualMecanum_Drive(float forward, float left)
 {
     ChassisOdomFrame pose;
     float angular = 0.0f;
+    RouteLidarFrame lidar;
+    float front_limit, rear_limit;
     ChassisOdom_Read(&pose);
     if (!EN || Flag_Stop || Voltage < 10.0f || SysVal.Time_count < CONTROL_DELAY ||
         !pose.valid || (uint32_t)(xTaskGetTickCount() - pose.tick_ms) > ROUTE_ODOM_MAX_GAP_MS) {
@@ -99,6 +130,17 @@ static void ManualMecanum_Drive(float forward, float left)
         Drive_Motor(0.0f, 0.0f, 0.0f);
         return;
     }
+    /* Stop at 40 mm; taper longitudinal speed before the boundary.
+     * Missing/zero ranges cannot authorize travel toward that sensor. */
+    RouteIO_ReadLidar(&lidar);
+    front_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_FRONT] > 40U ?
+        (lidar.mm[ROUTE_LIDAR_FRONT] - 40U) * 0.002f : 0.0f;
+    rear_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_BEHIND] > 40U ?
+        (lidar.mm[ROUTE_LIDAR_BEHIND] - 40U) * 0.002f : 0.0f;
+    if (forward > front_limit) forward = front_limit;
+    if (forward < -rear_limit) forward = -rear_limit;
+    if (smooth_control.VX > front_limit) smooth_control.VX = front_limit;
+    if (smooth_control.VX < -rear_limit) smooth_control.VX = -rear_limit;
     if (!manual_heading_locked) {
         manual_heading_target = pose.yaw_rad;
         HeadingControl_Reset();
@@ -167,6 +209,8 @@ void FlashParam_Read(void)
 	//异常速度数据,过滤
 	if( !(RC_Velocity >= 0) || RC_Velocity > 10000 )
 		RC_Velocity = MANUAL_RC_MAX_MMPS;
+    /* Raise the previous 200 mm/s default stored in Flash as well. */
+    if (RC_Velocity == 200.0f) RC_Velocity = MANUAL_RC_MAX_MMPS;
     RC_Velocity = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
 
 	//纠偏系数异常,过滤
@@ -236,7 +280,10 @@ void Drive_Motor(float Vx,float Vy,float Vz)
 	//麦克纳姆轮小车
 	if (Car_Mode==Mec_Car||Car_Mode==Mec_Car_V550)
 	{
-        WheelOutput_SetMotion(Vx, Vy);
+        /* Discard old translational PI once when handing over to yaw hold. */
+        if (Vx == 0.0f && Vy == 0.0f && wheel_output_translation_active)
+            wheel_output_reset_pi = 1;
+        wheel_output_translation_active = Vx != 0.0f || Vy != 0.0f;
 		//Inverse kinematics //运动学逆解
 		MOTOR_A.Target   = +Vy+Vx-Vz*(Axle_spacing+Wheel_spacing);
 		MOTOR_B.Target   = -Vy+Vx-Vz*(Axle_spacing+Wheel_spacing);
@@ -421,15 +468,20 @@ void Balance_task(void *pvParameters)
 			imu_ready_beeped = 1;
 		}
 
+        vision_park_braking = 0U;
         if (RouteIO_ControlOwned() || APP_ON_Flag ||
             (!Remote_ON_Flag && !PS2_ON_Flag &&
-             !(VISION_ALIGN_ENABLE && (vision_align.phase == VISION_ALIGN_ACQUIRE || vision_align.phase == VISION_ALIGN_TRACK))) ||
+             !VisionAlign_ControlAllowed()) ||
             !EN || Flag_Stop)
             manual_heading_locked = 0U;
         if (!VisionAlign_ControlAllowed() || !EN || Flag_Stop)
             VisionAlign_ReleaseControl();
 
-        if (RouteIO_ControlOwned())
+        if (vision_pick_phase == PICK_WORK || vision_pick_phase == PICK_REPORT)
+        {
+            VisionAlign_Drive(0.0f, 0.0f);
+        }
+        else if (RouteIO_ControlOwned())
         {
             Allow_Recharge = 0;
             RouteIO_ApplyDrive();
@@ -516,6 +568,14 @@ void Balance_task(void *pvParameters)
 			//PWM represents the actual wheel speed
 			//速度闭环控制计算各电机PWM值，PWM代表车轮实际转速
             wheel_output_active = !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
+            WheelOutput_UpdateStartup(0U, MOTOR_A.Target, MOTOR_A.Encoder, wheel_output_active);
+            WheelOutput_UpdateStartup(1U, MOTOR_B.Target, MOTOR_B.Encoder, wheel_output_active);
+            WheelOutput_UpdateStartup(2U, MOTOR_C.Target, MOTOR_C.Encoder, wheel_output_active);
+            WheelOutput_UpdateStartup(3U, MOTOR_D.Target, MOTOR_D.Encoder, wheel_output_active);
+            wheel_output_stopping = fabsf(MOTOR_A.Target) <= WHEEL_FEEDFORWARD_MIN_MPS &&
+                                    fabsf(MOTOR_B.Target) <= WHEEL_FEEDFORWARD_MIN_MPS &&
+                                    fabsf(MOTOR_C.Target) <= WHEEL_FEEDFORWARD_MIN_MPS &&
+                                    fabsf(MOTOR_D.Target) <= WHEEL_FEEDFORWARD_MIN_MPS;
 			MOTOR_A.Motor_Pwm=Incremental_PI_A(MOTOR_A.Encoder, MOTOR_A.Target);
 			MOTOR_B.Motor_Pwm=Incremental_PI_B(MOTOR_B.Encoder, MOTOR_B.Target);
 			MOTOR_C.Motor_Pwm=Incremental_PI_C(MOTOR_C.Encoder, MOTOR_C.Target);
@@ -525,6 +585,7 @@ void Balance_task(void *pvParameters)
             MOTOR_B.Motor_Pwm = WheelOutput_Apply(1U, MOTOR_B.Motor_Pwm, MOTOR_B.Target, MOTOR_B.Encoder, wheel_output_active);
             MOTOR_C.Motor_Pwm = WheelOutput_Apply(2U, MOTOR_C.Motor_Pwm, MOTOR_C.Target, MOTOR_C.Encoder, wheel_output_active);
             MOTOR_D.Motor_Pwm = WheelOutput_Apply(3U, MOTOR_D.Motor_Pwm, MOTOR_D.Target, MOTOR_D.Encoder, wheel_output_active);
+            wheel_output_reset_pi = 0;
 
 
 			Limit_Pwm(16700);
@@ -548,7 +609,10 @@ void Balance_task(void *pvParameters)
 		}
 		//If Turn_Off(Voltage) returns to 1, the car is not allowed to move, and the PWM value is set to 0
 		//如果Turn_Off(Voltage)返回值为1，不允许控制小车进行运动，PWM值设置为0
-		else	Set_Pwm(0,0,0,0);
+		else {
+            WheelOutput_ResetStartup();
+            Set_Pwm(0,0,0,0);
+        }
 
 		//Flash写入
 		if( 1 == FlashParam_Save(&FlashWriteFlag) )
@@ -696,7 +760,8 @@ int Incremental_PI_A (float Encoder,float Target)
 {
 	 static float Bias,Pwm,Last_bias;
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
-	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
+	 if (vision_park_braking || wheel_output_stopping || wheel_output_reset_pi) Pwm = Velocity_KP * Bias;
+	 else Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
      Pwm = WheelOutput_ClampPi(0U, Pwm, Target, Encoder, !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550));
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 
@@ -718,7 +783,8 @@ int Incremental_PI_B (float Encoder,float Target)
 {
 	 static float Bias,Pwm,Last_bias;
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
-	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
+	 if (vision_park_braking || wheel_output_stopping || wheel_output_reset_pi) Pwm = Velocity_KP * Bias;
+	 else Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
      Pwm = WheelOutput_ClampPi(1U, Pwm, Target, Encoder, !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550));
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 	if( start_clear )
@@ -735,7 +801,8 @@ int Incremental_PI_C (float Encoder,float Target)
 {
 	 static float Bias,Pwm,Last_bias;
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
-	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
+	 if (vision_park_braking || wheel_output_stopping || wheel_output_reset_pi) Pwm = Velocity_KP * Bias;
+	 else Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
      Pwm = WheelOutput_ClampPi(2U, Pwm, Target, Encoder, !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550));
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 
@@ -755,7 +822,8 @@ int Incremental_PI_D (float Encoder,float Target)
 	 static float Bias,Pwm,Last_bias;
 
 	 Bias=Target-Encoder; //Calculate the deviation //计算偏差
-	 Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
+	 if (vision_park_braking || wheel_output_stopping || wheel_output_reset_pi) Pwm = Velocity_KP * Bias;
+	 else Pwm+=Velocity_KP*(Bias-Last_bias)+Velocity_KI*Bias;
      Pwm = WheelOutput_ClampPi(3U, Pwm, Target, Encoder, !start_clear && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550));
 	 Last_bias=Bias; //Save the last deviation //保存上一次偏差
 
@@ -951,20 +1019,70 @@ static uint8_t map_to_vib(float x) {
 
 /* Automatic DX alignment is available without a controller.
  * Vision owns ACQUIRE/TRACK; manual input is only used outside an attempt. */
+static void VisionAlign_HardStop(void)
+{
+    vision_park_braking = 1U;
+    smooth_control.VX = smooth_control.VY = smooth_control.VZ = 0.0f;
+    Move_X = Move_Y = Move_Z = 0.0f;
+    if (!vision_align_ready) {
+        manual_heading_locked = 0U;
+        HeadingControl_Reset();
+    }
+    Drive_Motor(0.0f, 0.0f, 0.0f);
+}
 static void VisionAlign_Drive(float forward, float left)
 {
 #if VISION_ALIGN_ENABLE
     Camera_Data camera;
+    RouteLidarFrame align_lidar;
     ChassisOdomFrame pose;
     VisionAlign_Output command;
     uint32_t now = (uint32_t)xTaskGetTickCount();
     uint8_t ready;
+#if VISION_PICK_ENABLE
+    uint8_t previous_phase = vision_align.phase;
+#endif
     uint8_t was_automatic = vision_align.phase == VISION_ALIGN_ACQUIRE || vision_align.phase == VISION_ALIGN_TRACK;
     uint8_t manual_active = PS2_ON_Flag && GamePadInterface && GamePadInterface->getKeyState &&
         (fabsf((float)GamePadInterface->LY - 127.0f) >= 20.0f ||
          fabsf((float)GamePadInterface->RX - 127.0f) >= 20.0f);
     Camera_GetData(&camera);
     ChassisOdom_Read(&pose);
+#if VISION_PICK_ENABLE
+    if (vision_pick_phase == PICK_WORK) {
+        if (!StepperTask_IsBusy()) {
+            StepperTask_Data tool;
+            StepperTask_GetData(&tool);
+            if (tool.state == STEPPER_RETURNED && tool.mango_id == vision_pick_id && tool.result == MANGO_OK) {
+                vision_hit_region = vision_pick_id;
+                ++vision_hit_count;
+                vision_hit_report = vision_pick_id;
+                vision_pick_phase = PICK_REPORT;
+            } else {
+                vision_pick_phase = PICK_COOLDOWN;
+                vision_pick_phase_started = now;
+            }
+        }
+        VisionAlign_HardStop();
+        return;
+    }
+    if (vision_pick_phase == PICK_REPORT) {
+        if (!vision_hit_report) {
+            vision_pick_phase = PICK_COOLDOWN;
+            vision_pick_phase_started = now;
+        }
+        VisionAlign_HardStop();
+        return;
+    }
+    if (vision_pick_phase == PICK_COOLDOWN) {
+        /* Discard even the snapshot present at expiry; resume on a later frame. */
+        vision_align.last_frames = vision_pick.last_frames = camera.frames;
+        if ((uint32_t)(now - vision_pick_phase_started) >= VISION_PICK_COOLDOWN_MS)
+            vision_pick_phase = PICK_IDLE;
+        ManualMecanum_Drive(forward, left);
+        return;
+    }
+#endif
     vision_align_blocked = (!VisionAlign_ControlAllowed() ? 8192U : 0U) | (Check != 0 ? 2U : 0U) |
         (!EN ? 4U : 0U) | (Flag_Stop ? 8U : 0U) | (!(Voltage >= 10.0f) ? 16U : 0U) |
         (SysVal.Time_count < CONTROL_DELAY ? 32U : 0U) | (!pose.valid ? 64U : 0U) |
@@ -973,15 +1091,61 @@ static void VisionAlign_Drive(float forward, float left)
         (ServoTask_IsBusy() ? 1024U : 0U) | (USART_ServoControlBusy() ? 2048U : 0U) |
         (RouteIO_WorkReserved() ? 4096U : 0U);
     ready = vision_align_ready = vision_align_blocked == 0U;
-    command = VisionAlign_Update(&vision_align, &camera, now, manual_active, ready);
+    RouteIO_ReadLidar(&align_lidar);
+    command = VisionAlign_Update(&vision_align, &camera, now, manual_active, ready,
+        align_lidar.mm[ROUTE_LIDAR_BEHIND], align_lidar.fresh &&
+        align_lidar.mm[ROUTE_LIDAR_BEHIND] != 0U);
+#if VISION_PICK_ENABLE
+    if (vision_align.phase == VISION_ALIGN_DONE && previous_phase != VISION_ALIGN_DONE && !vision_pick.latched) {
+        vision_pick_phase = PICK_WAIT;
+        vision_pick_wait_started = now;
+    }
+    {
+        uint8_t blocked = !ready || (!vision_pick.latched && (vision_align.phase != VISION_ALIGN_DONE ||
+            !VisionAlign_Centered(camera.offset)));
+        uint8_t id = VisionStrike_Update(&vision_pick, &camera, now, blocked);
+        if (!ready || vision_align.phase != VISION_ALIGN_DONE)
+            vision_pick_phase = PICK_IDLE;
+        if (vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD) {
+            RouteLidarFrame lidar;
+            uint8_t qualified;
+            RouteIO_ReadLidar(&lidar);
+            qualified = !blocked && vision_pick.confirmed >= VISION_STRIKE_CONFIRM_FRAMES &&
+                lidar.fresh && lidar.mm[ROUTE_LIDAR_BEHIND] > VISION_PICK_REAR_MIN_MM &&
+                lidar.mm[ROUTE_LIDAR_BEHIND] < VISION_PICK_REAR_MAX_MM && RouteIO_ChassisStopped();
+            if (!qualified) vision_pick_phase = PICK_WAIT;
+            switch (vision_pick_phase) {
+            case PICK_WAIT:
+                if ((uint32_t)(now - vision_pick_wait_started) >= VISION_PICK_WAIT_MS)
+                    vision_pick_phase = PICK_IDLE;
+                else if (qualified && id) {
+                    vision_pick_phase = PICK_HOLD;
+                    vision_pick_phase_started = now;
+                }
+                break;
+            case PICK_HOLD:
+                if ((uint32_t)(now - vision_pick_phase_started) >= VISION_ALIGN_DONE_HOLD_MS &&
+                    id && StepperTask_RequestMango(id)) {
+                    vision_pick_id = id;
+                    VisionStrike_Accept(&vision_pick);
+                    VisionAlign_Cancel(&vision_align);
+                    vision_pick_phase = PICK_WORK;
+                }
+                break;
+            default: break;
+            }
+            if (vision_pick_phase != PICK_IDLE) {
+                VisionAlign_HardStop();
+                return;
+            }
+        }
+    }
+#endif
+
     if ((!ready && (!manual_active || was_automatic)) ||
         (command.owned && command.x_mps == 0.0f && command.y_mps == 0.0f)) {
         /* Full zero, including yaw hold, until fresh target confirmation or manual input. */
-        smooth_control.VX = smooth_control.VY = smooth_control.VZ = 0.0f;
-        Move_X = Move_Y = Move_Z = 0.0f;
-        manual_heading_locked = 0U;
-        HeadingControl_Reset();
-        Drive_Motor(0.0f, 0.0f, 0.0f);
+        VisionAlign_HardStop();
         return;
     }
     if (command.owned) {

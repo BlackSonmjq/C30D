@@ -10,10 +10,10 @@
 /* 左右步进方向一致：DIR 低电平靠近芒果，高电平返程。 */
 #define MANGO_LEFT_FORWARD_HIGH  0U
 #define MANGO_RIGHT_FORWARD_HIGH 0U
-/* 定时器计数频率 1 MHz：ARR=199 对应目标巡航频率 5000 脉冲/秒。
+/* 定时器计数频率 1 MHz：ARR=139 对应目标巡航频率约 7143 脉冲/秒。
  * 前进、返程共用对应电机的速度配置，底层保留加减速。 */
-#define MANGO_LEFT_SPEED_ARR     199U
-#define MANGO_RIGHT_SPEED_ARR    199U
+#define MANGO_LEFT_SPEED_ARR     139U
+#define MANGO_RIGHT_SPEED_ARR    139U
 /* 各编号的击打阈值，单位 mm；有效距离严格小于对应值时才允许击打。 */
 #define MANGO_TARGET_1_MM        108U
 #define MANGO_TARGET_2_MM        60U

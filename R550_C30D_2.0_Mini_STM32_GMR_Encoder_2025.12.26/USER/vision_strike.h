@@ -2,6 +2,21 @@
 #define VISION_STRIKE_H
 #include "camera_protocol.h"
 
+/* Full workflow is owned by the 100 Hz chassis task, after alignment only.
+ * Keep the independent VOFA-task dispatcher below disabled. */
+#ifndef VISION_PICK_ENABLE
+#define VISION_PICK_ENABLE 0
+#endif
+typedef enum {
+    PICK_IDLE, PICK_WAIT, PICK_HOLD, PICK_REPORT, PICK_COOLDOWN, PICK_WORK
+} VisionPickPhase;
+/* Chassis publishes once; DATA_task clears after writing the completion line. */
+extern volatile uint8_t vision_hit_report;
+#define VISION_PICK_COOLDOWN_MS 2000UL
+#define VISION_PICK_WAIT_MS 5000UL
+#define VISION_PICK_REAR_MIN_MM 40U
+#define VISION_PICK_REAR_MAX_MM 80U
+
 /* REGION 1..4 maps directly to existing K1..K4 complete picking jobs. */
 #ifndef VISION_STRIKE_ENABLE
 #define VISION_STRIKE_ENABLE 0

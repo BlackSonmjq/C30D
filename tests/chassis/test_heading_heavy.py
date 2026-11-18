@@ -31,18 +31,74 @@ int main(void) {
     assert(HeadingControl_HoldYaw(0,0,0)==0);
     float small=HeadingControl_HoldYaw(.011f,0,0);
     float medium=HeadingControl_HoldYaw(.05f,0,0);
-    assert(small>0 && small<.02f && medium>small && medium<.08f);
+    assert(small>0 && small<.04f && medium>small && medium<.17f);
     assert(HeadingControl_HoldYaw(-.011f,0,0)<0);
-    assert(fabsf(HeadingControl_HoldYaw(2,0,0)-.50f)<1e-6f);
-    assert(fabsf(HeadingControl_HoldYaw(-2,0,0)+.50f)<1e-6f);
-    /* Already turning toward target: brake before the angle crosses zero. */
-    assert(HeadingControl_Output(.05f,.2f,.01f)<0);
-    assert(HeadingControl_Output(-.05f,-.2f,.01f)>0);
-    assert(fabsf(HeadingControl_Output(.05f,.05f*1.20f/.55f,.01f))<1e-6f);
+    HeadingControl_Reset();
+    assert(HeadingControl_HoldYaw(.015f,0,0)<.04f);
+    HeadingControl_Reset();
+    assert(HeadingControl_HoldYaw(.05236f,0,0)>=.159f);
+
+    HeadingControl_Reset();
+    assert(fabsf(HeadingControl_HoldYaw(2,0,0)-HEADING_CONTROL_MAX_ANGULAR_VELOCITY)<1e-6f);
+    assert(fabsf(HeadingControl_HoldYaw(-2,0,0)+HEADING_CONTROL_MAX_ANGULAR_VELOCITY)<1e-6f);
+    for(int n=0;n<10000;n++) HeadingControl_Output(2,0,.01f);
+    assert(heading_state.integral==0);
+    for(int n=0;n<10000;n++) HeadingControl_Output(-2,0,.01f);
+    assert(heading_state.integral==0);
+    /* Small persistent offsets must build bounded correction in both directions. */
+    HeadingControl_Reset();
+    float first=HeadingControl_Output(.02f,0,.01f),last=first;
+    for(int n=0;n<3000;n++) last=HeadingControl_Output(.02f,0,.01f);
+    assert(last>first+.15f && heading_state.integral<=HEADING_CONTROL_INTEGRAL_LIMIT);
+    float stored=heading_state.integral;
+    HeadingControl_Output(-.02f,0,.01f);
+    assert(heading_state.integral<stored);
+    HeadingControl_Reset();
+    first=HeadingControl_Output(-.02f,0,.01f);
+    for(int n=0;n<3000;n++) last=HeadingControl_Output(-.02f,0,.01f);
+    assert(last<first-.15f);
+    /* Already turning toward target: preserve pre-crossing braking. */
+    HeadingControl_Reset();assert(HeadingControl_Output(.05f,.2f,.01f)<0);
+    HeadingControl_Reset();assert(HeadingControl_Output(-.05f,-.2f,.01f)>0);
+    HeadingControl_Reset();
+    float balance_rate=.05f*(HEADING_CONTROL_KP+HEADING_CONTROL_KI*.01f)/HEADING_CONTROL_KD;
+    assert(fabsf(HeadingControl_Output(.05f,balance_rate,.01f))<1e-6f);
     assert(HeadingControl_Output(0,.2f,.01f)<0);
-    assert(HeadingControl_Output(.005f,.01f,.01f)==0);
-    /* Public entry uses the measured gyro, not an error difference. */
-    assert(HeadingControl_HoldYaw(.05f,0,751)<0);
+    stored=heading_state.integral;
+    assert(fabsf(HeadingControl_Output(.005f,.01f,.01f)-HEADING_CONTROL_KI*stored)<1e-6f);
+    assert(heading_state.integral==stored);
+    HeadingControl_Reset();assert(HeadingControl_Output(.005f,.01f,.01f)==0);
+    /* Once across the target, release the old I effort inside tolerance. */
+    for(int sign=-1;sign<=1;sign+=2) {
+        heading_state.integral=sign*.4f;
+        for(int n=0;n<100;n++) HeadingControl_Output(-sign*.005f,0,.01f);
+        assert(fabsf(heading_state.integral)<.06f);
+    }
+
+    for(int sign=-1;sign<=1;sign+=2) {
+        heading_state.integral=sign*.4f;
+        for(int n=0;n<100;n++) HeadingControl_Output(sign*.002f,0,.01f);
+        assert(fabsf(heading_state.integral)<.15f);
+    }
+    HeadingControl_Reset();assert(HeadingControl_HoldYaw(.05f,0,751)<0);
+    /* Constant yaw disturbance leaves a residual with PD; I must reduce it. */
+    for(int direction=-1;direction<=1;direction+=2) {
+        float yaw=0,rate=0;
+        HeadingControl_Reset();
+        for(int n=0;n<4000;n++) {
+            float command=HeadingControl_Output(-yaw,rate,.01f);
+            rate+=(command+direction*.08f-rate)*.05f;
+            yaw+=rate*.01f;
+        }
+        assert(fabsf(yaw)<.02f);
+        /* Removing the external bias must let the retained integral unwind. */
+        for(int n=0;n<4000;n++) {
+            float command=HeadingControl_Output(-yaw,rate,.01f);
+            rate+=(command-rate)*.05f;
+            yaw+=rate*.01f;
+        }
+        assert(fabsf(yaw)<.02f && fabsf(rate)<.01f);
+    }
     for(int ps2=0;ps2<2;ps2++) {
         PS2_ON_Flag=ps2;
         smooth_control.VZ=.3f;
@@ -58,7 +114,7 @@ int main(void) {
     /* Integrated gyro path retains startup lock and produces damping. */
     HeadingControl_Reset();assert(HeadingControl_Update(0)==0);
     assert(HeadingControl_Update(751)<0);
-    puts("PASS: tapered startup assist, bounded gains, pre-crossing damping, no false output at PD balance, immediate angular braking/reversal");
+    puts("PASS: sustained yaw bias rejection, integral anti-windup, damping, bounded correction and immediate angular braking/reversal");
 }
 '''
 compiler = os.environ.get('ROUTE_HOST_CC') or shutil.which('gcc')
@@ -69,7 +125,9 @@ if not compiler:
     for name in ('heading_control.c', 'heading_control.h'):
         shutil.copyfile(FW / 'BALANCE' / name, build / name)
     shutil.copyfile(ROOT / 'tests/chassis/stubs/sys.h', build / 'sys.h')
-    subprocess.run([sys.executable, str(ROOT / 'tests/mango/run_tests.py'), str(build / 'test.c')], cwd=ROOT, check=True)
+    environment = dict(os.environ, ARM_TEST_MAX_INSTRUCTIONS='200000000')
+    subprocess.run([sys.executable, str(ROOT / 'tests/mango/run_tests.py'), str(build / 'test.c')],
+                   cwd=ROOT, env=environment, check=True)
     raise SystemExit(0)
 with tempfile.TemporaryDirectory(prefix='heading-heavy-') as temp:
     build = Path(temp)
