@@ -23,7 +23,7 @@ static float HeadingControl_Limit(float value, float lower, float upper)
     return value;
 }
 
-static float HeadingControl_NormalizeAngle(float angle)
+float HeadingControl_NormalizeAngle(float angle)
 {
     const float two_pi = 2.0f * HEADING_CONTROL_PI;
 
@@ -67,6 +67,10 @@ static float HeadingControl_Output(float error, float gyro_z_rad_s, float dt)
             -HEADING_CONTROL_MAX_ANGULAR_VELOCITY, HEADING_CONTROL_MAX_ANGULAR_VELOCITY);
     }
 
+    /* When almost stationary, stale integral must not drive away from the target. */
+    if (HeadingControl_Abs(gyro_z_rad_s) <= HEADING_CONTROL_MIN_ASSIST_RATE &&
+        (HEADING_CONTROL_KP * error + HEADING_CONTROL_KI * heading_state.integral) * error < 0.0f)
+        heading_state.integral = 0.0f;
     integral = HeadingControl_Limit(heading_state.integral + error * dt,
         -HEADING_CONTROL_INTEGRAL_LIMIT, HEADING_CONTROL_INTEGRAL_LIMIT);
     output = HEADING_CONTROL_KP * error - HEADING_CONTROL_KD * gyro_z_rad_s;

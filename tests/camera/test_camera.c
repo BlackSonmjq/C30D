@@ -17,14 +17,14 @@ static float channel(const unsigned char *p,unsigned n) {
 }
 static void test_telemetry(void) {
  RouteController controller={0}; RouteInputs in={0}; RouteDebugFrame frozen;
- unsigned char before[156],after[156],visual[]={0x63,1,0xEC,1,3,0x66};
+ unsigned char before[176],after[176],visual[]={0x63,1,0xEC,1,3,0x66};
  RouteDebug_Reset();
- CHECK(ROUTE_VOFA_CHANNEL_COUNT==38 && ROUTE_VOFA_FRAME_BYTES==156);
- CHECK(RouteDebug_BuildPacket(before,sizeof(before))==156);
+ CHECK(ROUTE_VOFA_CHANNEL_COUNT==43 && ROUTE_VOFA_FRAME_BYTES==176);
+ CHECK(RouteDebug_BuildPacket(before,sizeof(before))==176);
  CHECK(channel(before,0)==0 && channel(before,5)==0);
  telemetry_align.ly=186;telemetry_align.rx=127;telemetry_align.control_flags=81;telemetry_align.rc_velocity_mmps=200;
  telemetry_align.phase=2;telemetry_align.vy_mps=-.14f;telemetry_align.wz_radps=.125f;
- telemetry_align.pick_phase=5;telemetry_align.hit_region=4;telemetry_align.hit_count=7;
+ telemetry_align.pick_phase=5;telemetry_align.hit_region=4;telemetry_align.hit_count=7;telemetry_align.locked_region=3;telemetry_align.lock_count=12;
  telemetry_align.yaw_target_deg=10;telemetry_align.yaw_deg=15;telemetry_align.yaw_error_deg=-5;
  telemetry_align.gyro_z_dps=-12.5f;telemetry_align.heading_i_radps=.1f;
  telemetry_align.heading_locked=1;telemetry_align.imu_fresh=1;telemetry_align.blocked=64;
@@ -35,9 +35,11 @@ static void test_telemetry(void) {
  }
  feed(&telemetry_camera,visual,6);
  /* No route capture is needed to publish fresh visual data. */
- CHECK(RouteDebug_BuildPacket(after,sizeof(after))==156);
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==176);
  CHECK(channel(after,0)==1 && channel(after,1)==-20);
  CHECK(channel(after,2)==1 && channel(after,3)==3);
+ CHECK(channel(after,38)==5 && channel(after,39)==4 && channel(after,40)==7);
+ CHECK(channel(after,41)==3 && channel(after,42)==12);
  CHECK(channel(after,35)==6 && channel(after,36)==0 && channel(after,37)==0);
  CHECK(channel(after,4)==1 && channel(after,5)==2 && channel(after,6)==0);
  CHECK(channel(after,7)==0 && channel(after,8)==0);
@@ -52,24 +54,24 @@ static void test_telemetry(void) {
   CHECK(channel(after,27+w)==(w%2 ? -16700 : 16700));
  }
  telemetry_lidar.mm[ROUTE_LIDAR_FRONT]=120;telemetry_lidar.mm[ROUTE_LIDAR_BEHIND]=60;telemetry_lidar.fresh=1;
- CHECK(RouteDebug_BuildPacket(after,sizeof(after))==156);
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==176);
  CHECK(channel(after,7)==60 && channel(after,6)==1 && channel(after,8)==120);
- CHECK(after[152]==0 && after[153]==0 && after[154]==0x80 && after[155]==0x7f);
+ CHECK(after[172]==0 && after[173]==0 && after[174]==0x80 && after[175]==0x7f);
  visual[2]=0x80;feed(&telemetry_camera,visual,6);
- CHECK(RouteDebug_BuildPacket(after,sizeof(after))==156);
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==176);
  CHECK(channel(after,1)==-128 && channel(after,4)==2);
  controller.status.phase=ROUTE_FAULT;in.now_ms=1234;
  RouteDebug_Capture(&controller,&in,0,0);
  CHECK(RouteDebug_ReadFault(&frozen) && frozen.frozen);
- CHECK(RouteDebug_BuildPacket(before,sizeof(before))==156);
+ CHECK(RouteDebug_BuildPacket(before,sizeof(before))==176);
  visual[2]=0x7f;feed(&telemetry_camera,visual,6);
- CHECK(RouteDebug_BuildPacket(after,sizeof(after))==156);
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==176);
  CHECK(channel(after,1)==127 && channel(after,4)==3);
  CHECK(memcmp(before,after,sizeof(before))!=0);
  CHECK(RouteDebug_ReadFault(&frozen) && frozen.tick_ms==1234);
  CHECK(RouteDebug_BuildPacket(after,sizeof(after)-1)==0);
  CHECK(RouteDebug_BuildPacket(0,sizeof(after))==0);
- if(!fails) printf("PASS: 38-channel wheels/IMU/live vision/rear range/alignment/physical job completion telemetry\n");
+ if(!fails) printf("PASS: 43-channel wheels/IMU/live vision/rear range/alignment/physical job completion telemetry\n");
 }
 int main(void) {
  Camera_Receiver r={0}; unsigned i;
@@ -82,6 +84,8 @@ int main(void) {
  feed(&r,special,sizeof(special)); CHECK(r.data.frames==3 && r.data.offset==102);
  feed(&r,bad,6); CHECK(r.data.frames==3 && r.data.bad>=1);
  feed(&r,empty,6); CHECK(r.data.frames==4 && r.data.pole==0 && r.data.green==1 && r.data.region==0);
+ unsigned char unknown[]={0x63,1,2,1,0,0x66};
+ feed(&r,unknown,6); CHECK(r.data.frames==5 && r.data.pole==1 && r.data.green==1 && r.data.region==0);
  for(i=1;i<6;++i) { memset(&r,0,sizeof(r)); feed(&r,good,i); feed(&r,good,6); CHECK(r.data.frames==1 && r.data.offset==-20); }
  memset(&r,0,sizeof(r)); for(i=0;i<1000;++i) feed(&r,good,6); CHECK(r.data.frames==1000);
  good[2]=0x80; feed(&r,good,6); CHECK(r.data.offset==-128);

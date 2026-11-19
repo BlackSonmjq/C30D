@@ -34,12 +34,20 @@ static float manual_heading_target;
 /* Explicit visual stop: use wheel speed damping without stored drive effort. */
 static u8 vision_park_braking;
 static VisionAlign_State vision_align;
+static uint32_t vision_manual_frames, vision_manual_seen;
 static VisionPickPhase vision_pick_phase;
 static uint8_t vision_hit_region;
 static uint32_t vision_hit_count;
+static uint32_t vision_lock_count;
 #if VISION_PICK_ENABLE
 static VisionStrike_State vision_pick;
 static uint8_t vision_pick_id;
+static uint8_t vision_pick_attempts;
+static uint8_t vision_detection_timed_out;
+static uint8_t vision_target_region;
+static uint8_t vision_resume_pending;
+static uint32_t vision_fruit_seen;
+static VisionPickRange_State vision_pick_range;
 static uint32_t vision_pick_phase_started;
 static uint32_t vision_pick_wait_started;
 #endif
@@ -59,6 +67,10 @@ static void VisionAlign_ReleaseControl(void)
     VisionAlign_Cancel(&vision_align);
     if (vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD)
         vision_pick_phase = PICK_IDLE;
+#if VISION_PICK_ENABLE
+    if (vision_pick_phase != PICK_WORK && vision_pick_phase != PICK_REPORT && vision_pick_phase != PICK_COOLDOWN)
+        vision_target_region = 0U;
+#endif
     vision_align_ready = 0U;
     vision_align_blocked = 8192U;
 }
@@ -85,6 +97,12 @@ void VisionAlign_GetDiagnostics(VisionAlign_Diagnostics *data)
     data->pick_phase = (uint8_t)vision_pick_phase;
     data->hit_region = vision_hit_region;
     data->hit_count = vision_hit_count;
+    data->lock_count = vision_lock_count;
+#if VISION_PICK_ENABLE
+    data->locked_region = vision_target_region;
+#else
+    data->locked_region = 0U;
+#endif
     data->locked = vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD || vision_pick_phase == PICK_WORK || vision_pick_phase == PICK_REPORT || vision_align.phase == VISION_ALIGN_ACQUIRE || vision_align.phase == VISION_ALIGN_TRACK ||
         (vision_align.phase == VISION_ALIGN_DONE &&
          (uint32_t)(xTaskGetTickCount() - vision_align.stopped_ms) < VISION_ALIGN_DONE_HOLD_MS);
@@ -116,7 +134,7 @@ void VisionAlign_GetDiagnostics(VisionAlign_Diagnostics *data)
         (GamePadInterface && GamePadInterface->getKeyState ? 64U : 0U);
     __set_PRIMASK(mask);
 }
-static void ManualMecanum_Drive(float forward, float left)
+static void ManualMecanum_Drive(float forward, float left, uint8_t automatic)
 {
     ChassisOdomFrame pose;
     float angular = 0.0f;
@@ -130,13 +148,13 @@ static void ManualMecanum_Drive(float forward, float left)
         Drive_Motor(0.0f, 0.0f, 0.0f);
         return;
     }
-    /* Stop at 40 mm; taper longitudinal speed before the boundary.
+    /* Stop at 45 mm; taper longitudinal speed before the boundary.
      * Missing/zero ranges cannot authorize travel toward that sensor. */
     RouteIO_ReadLidar(&lidar);
-    front_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_FRONT] > 40U ?
-        (lidar.mm[ROUTE_LIDAR_FRONT] - 40U) * 0.002f : 0.0f;
-    rear_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_BEHIND] > 40U ?
-        (lidar.mm[ROUTE_LIDAR_BEHIND] - 40U) * 0.002f : 0.0f;
+    front_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_FRONT] > 45U ?
+        (lidar.mm[ROUTE_LIDAR_FRONT] - 45U) * 0.002f : 0.0f;
+    rear_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_BEHIND] > 45U ?
+        (lidar.mm[ROUTE_LIDAR_BEHIND] - 45U) * (automatic ? 0.004f : 0.002f) : 0.0f;
     if (forward > front_limit) forward = front_limit;
     if (forward < -rear_limit) forward = -rear_limit;
     if (smooth_control.VX > front_limit) smooth_control.VX = front_limit;
@@ -148,6 +166,8 @@ static void ManualMecanum_Drive(float forward, float left)
     }
     if (HEADING_CONTROL_ENABLE)
         angular = HeadingControl_HoldYaw(manual_heading_target, pose.yaw_rad, imu.gyro.z);
+    /* The IMU controller already bounds yaw effort and damps measured rate. */
+    smooth_control.VZ = angular;
     /* On a manual reversal, discard the old direction's ramp. Smooth_control
      * still ramps up the new direction; do not spend cycles driving the old one. */
     if (forward * smooth_control.VX < 0.0f) smooth_control.VX = 0.0f;
@@ -209,8 +229,8 @@ void FlashParam_Read(void)
 	//异常速度数据,过滤
 	if( !(RC_Velocity >= 0) || RC_Velocity > 10000 )
 		RC_Velocity = MANUAL_RC_MAX_MMPS;
-    /* Raise the previous 200 mm/s default stored in Flash as well. */
-    if (RC_Velocity == 200.0f) RC_Velocity = MANUAL_RC_MAX_MMPS;
+    /* Raise the previous 200/300 mm/s defaults stored in Flash as well. */
+    if (RC_Velocity == 200.0f || RC_Velocity == 300.0f) RC_Velocity = MANUAL_RC_MAX_MMPS;
     RC_Velocity = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
 
 	//纠偏系数异常,过滤
@@ -1024,23 +1044,38 @@ static void VisionAlign_HardStop(void)
     vision_park_braking = 1U;
     smooth_control.VX = smooth_control.VY = smooth_control.VZ = 0.0f;
     Move_X = Move_Y = Move_Z = 0.0f;
-    if (!vision_align_ready) {
+    /* Own tool motion inhibits chassis output, but does not invalidate IMU yaw. */
+    if (!vision_align_ready && !(vision_pick_phase == PICK_WORK &&
+        (vision_align_blocked & ~(512U | 1024U)) == 0U)) {
         manual_heading_locked = 0U;
         HeadingControl_Reset();
     }
     Drive_Motor(0.0f, 0.0f, 0.0f);
+}
+static void VisionAlign_HoldYaw(void)
+{
+    if (!vision_align_ready || vision_pick_phase == PICK_WORK) {
+        VisionAlign_HardStop();
+        return;
+    }
+    smooth_control.VX = smooth_control.VY = 0.0f;
+    ManualMecanum_Drive(0.0f, 0.0f, 1U);
+    if (Move_Z == 0.0f) vision_park_braking = 1U;
 }
 static void VisionAlign_Drive(float forward, float left)
 {
 #if VISION_ALIGN_ENABLE
     Camera_Data camera;
     RouteLidarFrame align_lidar;
+    uint16_t rear_filtered;
     ChassisOdomFrame pose;
     VisionAlign_Output command;
     uint32_t now = (uint32_t)xTaskGetTickCount();
     uint8_t ready;
 #if VISION_PICK_ENABLE
     uint8_t previous_phase = vision_align.phase;
+    uint8_t parked = vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD;
+    uint8_t fruit_expired;
 #endif
     uint8_t was_automatic = vision_align.phase == VISION_ALIGN_ACQUIRE || vision_align.phase == VISION_ALIGN_TRACK;
     uint8_t manual_active = PS2_ON_Flag && GamePadInterface && GamePadInterface->getKeyState &&
@@ -1048,41 +1083,6 @@ static void VisionAlign_Drive(float forward, float left)
          fabsf((float)GamePadInterface->RX - 127.0f) >= 20.0f);
     Camera_GetData(&camera);
     ChassisOdom_Read(&pose);
-#if VISION_PICK_ENABLE
-    if (vision_pick_phase == PICK_WORK) {
-        if (!StepperTask_IsBusy()) {
-            StepperTask_Data tool;
-            StepperTask_GetData(&tool);
-            if (tool.state == STEPPER_RETURNED && tool.mango_id == vision_pick_id && tool.result == MANGO_OK) {
-                vision_hit_region = vision_pick_id;
-                ++vision_hit_count;
-                vision_hit_report = vision_pick_id;
-                vision_pick_phase = PICK_REPORT;
-            } else {
-                vision_pick_phase = PICK_COOLDOWN;
-                vision_pick_phase_started = now;
-            }
-        }
-        VisionAlign_HardStop();
-        return;
-    }
-    if (vision_pick_phase == PICK_REPORT) {
-        if (!vision_hit_report) {
-            vision_pick_phase = PICK_COOLDOWN;
-            vision_pick_phase_started = now;
-        }
-        VisionAlign_HardStop();
-        return;
-    }
-    if (vision_pick_phase == PICK_COOLDOWN) {
-        /* Discard even the snapshot present at expiry; resume on a later frame. */
-        vision_align.last_frames = vision_pick.last_frames = camera.frames;
-        if ((uint32_t)(now - vision_pick_phase_started) >= VISION_PICK_COOLDOWN_MS)
-            vision_pick_phase = PICK_IDLE;
-        ManualMecanum_Drive(forward, left);
-        return;
-    }
-#endif
     vision_align_blocked = (!VisionAlign_ControlAllowed() ? 8192U : 0U) | (Check != 0 ? 2U : 0U) |
         (!EN ? 4U : 0U) | (Flag_Stop ? 8U : 0U) | (!(Voltage >= 10.0f) ? 16U : 0U) |
         (SysVal.Time_count < CONTROL_DELAY ? 32U : 0U) | (!pose.valid ? 64U : 0U) |
@@ -1091,11 +1091,247 @@ static void VisionAlign_Drive(float forward, float left)
         (ServoTask_IsBusy() ? 1024U : 0U) | (USART_ServoControlBusy() ? 2048U : 0U) |
         (RouteIO_WorkReserved() ? 4096U : 0U);
     ready = vision_align_ready = vision_align_blocked == 0U;
-    RouteIO_ReadLidar(&align_lidar);
-    command = VisionAlign_Update(&vision_align, &camera, now, manual_active, ready,
-        align_lidar.mm[ROUTE_LIDAR_BEHIND], align_lidar.fresh &&
-        align_lidar.mm[ROUTE_LIDAR_BEHIND] != 0U);
 #if VISION_PICK_ENABLE
+    if (vision_pick_phase == PICK_WORK) {
+        /* Ignore all vision decisions until safe return; consume frames without acting. */
+        vision_align.last_frames = vision_manual_frames = camera.frames;
+        vision_manual_seen = now;
+        if (!StepperTask_IsBusy()) {
+            StepperTask_Data tool;
+            StepperTask_GetData(&tool);
+            if (tool.state == STEPPER_RETURNED && tool.mango_id == vision_pick_id) {
+                vision_resume_pending = 1U;
+                vision_pick_phase_started = now;
+                if (tool.result == MANGO_OK) {
+                    vision_hit_region = vision_pick_id;
+                    ++vision_hit_count;
+                    vision_hit_report = vision_pick_id;
+                    vision_target_region = 0U;
+                    vision_pick_phase = PICK_REPORT;
+                } else {
+                    vision_pick_phase = PICK_COOLDOWN;
+                    vision_pick_phase_started = now;
+                }
+            }
+        }
+        VisionAlign_HardStop();
+        return;
+    }
+    if (vision_resume_pending) {
+        if (camera.frames == vision_align.last_frames) {
+            if ((uint32_t)(now - vision_pick_phase_started) >= VISION_ALIGN_FRESH_MS) {
+                vision_resume_pending = 0U;
+                goto detection_timeout;
+            }
+            VisionAlign_HoldYaw();
+            return;
+        }
+        vision_resume_pending = 0U;
+    }
+    /* A fresh missing green fruit ends automatic ownership before the tool starts. */
+    if (ready && camera.frames != vision_manual_frames && camera.green == 0U &&
+        (parked || was_automatic || previous_phase == VISION_ALIGN_LOST)) {
+        vision_target_region = 0U;
+        vision_pick_attempts = 0U;
+        vision_pick_phase = PICK_IDLE;
+        vision_manual_frames = vision_align.last_frames = camera.frames;
+        vision_manual_seen = now;
+        VisionAlign_Cancel(&vision_align);
+        vision_align.phase = VISION_ALIGN_WAIT;
+        VisionAlign_HardStop();
+        return;
+    }
+    /* Evaluate the raw locked number before substituting it into the local snapshot.
+     * Cached frames, another fruit and simulated DX cannot extend this deadline. */
+    fruit_expired = ready && vision_target_region && vision_pick_phase <= PICK_HOLD &&
+        (parked || was_automatic || previous_phase == VISION_ALIGN_LOST) &&
+        ((uint32_t)(now - vision_fruit_seen) >= VISION_PICK_FRUIT_GAP_MS ||
+         (camera.frames == vision_manual_frames &&
+          (uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS));
+    /* First new numbered green observation owns this target until release/return. */
+    if (vision_pick_phase != PICK_WORK &&
+        ((camera.green == 0U && !parked) || (camera.frames == vision_manual_frames &&
+         (uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS)))
+        vision_target_region = 0U;
+    if (ready && !vision_detection_timed_out && vision_pick_phase != PICK_WORK &&
+        !vision_target_region && camera.frames && camera.frames != vision_manual_frames &&
+        camera.green == 1U && camera.region >= 1U && camera.region <= 4U)
+    {
+        vision_target_region = camera.region;
+        ++vision_lock_count;
+    }
+    if (vision_target_region && camera.green == 1U) {
+        if (camera.frames != vision_manual_frames && camera.region == vision_target_region)
+            vision_fruit_seen = now;
+        camera.region = vision_target_region;
+    }
+#endif
+    if (camera.frames != vision_manual_frames) {
+        vision_manual_frames = camera.frames;
+        vision_manual_seen = now;
+    }
+    /* Scale manual stick speed only; automatic alignment keeps its own tuning. */
+    if (camera.frames && (camera.pole == 1U || camera.green == 1U) &&
+        (uint32_t)(now - vision_manual_seen) < VISION_ALIGN_FRESH_MS) {
+        float rc_speed = target_limit_float(RC_Velocity, 0.0f, MANUAL_RC_MAX_MMPS);
+        float limit = MANUAL_RC_TARGET_MMPS * 0.001f;
+        if (rc_speed > MANUAL_RC_TARGET_MMPS) {
+            forward *= MANUAL_RC_TARGET_MMPS / rc_speed;
+            left *= MANUAL_RC_TARGET_MMPS / rc_speed;
+        }
+        smooth_control.VX = target_limit_float(smooth_control.VX, -limit, limit);
+        smooth_control.VY = target_limit_float(smooth_control.VY, -limit, limit);
+    }
+#if VISION_PICK_ENABLE
+    /* A timed-out green episode cannot immediately steal manual control back. */
+    if (vision_detection_timed_out) {
+        vision_target_region = 0U;
+        if (camera.frames != vision_align.last_frames && camera.green == 0U) {
+            vision_detection_timed_out = 0U;
+            vision_pick_attempts = 0U;
+        }
+        vision_align.last_frames = camera.frames;
+        ManualMecanum_Drive(forward, left, 0U);
+        return;
+    }
+    if (fruit_expired &&
+        ((uint32_t)(now - vision_fruit_seen) >= VISION_PICK_FRUIT_GAP_MS ||
+         (uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS))
+        goto detection_timeout;
+    /* A transient absence during the parked decision belongs to the same episode. */
+    if (!parked && vision_pick_phase != PICK_WORK && camera.frames &&
+        camera.frames != vision_align.last_frames && camera.green == 0U)
+        vision_pick_attempts = 0U;
+    if (vision_pick_phase == PICK_REPORT) {
+        /* A fresh G=0 exits immediately. */
+        if (camera.frames != vision_align.last_frames) {
+            vision_align.last_frames = camera.frames;
+            if (camera.green == 0U) {
+                (void)VisionStrike_Update(&vision_pick, &camera, now, 0U);
+                VisionAlign_Cancel(&vision_align);
+                vision_align.phase = VISION_ALIGN_WAIT;
+                vision_pick_phase = PICK_IDLE;
+                ManualMecanum_Drive(forward, left, 0U);
+                return;
+            }
+            if (camera.green == 1U && vision_pick_attempts > VISION_PICK_MAX_REPEATS)
+                goto detection_timeout;
+            if (camera.green == 1U && camera.region == 0U) {
+                vision_detection_timed_out = 1U;
+                vision_pick_phase = PICK_IDLE;
+                VisionAlign_Cancel(&vision_align);
+                vision_align.phase = VISION_ALIGN_WAIT;
+            } else if (camera.pole == 1U && camera.green == 1U &&
+                camera.region >= 1U && camera.region <= 4U &&
+                vision_pick_attempts <= VISION_PICK_MAX_REPEATS) {
+                /* More fruit: retain automatic ownership, but discard old
+                 * confirmations before another alignment and stationary hold. */
+                vision_pick.latched = 0U;
+                VisionStrike_ResetEvidence(&vision_pick);
+                vision_pick.last_frames = camera.frames;
+                vision_pick.last_seen_ms = now;
+                VisionAlign_Begin(&vision_align, now);
+                vision_align.last_seen_ms = now;
+                vision_pick_phase = PICK_IDLE;
+            }
+        }
+        VisionAlign_HoldYaw();
+        return;
+    }
+    if (vision_pick_phase == PICK_COOLDOWN) {
+        /* Discard even the snapshot present at expiry; resume on a later frame. */
+        vision_align.last_frames = vision_pick.last_frames = camera.frames;
+        if ((uint32_t)(now - vision_pick_phase_started) >= VISION_PICK_COOLDOWN_MS) {
+            /* Rearm only a safely returned failure, within the existing quota. */
+            vision_pick_phase = PICK_IDLE;
+            if (vision_pick_attempts <= VISION_PICK_MAX_REPEATS && camera.pole == 1U &&
+                camera.green == 1U && camera.region >= 1U && camera.region <= 4U) {
+                vision_pick.latched = 0U;
+                VisionStrike_ResetEvidence(&vision_pick);
+                vision_pick.last_seen_ms = now;
+                VisionAlign_Begin(&vision_align, now);
+                vision_align.last_seen_ms = now;
+                VisionAlign_HardStop();
+                return;
+            }
+            vision_detection_timed_out = 1U;
+            VisionAlign_Cancel(&vision_align);
+            vision_align.phase = VISION_ALIGN_WAIT;
+            VisionAlign_HardStop();
+            return;
+        }
+        ManualMecanum_Drive(forward, left, 0U);
+        return;
+    }
+#endif
+#if VISION_PICK_ENABLE
+    if (!ready) vision_target_region = 0U;
+    if (ready && !vision_target_region && vision_pick_phase == PICK_IDLE &&
+        (vision_align.phase == VISION_ALIGN_IDLE || vision_align.phase == VISION_ALIGN_WAIT)) {
+        (void)VisionStrike_Update(&vision_pick, &camera, now, 0U);
+        ManualMecanum_Drive(forward, left, 0U);
+        return;
+    }
+#endif
+    RouteIO_ReadLidar(&align_lidar);
+#if VISION_PICK_ENABLE
+    rear_filtered = VisionPickRange_Update(&vision_pick_range,
+        align_lidar.mm[ROUTE_LIDAR_BEHIND], align_lidar.sequence, align_lidar.fresh);
+    /* Raw near-obstacle data always wins over the median. */
+    if (align_lidar.mm[ROUTE_LIDAR_BEHIND] <= 45U)
+        rear_filtered = align_lidar.mm[ROUTE_LIDAR_BEHIND];
+    /* Resolve the old DX3/4 dead band with the original tracking effort.
+     * Only new, same-side observations qualify; never turn B=0 into DX=0. */
+    if (ready && vision_target_region &&
+        (vision_align.phase == VISION_ALIGN_DONE ||
+         (vision_align.phase == VISION_ALIGN_TRACK && vision_align.approaching))) {
+        if (camera.frames != vision_align.last_frames) {
+            int8_t sign = camera.pole == 1U && camera.green == 1U &&
+                !VisionAlign_Centered(camera.offset) ? (camera.offset > 0 ? 1 : -1) : 0;
+            /* +/-2 identifies a persistent rear error separately from lateral +/-1. */
+            if (!sign && parked && camera.pole == 1U && camera.green == 1U &&
+                align_lidar.fresh && rear_filtered && VisionAlign_Centered(camera.offset)) {
+                if (rear_filtered > VISION_ALIGN_REAR_MM + VISION_ALIGN_REAR_TOLERANCE_MM) sign = 2;
+                if (rear_filtered < 45U ||
+                    rear_filtered < VISION_ALIGN_REAR_MM - VISION_ALIGN_REAR_TOLERANCE_MM) sign = -2;
+            }
+            if (!sign || sign != vision_align.restart_sign) vision_align.restart_frames = 0U;
+            vision_align.restart_sign = sign;
+            if (sign && ++vision_align.restart_frames >= VISION_ALIGN_RESTART_FRAMES) {
+                vision_align.phase = VISION_ALIGN_TRACK;
+                vision_align.approaching = sign == 2 || sign == -2;
+                vision_align.zero_frames = vision_align.restart_frames = 0U;
+                vision_pick_phase = PICK_IDLE;
+            }
+        }
+    }
+    /* Park through short visual gaps. Only real pole/green data can qualify the hold. */
+    if ((vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD) && ready) {
+        if (camera.frames != vision_align.last_frames) {
+            vision_align.last_frames = camera.frames;
+            vision_align.last_seen_ms = now;
+        }
+        command.owned = 1U;
+        command.x_mps = command.y_mps = 0.0f;
+    } else
+#else
+    rear_filtered = align_lidar.mm[ROUTE_LIDAR_BEHIND];
+#endif
+    command = VisionAlign_Update(&vision_align, &camera, now, manual_active, ready,
+        rear_filtered, align_lidar.fresh && rear_filtered != 0U);
+#if VISION_PICK_ENABLE
+    /* An exhausted attempt quota cannot enter an unfinishable stationary hold. */
+    if (vision_align.phase == VISION_ALIGN_DONE && vision_pick_attempts > VISION_PICK_MAX_REPEATS)
+        vision_detection_timed_out = 1U;
+    /* Alignment completion requires a locked target, not a new REGION reading. */
+    if (ready && !parked && vision_align.phase == VISION_ALIGN_DONE &&
+        (camera.pole != 1U || camera.green != 1U || !vision_target_region ||
+         (uint32_t)(now - vision_align.last_seen_ms) >= VISION_ALIGN_FRESH_MS))
+        vision_detection_timed_out = 1U;
+    if (vision_align.phase == VISION_ALIGN_TIMEOUT ||
+        (vision_align.phase == VISION_ALIGN_LOST &&
+         (uint32_t)(now - vision_align.started_ms) >= VISION_ALIGN_TIMEOUT_MS))
+        vision_detection_timed_out = 1U;
     if (vision_align.phase == VISION_ALIGN_DONE && previous_phase != VISION_ALIGN_DONE && !vision_pick.latched) {
         vision_pick_phase = PICK_WAIT;
         vision_pick_wait_started = now;
@@ -1103,30 +1339,43 @@ static void VisionAlign_Drive(float forward, float left)
     {
         uint8_t blocked = !ready || (!vision_pick.latched && (vision_align.phase != VISION_ALIGN_DONE ||
             !VisionAlign_Centered(camera.offset)));
-        uint8_t id = VisionStrike_Update(&vision_pick, &camera, now, blocked);
+        /* DX/range still gate motion and the hold; they do not erase number evidence. */
+        (void)VisionStrike_Update(&vision_pick, &camera, now,
+            !ready || (!vision_pick.latched && vision_align.phase != VISION_ALIGN_DONE));
         if (!ready || vision_align.phase != VISION_ALIGN_DONE)
             vision_pick_phase = PICK_IDLE;
         if (vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD) {
-            RouteLidarFrame lidar;
             uint8_t qualified;
-            RouteIO_ReadLidar(&lidar);
-            qualified = !blocked && vision_pick.confirmed >= VISION_STRIKE_CONFIRM_FRAMES &&
-                lidar.fresh && lidar.mm[ROUTE_LIDAR_BEHIND] > VISION_PICK_REAR_MIN_MM &&
-                lidar.mm[ROUTE_LIDAR_BEHIND] < VISION_PICK_REAR_MAX_MM && RouteIO_ChassisStopped();
+            qualified = !blocked && camera.pole == 1U && camera.green == 1U && vision_target_region &&
+                (uint32_t)(now - vision_align.last_seen_ms) < VISION_ALIGN_FRESH_MS &&
+                align_lidar.fresh && align_lidar.mm[ROUTE_LIDAR_BEHIND] >= 45U &&
+                align_lidar.mm[ROUTE_LIDAR_BEHIND] < VISION_PICK_REAR_MAX_MM &&
+                rear_filtered >= VISION_ALIGN_REAR_MM - VISION_ALIGN_REAR_TOLERANCE_MM &&
+                rear_filtered <= VISION_ALIGN_REAR_MM + VISION_ALIGN_REAR_TOLERANCE_MM &&
+                !vision_hit_report &&
+                fabsf(MOTOR_A.Encoder) <= VISION_PICK_STOP_MPS &&
+                fabsf(MOTOR_B.Encoder) <= VISION_PICK_STOP_MPS &&
+                fabsf(MOTOR_C.Encoder) <= VISION_PICK_STOP_MPS &&
+                fabsf(MOTOR_D.Encoder) <= VISION_PICK_STOP_MPS;
             if (!qualified) vision_pick_phase = PICK_WAIT;
             switch (vision_pick_phase) {
             case PICK_WAIT:
-                if ((uint32_t)(now - vision_pick_wait_started) >= VISION_PICK_WAIT_MS)
-                    vision_pick_phase = PICK_IDLE;
-                else if (qualified && id) {
+                if ((uint32_t)(now - vision_pick_wait_started) >= VISION_PICK_WAIT_MS) {
+                    vision_detection_timed_out = 1U;
+                } else if (qualified) {
                     vision_pick_phase = PICK_HOLD;
                     vision_pick_phase_started = now;
                 }
                 break;
             case PICK_HOLD:
-                if ((uint32_t)(now - vision_pick_phase_started) >= VISION_ALIGN_DONE_HOLD_MS &&
-                    id && StepperTask_RequestMango(id)) {
-                    vision_pick_id = id;
+                if ((uint32_t)(now - vision_pick_wait_started) >= VISION_PICK_WAIT_MS) {
+                    vision_detection_timed_out = 1U;
+                } else if ((uint32_t)(now - vision_pick_phase_started) >= VISION_PICK_STOP_HOLD_MS &&
+                    vision_target_region >= 1U && vision_target_region <= 4U &&
+                    vision_pick_attempts <= VISION_PICK_MAX_REPEATS &&
+                    StepperTask_RequestMango(vision_target_region)) {
+                    ++vision_pick_attempts;
+                    vision_pick_id = vision_target_region;
                     VisionStrike_Accept(&vision_pick);
                     VisionAlign_Cancel(&vision_align);
                     vision_pick_phase = PICK_WORK;
@@ -1134,26 +1383,47 @@ static void VisionAlign_Drive(float forward, float left)
                 break;
             default: break;
             }
-            if (vision_pick_phase != PICK_IDLE) {
-                VisionAlign_HardStop();
+            if (vision_pick_phase != PICK_IDLE && !vision_detection_timed_out) {
+                VisionAlign_HoldYaw();
                 return;
             }
         }
     }
-#endif
-
-    if ((!ready && (!manual_active || was_automatic)) ||
-        (command.owned && command.x_mps == 0.0f && command.y_mps == 0.0f)) {
-        /* Full zero, including yaw hold, until fresh target confirmation or manual input. */
+    if (vision_detection_timed_out) {
+detection_timeout:
+        vision_detection_timed_out = 1U;
+        vision_align.last_frames = camera.frames;
+        vision_target_region = 0U;
+        vision_pick_phase = PICK_IDLE;
+        VisionAlign_Cancel(&vision_align);
+        vision_align.phase = VISION_ALIGN_WAIT;
         VisionAlign_HardStop();
         return;
     }
+#endif
+
+    if (!ready && (!manual_active || was_automatic)) {
+        VisionAlign_HardStop();
+        return;
+    }
+    if (command.owned && command.x_mps == 0.0f && command.y_mps == 0.0f) {
+        VisionAlign_HoldYaw();
+        return;
+    }
     if (command.owned) {
-        ManualMecanum_Drive(command.x_mps, command.y_mps);
+        /* Brake residual longitudinal motion before driving the opposite way. */
+        float forward_feedback = (MOTOR_A.Encoder + MOTOR_B.Encoder +
+                                  MOTOR_C.Encoder + MOTOR_D.Encoder) * 0.25f;
+        if ((command.x_mps > 0.0f && forward_feedback < -VISION_PICK_STOP_MPS) ||
+            (command.x_mps < 0.0f && forward_feedback > VISION_PICK_STOP_MPS)) {
+            VisionAlign_HoldYaw();
+            return;
+        }
+        ManualMecanum_Drive(command.x_mps, command.y_mps, 1U);
         return;
     }
 #endif
-    ManualMecanum_Drive(forward, left);
+    ManualMecanum_Drive(forward, left, 0U);
 }
 
 void PS2_control(void)
@@ -1301,7 +1571,7 @@ void Remote_Control(void)
             return;
         }
         ManualMecanum_Drive(forward * rc_velocity / 500000.0f,
-                           -right * rc_velocity / 500000.0f);
+                           -right * rc_velocity / 500000.0f, 0U);
         return;
     }
 

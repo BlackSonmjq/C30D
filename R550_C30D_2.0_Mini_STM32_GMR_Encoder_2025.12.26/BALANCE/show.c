@@ -18,7 +18,7 @@ extern int MPU9250SensorCountA, MPU9250SensorCountB, MPU9250SensorCountC, MPU925
 
 
 u8 oled_refresh_flag;
-u8 oled_page=3; /* Integration status; camera diagnostics on page 4. */
+u8 oled_page=LOWER_LASER_OLED_PAGE; /* Show chassis laser distances at startup. */
 /**************************************************************************
 Function: Read the battery voltage, buzzer alarm, start the self-test, send data to APP, OLED display task
 Input   : none
@@ -118,6 +118,7 @@ void OLED_ShowTaskStatus(void)
         case STEPPER_WAITING_COMMAND: state = busy ? "QUEUED" : "WAIT K1-K4"; break;
         case STEPPER_WAITING_DISTANCE: state = "WAIT RANGE"; break;
         case STEPPER_MOVING: state = "APPROACH"; break;
+        case STEPPER_RECHECKING_DISTANCE: state = "RANGE RECHECK"; break;
         case STEPPER_STRIKING: state = "SERVO 180->0"; break;
         case STEPPER_RETURNING: state = "RETURNING"; break;
         case STEPPER_FINISHING: state = "LASER OFF"; break;

@@ -16,7 +16,7 @@ typedef struct {
 } RouteDebugFrame;
 
 /* Compact vision, alignment, rear range and completion telemetry. */
-#define ROUTE_VOFA_CHANNEL_COUNT 38U
+#define ROUTE_VOFA_CHANNEL_COUNT 43U
 #define ROUTE_VOFA_FRAME_BYTES (ROUTE_VOFA_CHANNEL_COUNT * 4U + 4U)
 #define ROUTE_VOFA_TASK_PRIO TASK_PRIORITY_VISION
 #define ROUTE_VOFA_TASK_STACK 256U

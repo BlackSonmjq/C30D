@@ -29,6 +29,12 @@ static float target_limit_float(float v,float lo,float hi){return v<lo?lo:v>hi?h
 int main(void) {
     HeadingControl_Reset();
     assert(HeadingControl_HoldYaw(0,0,0)==0);
+    /* A large stored effort from an earlier turn must not drive farther away. */
+    heading_state.integral=-.335f;
+    assert(HeadingControl_Output(.0376f,0,.01f)>0);
+    heading_state.integral=.335f;
+    assert(HeadingControl_Output(-.0376f,0,.01f)<0);
+    HeadingControl_Reset();
     float small=HeadingControl_HoldYaw(.011f,0,0);
     float medium=HeadingControl_HoldYaw(.05f,0,0);
     assert(small>0 && small<.04f && medium>small && medium<.17f);

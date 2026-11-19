@@ -10,16 +10,17 @@
 /* 左右步进方向一致：DIR 低电平靠近芒果，高电平返程。 */
 #define MANGO_LEFT_FORWARD_HIGH  0U
 #define MANGO_RIGHT_FORWARD_HIGH 0U
-/* 定时器计数频率 1 MHz：ARR=139 对应目标巡航频率约 7143 脉冲/秒。
+/* 定时器计数频率 1 MHz：ARR=99 对应目标巡航频率约 10000 脉冲/秒。
  * 前进、返程共用对应电机的速度配置，底层保留加减速。 */
-#define MANGO_LEFT_SPEED_ARR     139U
-#define MANGO_RIGHT_SPEED_ARR    139U
+#define MANGO_LEFT_SPEED_ARR     99U
+#define MANGO_RIGHT_SPEED_ARR    99U
 /* 各编号的击打阈值，单位 mm；有效距离严格小于对应值时才允许击打。 */
 #define MANGO_TARGET_1_MM        108U
 #define MANGO_TARGET_2_MM        60U
 #define MANGO_TARGET_3_MM        45U
 #define MANGO_TARGET_4_MM        35U
 #define MANGO_MAX_PULSES         26000UL   /* 前进 STEP 脉冲上限，含细分；达到即跳过击打并返程。 */
+#define MANGO_RANGE_RECHECK_MS   2000UL
 #define MANGO_RANGE_WAIT_MS      5000UL    /* 首次有效测距最长等待时间。 */
 #define MANGO_MOTION_TIMEOUT_MS  420000UL  /* 前进或返程单段运动最长时间。 */
 
@@ -31,7 +32,8 @@ typedef enum {
     STEPPER_RETURNING,           /* 按实际前进脉冲数反向返回，不依赖测距。 */
     STEPPER_FINISHING,           /* 等待激光实际关闭后释放任务占用。 */
     STEPPER_RETURNED,            /* 本轮已结束，可以接受下一个编号。 */
-    STEPPER_FAULT                /* 返程失败，原点不确定，锁定至人工检查并复位。 */
+    STEPPER_FAULT,               /* 返程失败，原点不确定，锁定至人工检查并复位。 */
+    STEPPER_RECHECKING_DISTANCE /* STEP stopped while recovering the selected laser. */
 } StepperTask_State;
 
 typedef enum {

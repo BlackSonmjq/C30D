@@ -23,6 +23,7 @@
 #define HEADING_CONTROL_GYRO_TOLERANCE         0.03f   // 同时满足角度和角速度容差后输出零
 #define HEADING_CONTROL_GYRO_INTEGRATION_DEADZONE 0.002f // 角速度积分死区
 
+float HeadingControl_NormalizeAngle(float angle);
 void HeadingControl_Reset(void);
 float HeadingControl_GetIntegralOutput(void);
 float HeadingControl_Update(short gyro_z_raw);

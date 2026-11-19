@@ -41,8 +41,12 @@ typedef struct { float yaw_rad; uint32_t tick_ms; u8 valid; } ChassisOdomFrame;
 #define ROUTE_ODOM_MAX_GAP_MS 100U
 #define CONTROL_DELAY 1000U
 #define HEADING_CONTROL_ENABLE 1
-#define MANUAL_RC_MAX_MMPS 300.0f
+#define HEADING_CONTROL_GYRO_FULL_SCALE_DPS 500.0f
+#define HEADING_CONTROL_RECOVERY_ERROR_RAD 0.034906585f
+#define HEADING_CONTROL_RECOVERY_RATE_RADPS 0.087266463f
+#define MANUAL_RC_MAX_MMPS 480.0f
 static u8 manual_heading_locked;
+static u8 manual_heading_pole;
 static float manual_heading_target;
 static int EN=1,Flag_Stop,Car_Mode=1,RC_Velocity=500;
 enum { Mec_Car=1, Mec_Car_V550=2 };
@@ -61,32 +65,34 @@ static ChassisOdomFrame pose={1.0f,10000,1};
 static void ChassisOdom_Read(ChassisOdomFrame *p){*p=pose;}
 static unsigned xTaskGetTickCount(void){return now;}
 static void HeadingControl_Reset(void){++resets;}
+static float HeadingControl_NormalizeAngle(float value){return atan2f(sinf(value),cosf(value));}
 static float HeadingControl_HoldYaw(float target,float yaw,short gyro){(void)gyro;return target-yaw;}
 static void Drive_Motor(float x,float y,float z){dx=x;dy=y;dz=z;Smooth_control(x,y,z);}
 static int target_limit_int(int x,int low,int high){return x<low?low:x>high?high:x;}
 '''
 main = r'''
 int main(void){
-  float stored=200;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==300);
+  float stored=200;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==480);
+  stored=300;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==480);
   stored=150;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==150);
   stored=0;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==0);
-  stored=500;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==300);
+  stored=500;memcpy(&flash_words[0],&stored,4);FlashParam_Read();assert(RC_Velocity==480);
   RC_Velocity=500;
   Remoter_Ch2=2000;Remoter_Ch1=1500;remote();
-  assert(fabsf(dx-.3f)<1e-6f && dy==0 && dz==0);
+  assert(fabsf(dx-.48f)<1e-6f && dy==0 && dz==0);
   Remoter_Ch2=1500;Remoter_Ch1=2000;remote();
-  assert(dx==0 && fabsf(dy+.3f)<1e-6f);
+  assert(dx==0 && fabsf(dy+.48f)<1e-6f);
   Remoter_Ch2=1000;Remoter_Ch1=1000;remote();
-  assert(fabsf(dx+.3f)<1e-6f && fabsf(dy-.3f)<1e-6f);
+  assert(fabsf(dx+.48f)<1e-6f && fabsf(dy-.48f)<1e-6f);
   Remoter_Ch2=1500;Remoter_Ch1=1500;pose.yaw_rad=1.2f;remote();
   assert(dx==0 && dy==0 && dz<-.19f && resets==1);
   EN=0;remote();assert(dx==0 && dy==0 && dz==0 && !manual_heading_locked);
   EN=1;remote();assert(dz==0 && resets==2);
   gamepad.LY=254;gamepad.RX=0;ps2();
-  assert(fabsf(dx-.3f)<1e-6f && fabsf(dy-.3f)<1e-6f);
+  assert(fabsf(dx-.48f)<1e-6f && fabsf(dy-.48f)<1e-6f);
   smooth_control.VX=.5f;smooth_control.VY=.5f;
   gamepad.LY=0;gamepad.RX=254;ps2();
-  assert(fabsf(dx+.3f)<1e-6f && fabsf(dy+.3f)<1e-6f);
+  assert(fabsf(dx+.48f)<1e-6f && fabsf(dy+.48f)<1e-6f);
   assert(smooth_control.VX<0 && smooth_control.VY<0);
   assert(smooth_control.VX>=-.051f && smooth_control.VY>=-.051f);
   gamepad.LY=130;gamepad.RX=125;ps2();assert(dx==0 && dy==0);
@@ -97,7 +103,7 @@ int main(void){
 compiler = os.environ.get('ROUTE_HOST_CC') or shutil.which('gcc')
 with tempfile.TemporaryDirectory(prefix='manual-control-') as temp:
     build = Path(temp)
-    test = stub + helper + '\nstatic void VisionAlign_Drive(float x,float y){ManualMecanum_Drive(x,y);}' + '\nvoid ps2(void){' + branches[0] + '}\n'
+    test = stub + helper + '\nstatic void VisionAlign_Drive(float x,float y){ManualMecanum_Drive(x,y,0U);}' + '\nvoid ps2(void){' + branches[0] + '}\n'
     test += 'void remote(void){int Threshold=100;static u8 thrice=0;' + branches[1] + '}\n'
     test += block(source.index('void Smooth_control(')) + '\n' + block(source.index('void FlashParam_Read(')) + '\n' + main
     if not compiler:

@@ -23,6 +23,7 @@ def extract(text, signature):
 logic = extract(source, 'static uint8_t VisionAlign_ControlAllowed(')
 logic += extract(source, 'static void ManualMecanum_Drive(')
 logic += extract(source, 'static void VisionAlign_HardStop(')
+logic += extract(source, 'static void VisionAlign_HoldYaw(')
 logic += extract(source, 'static void VisionAlign_Drive(')
 logic += extract(source, 'static void VisionAlign_ReleaseControl(')
 logic += extract(source, 'uint8_t VisionAlign_GetPhase(')

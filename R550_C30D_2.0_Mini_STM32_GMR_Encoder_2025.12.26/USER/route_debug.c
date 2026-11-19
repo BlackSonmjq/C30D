@@ -116,6 +116,12 @@ uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
     channels[36] = (float)camera.bad;
     channels[37] = (float)camera.uart_errors;
 
+    channels[38] = (float)align.pick_phase;
+    channels[39] = (float)align.hit_region;
+    channels[40] = (float)align.hit_count;
+    channels[41] = (float)align.locked_region;
+    channels[42] = (float)align.lock_count;
+
     /* Emit little-endian float32 without depending on structure padding. */
     for (channel = 0U; channel < ROUTE_VOFA_CHANNEL_COUNT; ++channel) {
         memcpy(&bits, &channels[channel], sizeof(bits));

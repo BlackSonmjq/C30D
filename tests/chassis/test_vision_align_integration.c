@@ -11,7 +11,8 @@
 typedef struct { float yaw_rad; uint32_t tick_ms; u8 valid; } ChassisOdomFrame;
 #define ROUTE_ODOM_MAX_GAP_MS 100U
 #define CONTROL_DELAY 1000U
-#define MANUAL_RC_MAX_MMPS 300.0f
+#define MANUAL_RC_MAX_MMPS 480.0f
+#define MANUAL_RC_TARGET_MMPS 330.0f
 static float target_limit_float(float v,float lo,float hi){return v<lo?lo:v>hi?hi:v;}
 enum { Mec_Car=1, Mec_Car_V550=2 };
 static int EN=1,Flag_Stop,Check,Car_Mode=Mec_Car,RC_Velocity=500;
@@ -28,7 +29,7 @@ static struct { struct { short z; } gyro; } imu;
 static uint32_t now=10000;
 static ChassisOdomFrame pose={0,10000,1};
 #if !VISION_PICK_ENABLE
-static RouteLidarFrame manual_lidar={{1000,50,1000,1000},1,1};
+static RouteLidarFrame manual_lidar={{1000,VISION_ALIGN_REAR_MM,1000,1000},1,1};
 void RouteIO_ReadLidar(RouteLidarFrame *data) { *data=manual_lidar; }
 #endif
 static Camera_Receiver camera;
@@ -37,14 +38,23 @@ static struct { float Target,Encoder; int Motor_Pwm; }
     MOTOR_A={.125f,.0625f,1000},MOTOR_B={-.125f,-.0625f,-1000},
     MOTOR_C={.25f,.125f,2000},MOTOR_D={-.25f,-.125f,-2000};
 static u8 manual_heading_locked;
+static u8 manual_heading_pole;
 static u8 vision_park_braking;
 static float manual_heading_target;
 static VisionAlign_State vision_align;
+static uint32_t vision_manual_frames, vision_manual_seen;
 static VisionStrike_State vision_pick;
 static VisionPickPhase vision_pick_phase;
 static uint8_t vision_pick_id;
+static uint8_t vision_pick_attempts;
+static uint8_t vision_detection_timed_out;
+static VisionPickRange_State vision_pick_range;
+static uint8_t vision_target_region;
+static uint8_t vision_resume_pending;
+static uint32_t vision_fruit_seen;
 static uint8_t vision_hit_region;
 static uint32_t vision_hit_count;
+static uint32_t vision_lock_count;
 static uint32_t vision_pick_phase_started;
 volatile uint8_t vision_hit_report;
 static uint32_t vision_pick_wait_started;
@@ -161,12 +171,14 @@ int main(void)
     frame(1,-20); REQUIRE(dx==0 && dy<0);
     pose.yaw_rad=manual_heading_target; /* Simulate the chassis returning to its locked yaw. */
     smooth_control.VX=.1f;smooth_control.VY=.1f;smooth_control.VZ=.1f;
-    frame(1,0); REQUIRE(dx==0 && dy==0 && dz==0);
-    REQUIRE(smooth_control.VX==0 && smooth_control.VY==0 && smooth_control.VZ==0);
+    frame(1,0); REQUIRE(dx==0 && dy==0 && dz<0);
+    REQUIRE(smooth_control.VX==0 && smooth_control.VY==0 && smooth_control.VZ==dz);
+    imu.gyro.z=0;
     for(i=0;i<10;++i) poll();
     REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_TRACK);
     frame(1,0); frame(1,0);
-    REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_DONE && dx==0 && dy==0 && dz==0);
+    REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_DONE && dx==0 && dy==0 &&
+            dz==HeadingControl_GetIntegralOutput());
     REQUIRE(manual_heading_locked && manual_heading_target==0);release_done();
     gamepad.LY=gamepad.RX=127;
     for(i=0;i<10;++i) frame(1,i%2?1:-1);
@@ -180,7 +192,8 @@ int main(void)
     REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_TRACK && dx==0 && dy<0);
     VisionAlign_GetDiagnostics(&diag); REQUIRE(diag.locked && diag.control_flags==16 && diag.vy_mps<0);
     frame(1,0);frame(1,0);frame(1,0);
-    REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_DONE && dx==0 && dy==0 && dz==0 && strikes==0);release_done();
+    REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_DONE && dx==0 && dy==0 &&
+            dz==HeadingControl_GetIntegralOutput() && strikes==0);release_done();
     imu.gyro.z=0;GamePadInterface=&gamepad;PS2_ON_Flag=1;gamepad.RX=0;poll();
     REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_DONE && dy>.19f);
     gamepad.RX=127; poll(); frame(1,60);frame(1,60);frame(1,60);
@@ -189,7 +202,9 @@ int main(void)
     RC_Velocity=0;gamepad.RX=254;poll();
     REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_TRACK && dx==0 && dy>0);
     RC_Velocity=500;gamepad.RX=127;frame(1,60);frame(1,60);frame(1,60);
-    frame(0,0); REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_LOST && dx==0 && dy==0 && dz==0);
+    frame(0,0); REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_TRACK && dx==0 && dy>0);
+    now+=250;poll(); REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_LOST && dx==0 && dy==0 &&
+                             dz==HeadingControl_GetIntegralOutput());
     for(i=0;i<6;++i) frame(1,60);
     REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_TRACK && dy>0);
     restart();frame(1,60);frame(1,60);frame(1,60);
@@ -233,7 +248,7 @@ int main(void)
     manual_lidar.mm[ROUTE_LIDAR_BEHIND]=120;restart();
     frame(1,0);frame(1,0);frame(1,0);
     REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_TRACK && dx<0 && dy==0);
-    manual_lidar.mm[ROUTE_LIDAR_BEHIND]=50;
+    manual_lidar.mm[ROUTE_LIDAR_BEHIND]=VISION_ALIGN_REAR_MM;
     frame(1,0);frame(1,0);frame(1,0);
     REQUIRE(VisionAlign_GetPhase()==VISION_ALIGN_DONE && dx==0 && dy==0 && dz==0);
     manual_lidar.mm[ROUTE_LIDAR_BEHIND]=35;manual_lidar.mm[ROUTE_LIDAR_FRONT]=40;restart();

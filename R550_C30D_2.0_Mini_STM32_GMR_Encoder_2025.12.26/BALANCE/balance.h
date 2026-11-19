@@ -3,7 +3,8 @@
 #include "sys.h"
 #include "system.h"
 
-#define MANUAL_RC_MAX_MMPS 300.0f
+#define MANUAL_RC_MAX_MMPS 480.0f
+#define MANUAL_RC_TARGET_MMPS 330.0f
 #include "task_priority.h"
 #define BALANCE_TASK_PRIO		TASK_PRIORITY_CHASSIS     //Task priority //任务优先级
 #define BALANCE_STK_SIZE 		512   //Task stack size //任务堆栈大小

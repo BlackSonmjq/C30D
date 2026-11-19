@@ -19,6 +19,10 @@ spec.loader.exec_module(capture)
 
 
 def packet(count):
+    if count == 43:
+        return packet(41) + [3, 12]
+    if count == 41:
+        return packet(38) + [3, 2, 1]
     if count == 38:
         return packet(35) + [600, 2, 1]
     if count == 35:
@@ -55,6 +59,25 @@ def packet(count):
 
 
 class FramingTests(unittest.TestCase):
+    def test_lock_diagnostics(self):
+        values=packet(43)
+        self.assertEqual(capture.fields_for(43)[41:], ['locked_region','lock_count'])
+        self.assertEqual(capture.Framer.decode(struct.pack('<43f',*values)),tuple(values))
+        self.assertIn('LOCK=3 LOCK_COUNT=12',capture.camera_summary(values))
+        values[3]=0
+        self.assertEqual(capture.Framer.decode(struct.pack('<43f',*values)),tuple(values))
+        for index,bad in ((41,5),(41,-1),(41,.5),(42,-1),(42,.5),(42,float('nan'))):
+            invalid=values.copy();invalid[index]=bad
+            self.assertIsNone(capture.Framer.decode(struct.pack('<43f',*invalid)))
+
+    def test_picking_diagnostics(self):
+        values=packet(41)
+        self.assertEqual(capture.fields_for(41)[38:], ['pick_phase','hit_region','hit_count'])
+        self.assertIn('HIT_DONE=2 COUNT=1',capture.camera_summary(values))
+        for index,bad in ((38,6),(39,5),(40,-1)):
+            invalid=values.copy();invalid[index]=bad
+            self.assertIsNone(capture.Framer.decode(struct.pack('<41f',*invalid)))
+
     def test_camera_receive_diagnostics(self):
         values=packet(38)
         self.assertEqual(capture.fields_for(38)[35:], ['camera_bytes','camera_bad','camera_uart_errors'])
@@ -84,7 +107,7 @@ class FramingTests(unittest.TestCase):
             self.assertIsNone(capture.Framer.decode(struct.pack('<34f', *values)))
 
     def test_split_corrupt_and_partial_start(self):
-        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 48, 64, 72):
+        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 48, 64, 72):
             values = packet(count)
             data = struct.pack(f"<{count}f", *values) + capture.TAIL
             stream = b"noise" + data[100:] + data + data[:-7] + b"bad" + data + data
@@ -195,7 +218,7 @@ class FramingTests(unittest.TestCase):
                 self.assertEqual(list(parser.feed(data[start:]+data+data)),[tuple(values)]*2,start)
 
     def test_layout_switch_is_exposed(self):
-        counts = (8, 8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 48, 64, 72, 64, 48, 72, 32, 20, 8)
+        counts = (8, 8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 48, 64, 72, 64, 48, 72, 32, 20, 8)
         stream = b''.join(struct.pack(f'<{n}f', *packet(n)) + capture.TAIL for n in counts)
         self.assertEqual([len(v) for v in capture.Framer().feed(stream)], list(counts))
         self.assertEqual(len(capture.FIELDS), 72)
@@ -220,7 +243,7 @@ class FramingTests(unittest.TestCase):
             values[1] = offset
             self.assertEqual(capture.Framer.decode(struct.pack('<8f', *values)), tuple(values))
         for index, value in ((0, 2), (1, -129), (1, 128), (1, .5), (2, 2),
-                             (3, 5), (3, 0), (4, -1), (5, .5)):
+                             (3, 5), (4, -1), (5, .5)):
             values = packet(8)
             values[index] = value
             self.assertIsNone(capture.Framer.decode(struct.pack('<8f', *values)))
@@ -229,7 +252,7 @@ class FramingTests(unittest.TestCase):
             values[65] = offset
             self.assertEqual(capture.Framer.decode(struct.pack('<72f', *values)), tuple(values))
         for index, value in ((64, 2), (65, -129), (65, 128), (65, .5), (66, 2),
-                             (67, 5), (67, 0), (68, -1), (69, .5)):
+                             (67, 5), (68, -1), (69, .5)):
             values = packet(72)
             values[index] = value
             self.assertIsNone(capture.Framer.decode(struct.pack('<72f', *values)))
@@ -256,7 +279,7 @@ class FramingTests(unittest.TestCase):
             self.assertEqual(frames, [tuple(values)] * 2, start)
 
     def test_visual_capture_csv_metadata_and_summary(self):
-        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40):
+        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43):
             values = packet(count)
             data = struct.pack(f'<{count}f', *values) + capture.TAIL
 

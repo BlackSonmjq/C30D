@@ -27,6 +27,9 @@ static unsigned int checks, completed_jobs, hits, starts, case_id, stop_partial_
 static u8 in_actuator, sensor, active_motor, output_id, forced_invalid, initial_close;
 static u8 inject_busy, inject_pulse_limit, fail_return, fail_strike, freeze_motion, jump_clock;
 static u32 count[3], target[3];
+static u32 emitted_outward;
+static unsigned transient_losses, transient_left_ms, transient_pause_ms;
+static u8 transient_wrong_channel, transient_close, fail_resume, limit_on_resume;
 static u8 running[3];
 static s32 last_move;
 static Mango_Result expected_result;
@@ -50,23 +53,26 @@ void any_printf(void *port, char *format, ...) {
     va_end(args);
     ++command_reports;
 }
-u8 StepperMotor_SetSpeed(u8 motor, u16 arr) { CHECK(arr == 139); return motor <= 2; }
+u8 StepperMotor_SetSpeed(u8 motor, u16 arr) { CHECK(arr == 99); return motor <= 2; }
 u32 StepperMotor_GetCompletedPulses(u8 motor) { return count[motor]; }
 u8 StepperMotor_IsRunning(u8 motor) { return running[motor]; }
 void StepperMotor_Disable(u8 motor) {
     if (running[motor] && stop_partial_edge && outward(last_move)) {
-        ++count[motor]; /* Edge emitted after the last polling snapshot. */
+        ++count[motor]; ++emitted_outward; /* Count the partial final edge independently. */
         stop_partial_edge = 0;
     }
     running[motor] = 0;
 }
-void StepperMotor_ResetCompletedPulses(u8 motor) { StepperMotor_Disable(motor); count[motor] = 0; }
+void StepperMotor_ResetCompletedPulses(u8 motor) { StepperMotor_Disable(motor); count[motor] = 0; emitted_outward=0; }
 u8 StepperMotor_StartMove(u8 motor, s32 pulses) {
     CHECK(motor == active_motor);
     CHECK(output_id == 0); /* No motion while a pushrod output is high. */
     if (fail_return && !outward(pulses)) return 0;
-    if (outward(pulses)) CHECK((u32)(pulses < 0 ? -pulses : pulses) == MANGO_MAX_PULSES);
-    else CHECK((u32)(pulses < 0 ? -pulses : pulses) == count[motor]);
+    if (outward(pulses)) {
+        CHECK((u32)(-pulses) + emitted_outward == 26000UL);
+        if (emitted_outward && fail_resume) return 0;
+        if (emitted_outward && limit_on_resume) inject_pulse_limit=2;
+    } else CHECK((u32)pulses == emitted_outward);
     last_move = pulses;
     count[motor] = 0;
     target[motor] = pulses < 0 ? (u32)-pulses : (u32)pulses;
@@ -79,10 +85,11 @@ void DistanceTask_GetData(DistanceTask_Data *data) {
     u16 threshold = sensor >= 1U && sensor <= 4U ? expected_targets[sensor - 1U] : 60U;
     memset(data, 0, sizeof(*data));
     data->laser_id = sensor;
-    data->valid = sensor && !forced_invalid;
+    data->valid = sensor && (!forced_invalid || transient_wrong_channel);
+    if (forced_invalid && transient_wrong_channel) data->laser_id = sensor==2?1:2;
     data->status = data->valid ? VL53L0X_OK : VL53L0X_NOT_READY;
     /* Equality keeps approaching; one millimeter below permits the servo. */
-    data->distance_mm = initial_close || (outward(last_move) && count[active_motor] >= 37) ? threshold - 1U : threshold;
+    data->distance_mm = initial_close || (outward(last_move) && emitted_outward >= 37) ? threshold - 1U : threshold;
     if (inject_pulse_limit)
         data->distance_mm = inject_pulse_limit == 2U && count[active_motor] >= MANGO_MAX_PULSES ? threshold - 1U : threshold;
 }
@@ -159,10 +166,26 @@ void vTaskDelay(TickType_t ticks) {
     }
     if (motion.state == STEPPER_MOVING && expected_result == MANGO_SENSOR_LOST)
         forced_invalid = 1;
+    if (motion.state == STEPPER_MOVING && transient_losses && !forced_invalid) {
+        forced_invalid=1;--transient_losses;transient_left_ms=100;
+    }
+    if (motion.state == STEPPER_RECHECKING_DISTANCE) {
+        CHECK(!running[active_motor] && !output_id && StepperTask_IsBusy());
+        CHECK(!StepperTask_RequestMangoFromISR(1));
+        transient_pause_ms+=ticks;
+        if (transient_left_ms) {
+            transient_left_ms-=ticks;
+            if (!transient_left_ms) {
+                forced_invalid=0;
+                if (transient_close) initial_close=1;
+            }
+        }
+    }
     if (running[active_motor] && !freeze_motion) {
         delta = inject_pulse_limit && outward(last_move) ? MANGO_MAX_PULSES : 7;
         if (delta > target[active_motor] - count[active_motor]) delta = target[active_motor] - count[active_motor];
         count[active_motor] += delta;
+        if (outward(last_move)) emitted_outward += delta;
         if (count[active_motor] == target[active_motor]) running[active_motor] = 0;
     }
     if (motion.state == STEPPER_RETURNING && stop_return) {
@@ -218,6 +241,8 @@ static void reset(void) {
     move_count = query_count = stops = 0; servo_target = 0;
     lossy_test=drop_outward=drop_return=0; physical_position=545;
     sparse_lossy=stalled_replies=0;
+    emitted_outward=transient_losses=transient_left_ms=transient_pause_ms=0;
+    transient_wrong_channel=transient_close=fail_resume=limit_on_resume=0;
     ++case_id;
 }
 static void test_manual_reports(void) {
@@ -305,6 +330,21 @@ int main(void) {
     reset(); forced_invalid = 1; run_job(2, MANGO_RANGE_TIMEOUT);
     CHECK(!hits && !starts);
     reset(); run_job(3, MANGO_SENSOR_LOST); CHECK(!hits && starts == 2);
+    CHECK(transient_pause_ms>=2000U); /* Persistent sensor loss still returns safely. */
+    reset();transient_losses=1;stop_partial_edge=1;run_job(2,MANGO_OK);
+    CHECK(hits==1 && starts==3 && transient_pause_ms==100 && motion.outward_pulses==emitted_outward);
+    reset();transient_losses=2;run_job(2,MANGO_OK);
+    CHECK(hits==1 && starts==4 && transient_pause_ms==200 && motion.pulses==emitted_outward);
+    reset();transient_losses=1;transient_close=1;run_job(2,MANGO_OK);
+    CHECK(hits==1 && starts==2 && motion.pulses==emitted_outward);
+    reset();transient_losses=1;transient_wrong_channel=1;run_job(2,MANGO_OK);
+    CHECK(hits==1 && starts==3 && transient_pause_ms==100);
+    reset();transient_losses=1;fail_resume=1;run_job(2,MANGO_MOVE_FAILED);
+    CHECK(!hits && starts==2 && motion.pulses==emitted_outward);
+    reset();transient_losses=1;limit_on_resume=1;run_job(2,MANGO_PULSE_LIMIT);
+    CHECK(!hits && starts==3 && motion.outward_pulses==26000 && motion.pulses==26000);
+    reset();tick=0xfffffff0U;transient_losses=1;run_job(2,MANGO_OK);
+    CHECK(hits==1 && starts==3 && transient_pause_ms==100);
     reset(); inject_pulse_limit = 1; run_job(1, MANGO_PULSE_LIMIT);
     CHECK(!hits && motion.outward_pulses == MANGO_MAX_PULSES);
     /* All four IDs: reaching 26000 pulses and a distance below threshold must return,

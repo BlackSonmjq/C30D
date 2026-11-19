@@ -169,6 +169,7 @@ void DistanceTask_DrawOLED(void)
         case STEPPER_WAITING_COMMAND: OLED_ShowString(0, 50, "WAIT K1-K4"); return;
         case STEPPER_WAITING_DISTANCE: OLED_ShowString(0, 50, "WAIT RANGE"); return;
         case STEPPER_MOVING: OLED_ShowString(0, 50, "APPROACH"); return;
+        case STEPPER_RECHECKING_DISTANCE: OLED_ShowString(0, 50, "RANGE RECHECK"); return;
         case STEPPER_STRIKING: OLED_ShowString(0, 50, "SERVO 180->0"); return;
         case STEPPER_RETURNING: OLED_ShowString(0, 50, "RETURNING"); return;
         case STEPPER_FINISHING: OLED_ShowString(0, 50, "LASER OFF"); return;

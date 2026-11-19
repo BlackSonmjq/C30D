@@ -45,7 +45,7 @@ static inline void Camera_Push(Camera_Receiver *r, uint8_t byte)
     if (r->length<6U) return;
     if (p[0]==0x63U && p[5]==0x66U && p[1]<=1U && p[3]<=1U &&
         (p[1] || p[2]==0U) &&
-        ((p[1] && p[3]) ? (p[4]>=1U && p[4]<=4U) : p[4]==0U)) {
+        ((p[1] && p[3]) ? (p[4]<=4U) : p[4]==0U)) {
         r->data.pole=p[1]; r->data.offset=p[2]<128U ? p[2] : (int)p[2]-256;
         r->data.green=p[3]; r->data.region=p[4]; ++r->data.frames;
         r->length=0; return;

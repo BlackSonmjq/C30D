@@ -1,4 +1,4 @@
-"""Receive 38-channel wheel/IMU S21C range and wheel-load, alignment, vision or legacy route telemetry."""
+"""Receive 43-channel wheel/IMU S21C range and wheel-load, alignment, vision or legacy route telemetry."""
 import argparse
 import csv
 import json
@@ -35,7 +35,7 @@ S21C_FIELDS = LOAD_FIELDS + "s21c_left_mm s21c_front_mm s21c_right_mm s21c_behin
 COMPACT_FIELDS = "camera_pole camera_offset camera_green camera_region camera_frames align_phase pick_phase s21c_behind_mm s21c_fresh drive_vy_mps drive_wz_radps hit_region hit_count".split()
 IMU_FIELDS = COMPACT_FIELDS + "yaw_target_deg yaw_deg yaw_error_deg gyro_z_dps heading_i_radps heading_locked imu_fresh align_blocked".split()
 WHEEL_IMU_FIELDS = IMU_FIELDS + LOAD_FIELDS[20:32]
-CHANNEL_COUNTS = (72, 64, 48, 40, 38, 37, 35, 34, 33, 32, 31, 21, 20, 13, 8)
+CHANNEL_COUNTS = (72, 64, 48, 43, 41, 40, 38, 37, 35, 34, 33, 32, 31, 21, 20, 13, 8)
 HIT_FIELDS = S21C_FIELDS + "pick_phase hit_region hit_count".split()
 PICK_PHASES = ("IDLE", "WAIT", "HOLD", "REPORT", "COOLDOWN", "WORK")
 ALIGN_PHASES = ('IDLE', 'ACQUIRE', 'TRACK', 'DONE', 'LOST', 'TIMEOUT', 'WAIT')
@@ -56,6 +56,10 @@ def expand_current(values):
     return tuple(values[:6]) + (0, values[7], values[6]) + tuple(values[9:11]) + (0, 0) + tuple(values[11:])
 
 def fields_for(count):
+    if count == 43:
+        return fields_for(41) + ["locked_region", "lock_count"]
+    if count == 41:
+        return fields_for(38) + ["pick_phase", "hit_region", "hit_count"]
     if count == 38:
         return fields_for(35) + ["camera_bytes", "camera_bad", "camera_uart_errors"]
     if count == 35:
@@ -78,6 +82,10 @@ def fields_for(count):
 
 
 def camera_summary(values):
+    if len(values) == 43:
+        return camera_summary(values[:41]) + f" LOCK={values[41]:.0f} LOCK_COUNT={values[42]:.0f}"
+    if len(values) == 41:
+        return camera_summary(values[:38]) + f" PICK={PICK_PHASES[int(values[38])]} HIT_DONE={values[39]:.0f} COUNT={values[40]:.0f}"
     if len(values) == 38:
         return camera_summary(values[:35]) + f" CAM_RX={values[35]:.0f} BAD={values[36]:.0f} UART_ERR={values[37]:.0f}"
     if len(values) == 35:
@@ -132,6 +140,16 @@ class Framer:
     def decode(payload):
         if len(payload) not in tuple(count * 4 for count in CHANNEL_COUNTS):
             return None
+        if len(payload) == 43 * 4:
+            values = struct.unpack("<43f", payload)
+            if any(not math.isfinite(v) or v != round(v) or not 0 <= v <= maximum for v, maximum in zip(values[41:], (4, 4294967296))):
+                return None
+            return values if Framer.decode(payload[:41*4]) is not None else None
+        if len(payload) == 41 * 4:
+            values = struct.unpack("<41f", payload)
+            if any(not math.isfinite(v) or v != round(v) or not 0 <= v <= maximum for v, maximum in zip(values[38:], (5, 4, 4294967296))):
+                return None
+            return values if Framer.decode(payload[:38*4]) is not None else None
         if len(payload) == 38 * 4:
             values = struct.unpack("<38f", payload)
             if any(not math.isfinite(v) or not 0 <= v <= 4294967296 or v != round(v) for v in values[35:]):
@@ -187,8 +205,6 @@ class Framer:
                 return None
             if (not pole and offset != 0) or (not (pole and green) and region != 0):
                 return None
-            if pole and green and region == 0:
-                return None
             if any(v < 0 or v > 4294967296 or v != round(v) for v in camera[4:8]):
                 return None
         return values
@@ -241,7 +257,7 @@ def capture(args):
     folder = args.output_root / datetime.now(TZ).strftime("%Y%m%d_%H%M%S")
     folder.mkdir(parents=True, exist_ok=False)
     metadata = {"started": stamp(), "port": args.port, "baud": args.baud,
-                "format": "8/13/20/21/31/32/33/34/35/37/38/40/48/64/72 little-endian float32 + 00 00 80 7f", "fields": None,
+                "format": "8/13/20/21/31/32/33/34/35/37/38/40/41/43/48/64/72 little-endian float32 + 00 00 80 7f", "fields": None,
                 "channel_count": None,
                 "dtr": args.dtr, "rts": args.rts,
                 "stop_file": str(folder / "stop.request")}
@@ -288,7 +304,7 @@ def capture(args):
                     item = {"at": stamp(), "event": kind, "frame": count,
                             "data": dict(zip(fields_for(len(values)), values))}
                     eventfile.write(json.dumps(item) + "\n")
-                    if len(values) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40):
+                    if len(values) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43):
                         print(f"{kind}: {camera_summary(values)}", flush=True)
                         return
                     print(f"{kind}: P{int(values[1]):02d} {PHASES[int(values[2])]} "
@@ -326,7 +342,7 @@ def capture(args):
                         first = first or values
                         count += 1
                         writer.writerow([stamp()] + list(values))
-                        if len(values) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40):
+                        if len(values) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43):
                             key = values[:4] + (values[8:10] + values[19:20] if len(values) in (20, 32, 37, 40) else ()) + (values[37:40] if len(values) == 40 else ())
                             if len(values) in (13, 21, 33, 34):
                                 key = values[:4] + values[5:9] + values[11:13] + (values[13:] if len(values) in (21, 33, 34) else ())
@@ -354,7 +370,7 @@ def capture(args):
                         save_status()
                         last_flush = now
                     if now - last_report >= 10:
-                        if last and len(last) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40):
+                        if last and len(last) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43):
                             print(f"LIVE: frames={count} bytes={total_bytes} {camera_summary(last)}", flush=True)
                         elif last:
                             print(f"LIVE: frames={count} bytes={total_bytes} tick={last[0]:.0f} "
@@ -363,7 +379,7 @@ def capture(args):
                                   f"L={last[8]:.0f} Rlaser={last[9]:.0f} "
                                   f"CAN={last[26]:.0f} seq={last[24]:.0f}", flush=True)
                         else:
-                            print(f"WAIT_DATA: bytes={total_bytes}, no valid 8/13/20/21/31/32/33/34/35/37/38/40/48/64/72-channel frame yet", flush=True)
+                            print(f"WAIT_DATA: bytes={total_bytes}, no valid 8/13/20/21/31/32/33/34/35/37/38/40/41/43/48/64/72-channel frame yet", flush=True)
                         last_report = now
                     if terminal_at is not None and now - terminal_at >= 5:
                         stop_reason = "fault_snapshot" if last[2] == 9 or last[23] == 1 else "route_done"

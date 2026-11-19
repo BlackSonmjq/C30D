@@ -30,6 +30,23 @@ class BridgeTest(unittest.TestCase):
             self.assertEqual(list(Path(folder).glob('*.csv')),[])
             self.assertNotEqual(owner.fileno(),-1)
 
+    def test_lock_channels_forward_and_record(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+            receiver.bind(('127.0.0.1',0));receiver.settimeout(.2)
+            records=[];forwarder=Forwarder(sender,receiver.getsockname(),records.append)
+            values=[0.0]*43
+            values[0:6]=[1,-2,1,0,100,3]
+            values[6:9]=[1,50,120]
+            values[16:19]=[1,1,0]
+            values[31:35]=[127,127,81,480]
+            values[35:43]=[600,0,0,2,1,3,4,12]
+            data=struct.pack('<43f',*values)+TAIL
+            for start in range(0,len(data+data),17):forwarder.receive(None,(data+data)[start:start+17])
+            self.assertEqual(receiver.recv(1024),data)
+            self.assertEqual(receiver.recv(1024),data)
+            self.assertEqual(records,[tuple(values)]*2)
+            self.assertEqual(forwarder.frames,2)
+
     def test_camera_frames_and_legacy_layouts(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \
                 socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:

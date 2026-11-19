@@ -9,7 +9,7 @@ static VisionAlign_State state;
 static uint32_t now;
 static uint8_t manual_input;
 static uint8_t green=1;
-static uint16_t rear_mm=50;
+static uint16_t rear_mm=VISION_ALIGN_REAR_MM;
 static uint8_t range_valid=1;
 static VisionAlign_Output update(uint8_t manual, uint8_t ready)
 { return VisionAlign_Update(&state, &camera.data, now, manual, ready, rear_mm, range_valid); }
@@ -66,15 +66,18 @@ int main(void)
     out=frame(1,-15); REQUIRE(out.y_mps>-.150001f && out.y_mps<-.149999f);
     out=frame(1,3); REQUIRE(out.y_mps==0);
     out=update(0,1); REQUIRE(out.y_mps==0);
+    out=frame(1,3); REQUIRE(out.y_mps==0);
     out=frame(1,3); REQUIRE(out.y_mps>.04499f && out.y_mps<.04501f);
     for(i=0;i<6;++i) {out=frame(1,i%2?4:-4);REQUIRE(out.y_mps>=0 && state.lateral_sign==1);}
     out=frame(1,-3); REQUIRE(out.y_mps==0);
     out=update(0,1); REQUIRE(out.y_mps==0);
+    out=frame(1,-3); REQUIRE(out.y_mps==0);
     out=frame(1,-3); REQUIRE(out.y_mps>-.04501f && out.y_mps<-.04499f);
     out=frame(1,0); REQUIRE(out.y_mps==0 && state.phase==VISION_ALIGN_TRACK);
     out=update(0,1); REQUIRE(state.zero_frames==1 && state.phase==VISION_ALIGN_TRACK);
     out=frame(1,0); REQUIRE(state.phase==VISION_ALIGN_TRACK);
     out=frame(1,3); REQUIRE(state.zero_frames==0 && out.y_mps==0);
+    out=frame(1,3); REQUIRE(out.y_mps==0);
     out=frame(1,3); REQUIRE(out.y_mps>0);
     out=frame(1,-2); REQUIRE(state.zero_frames==1 && out.y_mps==0);
     out=frame(1,2); REQUIRE(state.zero_frames==2 && out.y_mps==0);
@@ -96,7 +99,7 @@ int main(void)
     REQUIRE(state.phase==VISION_ALIGN_TRACK && out.y_mps<-.149999f && out.y_mps>-.150001f);
     frame(1,0); frame(1,0); frame(1,0); release_done();
     frame(1,5); frame(1,5); out=frame(1,5);
-    REQUIRE(state.phase==VISION_ALIGN_TRACK && out.y_mps>.07499f && out.y_mps<.07501f);
+    REQUIRE(state.phase==VISION_ALIGN_TRACK && out.y_mps>.05999f && out.y_mps<.06001f);
     frame(1,0); frame(1,0); out=frame(1,0); REQUIRE(state.phase==VISION_ALIGN_DONE && out.y_mps==0); release_done();
     out=update(1,1); REQUIRE(!out.owned && state.phase==VISION_ALIGN_DONE);
     out=frame(1,100); REQUIRE(!out.owned && out.y_mps==0);
@@ -111,7 +114,9 @@ int main(void)
     REQUIRE(out.owned && state.phase==VISION_ALIGN_LOST && out.y_mps==0);
     out=frame(1,60); REQUIRE(out.y_mps==0 && state.phase==VISION_ALIGN_LOST);
     arm(); frame(1,60); frame(1,60); frame(1,60);
-    out=frame(0,0); REQUIRE(out.owned && state.phase==VISION_ALIGN_LOST && out.y_mps==0);
+    out=frame(0,0); REQUIRE(out.owned && state.phase==VISION_ALIGN_TRACK && out.y_mps>0);
+    now+=250;out=update(0,1);
+    REQUIRE(out.owned && state.phase==VISION_ALIGN_LOST && out.y_mps==0);
     for(i=0;i<5;++i) {
         out=frame(1,60);REQUIRE(state.phase==VISION_ALIGN_LOST && out.owned && out.y_mps==0);
         out=update(1,1);REQUIRE(state.phase==VISION_ALIGN_LOST && out.owned && out.y_mps==0);
@@ -187,7 +192,7 @@ int main(void)
         out=frame(1,i%2?4:-4);
         REQUIRE(out.x_mps<0 && out.y_mps==0 && state.approaching && state.phase==VISION_ALIGN_TRACK);
     }
-    rear_mm=50;out=frame(1,4);
+    rear_mm=VISION_ALIGN_REAR_MM;out=frame(1,4);
     REQUIRE(state.phase==VISION_ALIGN_TRACK && out.x_mps==0 && out.y_mps==0 && state.zero_frames==0);
     rear_mm=120;
     out=frame(1,5);REQUIRE(out.x_mps==0 && out.y_mps>0 && !state.approaching);
@@ -197,7 +202,7 @@ int main(void)
     REQUIRE(state.phase==VISION_ALIGN_TRACK && out.x_mps>0);
     range_valid=0;out=update(0,1);
     REQUIRE(state.phase==VISION_ALIGN_LOST && out.owned && out.x_mps==0 && out.y_mps==0);
-    rear_mm=50;range_valid=1;
+    rear_mm=VISION_ALIGN_REAR_MM;range_valid=1;
     for(i=0;i<8;++i) out=frame(1,0);
     REQUIRE(state.phase==VISION_ALIGN_DONE && out.x_mps==0 && out.y_mps==0);
     release_done();rear_mm=70;
@@ -205,16 +210,16 @@ int main(void)
     REQUIRE(state.phase==VISION_ALIGN_TRACK && out.x_mps==0);
     frame(1,0);out=frame(1,0);
     REQUIRE(state.phase==VISION_ALIGN_TRACK && out.x_mps<0);
-    rear_mm=47;frame(1,0);frame(1,0);out=frame(1,0);
+    rear_mm=VISION_ALIGN_REAR_MM;frame(1,0);frame(1,0);out=frame(1,0);
     REQUIRE(state.phase==VISION_ALIGN_DONE);
     release_done();rear_mm=54;manual_input=1;
     frame(1,0);frame(1,0);out=frame(1,0);
     REQUIRE(state.phase==VISION_ALIGN_TRACK && out.x_mps==0);
     frame(1,0);out=frame(1,0);
-    REQUIRE(state.phase==VISION_ALIGN_TRACK && out.owned && out.x_mps==-.02f);
+    REQUIRE(state.phase==VISION_ALIGN_TRACK && out.owned && out.x_mps==-.04f);
     range_valid=0;green=0;out=frame(0,0);
     REQUIRE(!out.owned && state.phase==VISION_ALIGN_WAIT);
-    range_valid=1;rear_mm=50;green=1;
+    range_valid=1;rear_mm=VISION_ALIGN_REAR_MM;green=1;
     printf("PASS: vision DX alignment state machine (%u checks)\n",checks);
     return 0;
 }

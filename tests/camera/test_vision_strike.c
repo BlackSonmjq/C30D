@@ -64,7 +64,7 @@ int main(void)
     for (i = 0; i < 10; ++i) REQUIRE(VisionStrike_Update(&s, &d, 50, 0) == 0);
     REQUIRE(s.confirmed == 1);
     REQUIRE(observe(&s, &d, 1, 100, 0) == 0);
-    REQUIRE(observe(&s, &d, 2, 150, 0) == 0); /* jitter restarts confirmation */
+    REQUIRE(observe(&s, &d, 2, 150, 0) == 0); /* Mixed frames need a three-vote majority. */
     REQUIRE(observe(&s, &d, 2, 200, 0) == 0);
     REQUIRE(observe(&s, &d, 2, 250, 0) == 2);
     VisionStrike_Accept(&s);
@@ -96,6 +96,30 @@ int main(void)
     REQUIRE(observe(&s, &d, 3, 0xffffffceU, 0) == 0);
     REQUIRE(observe(&s, &d, 3, 0, 0) == 0);
     REQUIRE(observe(&s, &d, 3, 50, 0) == 3); /* clock wrap */
+
+    /* Majority tolerates one wrong number, but never fires the current wrong number. */
+    { VisionStrike_State vote={0};Camera_Data observation={0};
+      REQUIRE(observe(&vote,&observation,2,100,0)==0);
+      REQUIRE(observe(&vote,&observation,2,150,0)==0);
+      REQUIRE(observe(&vote,&observation,3,200,0)==0);
+      REQUIRE(observe(&vote,&observation,2,250,0)==2);
+      REQUIRE(observe(&vote,&observation,3,300,0)==0 && vote.candidate==2);
+      REQUIRE(observe(&vote,&observation,3,350,0)==3 && vote.candidate==3);
+      VisionStrike_Accept(&vote);
+      REQUIRE(vote.count==0 && vote.confirmed==0);
+      REQUIRE(observe(&vote,&observation,2,400,0)==0 && vote.latched);
+    }
+    /* An old vote expires even when intervening traffic keeps the link fresh. */
+    { VisionStrike_State vote={0};Camera_Data observation={0};
+      REQUIRE(observe(&vote,&observation,2,0,0)==0);
+      REQUIRE(observe(&vote,&observation,2,100,0)==0);
+      REQUIRE(observe(&vote,&observation,3,200,0)==0);
+      REQUIRE(observe(&vote,&observation,2,300,0)==0 && vote.confirmed==2);
+      REQUIRE(observe(&vote,&observation,2,400,0)==0);
+      REQUIRE(observe(&vote,&observation,2,450,0)==2);
+      observation.region=0;++observation.frames;
+      REQUIRE(VisionStrike_Update(&vote,&observation,460,0)==0 && vote.count==0);
+    }
 
     /* Actual dispatcher + actual six-byte parser, one complete job per fruit. */
     for (i = 1; i <= 4; ++i) {

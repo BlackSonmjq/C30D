@@ -22,31 +22,34 @@
 #define VISION_ALIGN_RESTART_FRAMES 3U
 #define VISION_ALIGN_RETRY_PAUSE_MS 1000UL
 #define VISION_ALIGN_DONE_HOLD_MS 1000UL
-#define VISION_ALIGN_REAR_MM 50U
+#define VISION_ALIGN_REAR_MM 45U
 #define VISION_ALIGN_REAR_TOLERANCE_MM 3
-#define VISION_ALIGN_REAR_KP 0.003f
-#define VISION_ALIGN_REAR_MIN_MPS 0.02f
+#define VISION_ALIGN_REAR_KP 0.004f
+#define VISION_ALIGN_REAR_MIN_MPS 0.04f
 #define VISION_ALIGN_REAR_MAX_MPS 0.12f
 #define VISION_ALIGN_SLOW_DX 8
-#define VISION_ALIGN_REVERSE_FRAMES 2U
+#define VISION_ALIGN_REVERSE_FRAMES 3U
+#define VISION_ALIGN_NEAR_MAX_MPS 0.06f
 #define VISION_ALIGN_KP 0.010f
 #define VISION_ALIGN_MIN_MPS 0.12f
 #define VISION_ALIGN_MAX_MPS 0.24f
+#define VISION_ALIGN_DX_HOLD_GAIN 1.5f
 
 typedef enum {
     VISION_ALIGN_IDLE, VISION_ALIGN_ACQUIRE, VISION_ALIGN_TRACK,
     VISION_ALIGN_DONE, VISION_ALIGN_LOST, VISION_ALIGN_TIMEOUT, VISION_ALIGN_WAIT
 } VisionAlign_Phase;
 typedef struct {
-    uint32_t last_frames, last_seen_ms, started_ms, stopped_ms;
+    uint32_t last_frames, last_seen_ms, started_ms, stopped_ms, dx_seen_ms;
+    float dx_hold_speed;
     uint8_t phase, confirmed, zero_frames, restart_frames, manual_confirmed, approaching, reverse_frames;
     int8_t restart_sign, manual_sign, lateral_sign;
 } VisionAlign_State;
 typedef struct { float x_mps, y_mps; uint8_t owned; } VisionAlign_Output;
 typedef struct {
     uint8_t phase, locked, ly, rx, stick_active, ready;
-    uint8_t pick_phase, hit_region;
-    uint32_t hit_count;
+    uint8_t pick_phase, hit_region, locked_region;
+    uint32_t hit_count, lock_count;
     uint16_t blocked;
     uint32_t control_flags;
     float vx_mps, vy_mps, wz_radps, rc_velocity_mmps;
@@ -71,6 +74,7 @@ static inline void VisionAlign_Cancel(VisionAlign_State *s)
     s->approaching = 0U;
     s->reverse_frames = 0U;
     s->lateral_sign = 0;
+    s->dx_hold_speed = 0.0f;
 }
 
 static inline void VisionAlign_Begin(VisionAlign_State *s, uint32_t now_ms)
@@ -84,6 +88,7 @@ static inline void VisionAlign_Begin(VisionAlign_State *s, uint32_t now_ms)
     s->approaching = 0U;
     s->reverse_frames = 0U;
     s->lateral_sign = 0;
+    s->dx_hold_speed = 0.0f;
 }
 
 /* One chassis owner calls this at 100 Hz; only new valid camera snapshots
@@ -96,11 +101,10 @@ static inline VisionAlign_Output VisionAlign_Update(VisionAlign_State *s,
     uint8_t fresh = data->frames != s->last_frames;
     uint8_t expired = (uint32_t)(now_ms - s->last_seen_ms) >= VISION_ALIGN_FRESH_MS;
     uint8_t starting = 0U;
-    uint8_t target = data->pole == 1U && data->green == 1U &&
-        data->region >= 1U && data->region <= 4U;
+    uint8_t target = data->pole == 1U && data->green == 1U;
     float speed;
     int range_error = (int)rear_mm - (int)VISION_ALIGN_REAR_MM;
-    uint8_t range_centered = range_valid &&
+    uint8_t range_centered = range_valid && rear_mm >= 45U &&
         range_error >= -VISION_ALIGN_REAR_TOLERANCE_MM &&
         range_error <= VISION_ALIGN_REAR_TOLERANCE_MM;
     int error = data->offset;
@@ -124,6 +128,29 @@ static inline VisionAlign_Output VisionAlign_Update(VisionAlign_State *s,
         }
         return out;
     }
+    if (fresh && target) {
+        s->dx_seen_ms = now_ms;
+        s->dx_hold_speed = 0.0f;
+    }
+    if (s->phase == VISION_ALIGN_TRACK && !target) {
+        out.owned = 1U;
+        s->zero_frames = 0U;
+        /* Missing pole snapshots must not refresh the remembered DX age. */
+        if (data->green == 1U && !s->approaching && s->dx_hold_speed != 0.0f &&
+            (uint32_t)(now_ms - s->dx_seen_ms) < VISION_ALIGN_FRESH_MS &&
+            (uint32_t)(now_ms - s->started_ms) < VISION_ALIGN_TIMEOUT_MS) {
+            speed = s->dx_hold_speed * VISION_ALIGN_DX_HOLD_GAIN;
+            if (speed > VISION_ALIGN_MAX_MPS) speed = VISION_ALIGN_MAX_MPS;
+            if (speed < -VISION_ALIGN_MAX_MPS) speed = -VISION_ALIGN_MAX_MPS;
+            out.x_mps = speed * VISION_ALIGN_DX_TO_X;
+            out.y_mps = speed * VISION_ALIGN_DX_TO_Y;
+            return out;
+        }
+        s->dx_hold_speed = 0.0f;
+        s->phase = VISION_ALIGN_LOST;
+        s->confirmed = 0U;
+        return out;
+    }
     /* Completion owns a full zero for one second, including held sticks.
      * Keep consuming snapshots so hold-period data cannot count for reentry. */
     if (s->phase == VISION_ALIGN_DONE &&
@@ -138,7 +165,11 @@ static inline VisionAlign_Output VisionAlign_Update(VisionAlign_State *s,
         if (expired || (fresh && !target)) s->confirmed = 0U;
         if (fresh && target && s->confirmed < VISION_ALIGN_RECOVER_FRAMES) ++s->confirmed;
         if (s->confirmed < VISION_ALIGN_RECOVER_FRAMES) return out;
-        VisionAlign_Begin(s, now_ms);
+        {
+            uint32_t attempt_started_ms = s->started_ms;
+            VisionAlign_Begin(s, now_ms);
+            s->started_ms = attempt_started_ms;
+        }
         s->confirmed = VISION_ALIGN_CONFIRM_FRAMES;
         starting = 1U;
     }
@@ -270,7 +301,10 @@ static inline VisionAlign_Output VisionAlign_Update(VisionAlign_State *s,
     if (speed > VISION_ALIGN_MAX_MPS) speed = VISION_ALIGN_MAX_MPS;
     if (magnitude < VISION_ALIGN_SLOW_DX)
         speed *= (float)magnitude / VISION_ALIGN_SLOW_DX;
+    if (magnitude < VISION_ALIGN_SLOW_DX && speed > VISION_ALIGN_NEAR_MAX_MPS)
+        speed = VISION_ALIGN_NEAR_MAX_MPS;
     if (error < 0) speed = -speed;
+    s->dx_hold_speed = speed;
     out.x_mps += speed * VISION_ALIGN_DX_TO_X;
     out.y_mps = speed * VISION_ALIGN_DX_TO_Y;
     return out;

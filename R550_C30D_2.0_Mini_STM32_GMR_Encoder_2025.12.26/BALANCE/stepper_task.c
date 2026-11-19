@@ -94,12 +94,12 @@ static void finish_job(StepperTask_Data *job)
 
 /* 先停止 STEP，再读取包含最后一个上升沿的计数，反向走相同脉冲数。
  * 前进异常时直接进入此流程，不执行击打；返程不再依赖激光距离。 */
-static void begin_return(StepperTask_Data *job, TickType_t *phase_started)
+static void begin_return(StepperTask_Data *job, TickType_t *phase_started, u32 forward_base)
 {
     s32 signed_pulses;
     ServoTask_Cancel();
     StepperMotor_Disable(job->motor);
-    job->outward_pulses = StepperMotor_GetCompletedPulses(job->motor);
+    job->outward_pulses = forward_base + StepperMotor_GetCompletedPulses(job->motor);
     job->pulses = 0;
     if (job->outward_pulses == 0U) {
         /* 初始已到位或测距未成功启动时，无需发返程脉冲。 */
@@ -124,15 +124,15 @@ static void begin_return(StepperTask_Data *job, TickType_t *phase_started)
                (unsigned int)(signed_pulses > 0), (long)signed_pulses);
 }
 
-static void begin_strike(StepperTask_Data *job, TickType_t *phase_started)
+static void begin_strike(StepperTask_Data *job, TickType_t *phase_started, u32 forward_base)
 {
     /* 必须先停步进并保存最终计数，再请求与芒果同编号的舵机。 */
     StepperMotor_Disable(job->motor);
-    job->outward_pulses = StepperMotor_GetCompletedPulses(job->motor);
+    job->outward_pulses = forward_base + StepperMotor_GetCompletedPulses(job->motor);
     job->pulses = job->outward_pulses;
     if (!ServoTask_Start(job->mango_id)) {
         job->result = MANGO_PUSHROD_FAILED;
-        begin_return(job, phase_started);
+        begin_return(job, phase_started, forward_base);
         return;
     }
     *phase_started = xTaskGetTickCount();
@@ -184,7 +184,8 @@ void stepper_Task(void *pvParameters)
     DistanceTask_Data distance;
     ServoTask_Data servo;
     StepperTask_Data job = {0, STEPPER_WAITING_COMMAND, 0, 0, 0, MANGO_OK};
-    TickType_t phase_started = 0, now;
+    TickType_t phase_started = 0, range_wait_started = 0, now;
+    u32 forward_base = 0;
     ManualLaserReport laser_report = {0, 0, 0};
     u32 primask;
     u8 selected, rejected, laser, laser_busy;
@@ -231,6 +232,7 @@ void stepper_Task(void *pvParameters)
             job.pulses = 0;
             job.outward_pulses = 0;
             job.result = MANGO_OK;
+            forward_base = 0;
             /* 每轮都清零旧计数，避免本轮无需前进时仍按上轮步数返程。 */
             StepperMotor_ResetCompletedPulses(job.motor);
             ServoTask_Cancel();
@@ -249,7 +251,7 @@ void stepper_Task(void *pvParameters)
             /* 只使用当前选中激光的有效数据；未接入模块最多等待 5 秒。 */
             if (distance.valid && distance.laser_id == job.mango_id) {
                 if (distance.distance_mm < target_mm(job.mango_id)) {
-                    begin_strike(&job, &phase_started);
+                    begin_strike(&job, &phase_started, forward_base);
                 } else {
                     signed_pulses = forward_high(job.motor) ?
                         (s32)MANGO_MAX_PULSES : -(s32)MANGO_MAX_PULSES;
@@ -261,30 +263,64 @@ void stepper_Task(void *pvParameters)
                                    (unsigned int)(signed_pulses > 0), (long)signed_pulses);
                     } else {
                         job.result = MANGO_MOVE_FAILED;
-                        begin_return(&job, &phase_started);
+                        begin_return(&job, &phase_started, forward_base);
                     }
                 }
             } else if ((TickType_t)(now - phase_started) >= pdMS_TO_TICKS(MANGO_RANGE_WAIT_MS)) {
                 job.result = MANGO_RANGE_TIMEOUT;
-                begin_return(&job, &phase_started);
+                begin_return(&job, &phase_started, forward_base);
             }
             break;
 
         case STEPPER_MOVING:
-            /* 距离失效、达到脉冲上限或异常停止均直接返程。
-             * 上限优先于击打距离：同一轮恰好到位也不再启动舵机。 */
-            job.pulses = StepperMotor_GetCompletedPulses(job.motor);
-            if (!distance.valid || distance.laser_id != job.mango_id) {
-                job.result = MANGO_SENSOR_LOST;
-                begin_return(&job, &phase_started);
-            } else if (job.pulses >= MANGO_MAX_PULSES || !StepperMotor_IsRunning(job.motor)) {
+            job.pulses = forward_base + StepperMotor_GetCompletedPulses(job.motor);
+            if (job.pulses >= MANGO_MAX_PULSES || !StepperMotor_IsRunning(job.motor)) {
                 job.result = MANGO_PULSE_LIMIT;
-                begin_return(&job, &phase_started);
-            } else if (distance.distance_mm < target_mm(job.mango_id)) {
-                begin_strike(&job, &phase_started);
+                begin_return(&job, &phase_started, forward_base);
             } else if ((TickType_t)(now - phase_started) >= pdMS_TO_TICKS(MANGO_MOTION_TIMEOUT_MS)) {
                 job.result = MANGO_MOTION_TIMEOUT;
-                begin_return(&job, &phase_started);
+                begin_return(&job, &phase_started, forward_base);
+            } else if (!distance.valid || distance.laser_id != job.mango_id) {
+                StepperMotor_Disable(job.motor);
+                job.pulses = forward_base + StepperMotor_GetCompletedPulses(job.motor);
+                range_wait_started = now;
+                job.state = STEPPER_RECHECKING_DISTANCE;
+                any_printf(USART1, "mango %u range pause status=%u laser=%u pulses=%lu\r\n",
+                    (unsigned)job.mango_id, (unsigned)distance.status,
+                    (unsigned)distance.laser_id, (unsigned long)job.pulses);
+            } else if (distance.distance_mm < target_mm(job.mango_id)) {
+                begin_strike(&job, &phase_started, forward_base);
+            }
+            break;
+
+        case STEPPER_RECHECKING_DISTANCE:
+            /* Never drive using invalid data; the overall motion clock keeps running. */
+            if (job.pulses >= MANGO_MAX_PULSES) {
+                job.result = MANGO_PULSE_LIMIT;
+                begin_return(&job, &phase_started, forward_base);
+            } else if ((TickType_t)(now - phase_started) >= pdMS_TO_TICKS(MANGO_MOTION_TIMEOUT_MS)) {
+                job.result = MANGO_MOTION_TIMEOUT;
+                begin_return(&job, &phase_started, forward_base);
+            } else if ((TickType_t)(now - range_wait_started) >= pdMS_TO_TICKS(MANGO_RANGE_RECHECK_MS)) {
+                job.result = MANGO_SENSOR_LOST;
+                begin_return(&job, &phase_started, forward_base);
+            } else if (distance.valid && distance.laser_id == job.mango_id) {
+                if (distance.distance_mm < target_mm(job.mango_id)) {
+                    begin_strike(&job, &phase_started, forward_base);
+                } else {
+                    signed_pulses = (s32)(MANGO_MAX_PULSES - job.pulses);
+                    if (!forward_high(job.motor)) signed_pulses = -signed_pulses;
+                    if (StepperMotor_StartMove(job.motor, signed_pulses)) {
+                        forward_base = job.pulses;
+                        job.state = STEPPER_MOVING;
+                        any_printf(USART1, "mango %u range recovered total=%lu remaining=%ld\r\n",
+                            (unsigned)job.mango_id, (unsigned long)forward_base,
+                            (long)signed_pulses);
+                    } else {
+                        job.result = MANGO_MOVE_FAILED;
+                        begin_return(&job, &phase_started, forward_base);
+                    }
+                }
             }
             break;
 
@@ -293,11 +329,11 @@ void stepper_Task(void *pvParameters)
              * 额外 1 秒只用于检测任务执行异常，不延长正常舵机动作。 */
             ServoTask_GetData(&servo);
             if (servo.id == job.mango_id && servo.state == SERVO_TASK_DONE) {
-                begin_return(&job, &phase_started);
+                begin_return(&job, &phase_started, forward_base);
             } else if (servo.id != job.mango_id || servo.state == SERVO_TASK_ERROR ||
                        (TickType_t)(now - phase_started) >= pdMS_TO_TICKS(MANGO_STRIKE_MS + 1000UL)) {
                 job.result = MANGO_PUSHROD_FAILED;
-                begin_return(&job, &phase_started);
+                begin_return(&job, &phase_started, forward_base);
             }
             break;
 
