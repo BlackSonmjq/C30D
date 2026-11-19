@@ -429,6 +429,26 @@
               <FilePath>.\route_io.c</FilePath>
             </File>
             <File>
+              <FileName>nav_core.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\nav_core.c</FilePath>
+            </File>
+            <File>
+              <FileName>nav_can.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\nav_can.c</FilePath>
+            </File>
+            <File>
+              <FileName>nav_calibration.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\nav_calibration.c</FilePath>
+            </File>
+            <File>
+              <FileName>nav_button.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\nav_button.c</FilePath>
+            </File>
+            <File>
               <FileName>route_nav.c</FileName>
               <FileType>1</FileType>
               <FilePath>.\route_nav.c</FilePath>

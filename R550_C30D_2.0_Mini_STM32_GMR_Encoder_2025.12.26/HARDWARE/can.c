@@ -1,4 +1,5 @@
 #include "can.h"
+#include "route_io.h"
 #include "can_test.h"
 #include "system.h"
 #include "stm32f4xx_can.h"
@@ -105,7 +106,7 @@ u8 CAN1_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode)
     /*** Filter initialization || 过滤器初始化 ***/
     //Filter groups work in initialization mode
     //过滤器组工作在初始化模式
-    CAN1->FMR|=1<<0;
+    CAN1->FMR = (CAN1->FMR & ~(0x3FU << 8)) | (14U << 8) | CAN_FMR_FINIT;
     //Filter 0 is not active
   //过滤器0不激活
     CAN1->FA1R&=~(1<<0);
@@ -114,10 +115,10 @@ u8 CAN1_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode)
     CAN1->FS1R|=1<<0;
     //Filter 0 works in identifier masking bit mode
   //过滤器0工作在标识符屏蔽位模式
-    CAN1->FM1R|=0<<0;
+    CAN1->FM1R &= ~(1U << 0);
     //Filter 0 is associated with FIFO0
   //过滤器0关联到FIFO0
-    CAN1->FFA1R|=0<<0;
+    CAN1->FFA1R &= ~(1U << 0);
   //32 bit ID
     //32位ID
     CAN1->sFilterRegister[0].FR1=0X00000000;
@@ -129,7 +130,7 @@ u8 CAN1_Mode_Init(u8 tsjw,u8 tbs2,u8 tbs1,u16 brp,u8 mode)
     CAN1->FA1R|=1<<0;
     //Filter group enters normal mode
   //过滤器组进入正常模式
-    CAN1->FMR &= ~(1U << 0);
+    CAN1->FMR &= ~(uint32_t)CAN_FMR_FINIT;
 
 #if CAN1_RX0_INT_ENABLE
   //Enable to interrupt reception //使能中断接收
@@ -339,8 +340,10 @@ void CAN1_RX0_IRQHandler(void)
 
     u8 temp_rxbuf[8];
 
+    while (CAN1_Msg_Pend(0)) {
     CAN1_Rx_Msg(0,&id,&ide,&rtr,&len,temp_rxbuf);
     if (id == 0x301U) {
+        RouteIO_ReceiveCan(id,ide,rtr,len,temp_rxbuf);
         CAN_Test_Parse(ide,rtr,len,temp_rxbuf);
         if (ide == CAN_Id_Standard && rtr == CAN_RTR_Data && len == 8U) {
             lidar_frame.left_mm   = ((u16)temp_rxbuf[0] << 8) | temp_rxbuf[1];
@@ -349,7 +352,7 @@ void CAN1_RX0_IRQHandler(void)
             lidar_frame.behind_mm = ((u16)temp_rxbuf[6] << 8) | temp_rxbuf[7];
             lidar_pending = 1U;
         }
-        return;
+        continue;
     }
 
     //回充装备特征码
@@ -413,6 +416,8 @@ void CAN1_RX0_IRQHandler(void)
         else Charging_Current=(temp_rxbuf[7]*30);
     }
 }
+}
+
 #endif
 
 /**************************************************************************

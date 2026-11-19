@@ -1,50 +1,71 @@
 #include "route_io.h"
 #include "route_config.h"
-#include "route_plan.h"
-#include "my_chassis_task.h"
-#include "chassis_odometry.h"
+#include "nav_can.h"
+#include "nav_config.h"
 #include "balance.h"
-#include "heading_control.h"
 #include "stepper_task.h"
 #include <math.h>
 #include <string.h>
 
 typedef struct { float vx_mps, vy_mps; TickType_t tick; } RouteCommand;
 static RouteCommand command;
-static volatile uint8_t start_requested;
-static volatile uint8_t reverse_test_running;
-static TickType_t reverse_test_started;
-static RouteLidarFrame lidar;
-static TickType_t lidar_tick;
+static volatile uint8_t start_requested, start_pending, stop_pending;
+static volatile uint32_t clock_ms;
+static float heading_target;
+static volatile NavLidar lidar;
 static uint8_t command_seen;
 static volatile uint8_t pending_work, work_reserved, work_allowed;
 
+void RouteIO_Tick1ms(void) { ++clock_ms; }
+uint32_t RouteIO_Millis(void) { return clock_ms; }
+
+/* CAN priority 1 never calls FreeRTOS. Timestamp the actual received frame. */
+void RouteIO_ReceiveCan(uint32_t id, uint8_t ide, uint8_t rtr, uint8_t len, const uint8_t *data)
+{
+    NavLidar next;
+    if (!NavCan_Decode(id, ide, rtr, len, data, &next)) return;
+    next.received_ms = clock_ms;
+    next.sequence = lidar.sequence + 1U;
+    if (!next.sequence) next.sequence = 1U;
+    lidar = next;
+}
+
 void RouteIO_PublishLidar(uint16_t front, uint16_t behind, uint16_t left, uint16_t right)
 {
-    TickType_t now = xTaskGetTickCount();
-    taskENTER_CRITICAL();
-    lidar.mm[ROUTE_LIDAR_FRONT] = front;
-    lidar.mm[ROUTE_LIDAR_BEHIND] = behind;
-    lidar.mm[ROUTE_LIDAR_LEFT] = left;
-    lidar.mm[ROUTE_LIDAR_RIGHT] = right;
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    lidar.mm[NAV_FRONT] = front;
+    lidar.mm[NAV_BACK] = behind;
+    lidar.mm[NAV_LEFT] = left;
+    lidar.mm[NAV_RIGHT] = right;
     if (++lidar.sequence == 0U) ++lidar.sequence;
-    lidar.fresh = 1U;
-    lidar_tick = now;
-    taskEXIT_CRITICAL();
+    lidar.received_ms = clock_ms;
+    __set_PRIMASK(mask);
+}
+
+void RouteIO_ReadNavigationLidar(NavLidar *frame)
+{
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    *frame = lidar;
+    __set_PRIMASK(mask);
 }
 
 void RouteIO_ReadLidar(RouteLidarFrame *frame)
 {
-    TickType_t published_at;
-    taskENTER_CRITICAL();
-    *frame = lidar;
-    published_at = lidar_tick;
-    taskEXIT_CRITICAL();
-    if (frame->sequence == 0U || (TickType_t)(xTaskGetTickCount() - published_at) >=
-        pdMS_TO_TICKS(ROUTE_LIDAR_TTL_MS)) {
-        memset(frame->mm, 0, sizeof(frame->mm));
-        frame->fresh = 0U;
-    }
+    NavLidar snapshot;
+    unsigned i;
+    RouteIO_ReadNavigationLidar(&snapshot);
+    frame->sequence = snapshot.sequence;
+    frame->fresh = snapshot.sequence && (uint32_t)(clock_ms - snapshot.received_ms) < NAV_LIDAR_TTL_MS;
+    frame->mm[ROUTE_LIDAR_FRONT] = snapshot.mm[NAV_FRONT];
+    frame->mm[ROUTE_LIDAR_BEHIND] = snapshot.mm[NAV_BACK];
+    frame->mm[ROUTE_LIDAR_LEFT] = snapshot.mm[NAV_LEFT];
+    frame->mm[ROUTE_LIDAR_RIGHT] = snapshot.mm[NAV_RIGHT];
+    if (!frame->fresh) memset(frame->mm, 0, sizeof(frame->mm));
+    for (i = 0U; i < ROUTE_LIDAR_COUNT; ++i)
+        if (frame->mm[i] < NAV_LIDAR_MIN_MM || frame->mm[i] > NAV_LIDAR_MAX_MM)
+            frame->mm[i] = 0U;
 }
 
 uint8_t RouteIO_BaseReady(void)
@@ -56,40 +77,31 @@ uint8_t RouteIO_Ready(void)
 {
     return RouteIO_BaseReady() && !StepperTask_IsBusy();
 }
-uint8_t RouteIO_ControlOwned(void)
+uint8_t RouteIO_ControlOwned(void) { return start_requested; }
+uint8_t RouteIO_ReverseTestRunning(void) { return 0U; }
+void RouteIO_RequestStart(void) { start_pending = 1U; }
+void RouteIO_RequestManual(void) { stop_pending = 1U; start_requested = 0U; }
+static uint8_t take_request(volatile uint8_t *request)
 {
-    if (ROUTE_REVERSE_TEST_ENABLE) return 1U;
-    return ROUTE_DEMO_ENABLE && (!ROUTE_DEBUG_MODE || start_requested);
+    uint8_t value;
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    value = *request;
+    *request = 0U;
+    __set_PRIMASK(mask);
+    return value;
 }
-
-uint8_t RouteIO_ReverseTestRunning(void) { return reverse_test_running; }
-
-void RouteIO_RequestStart(void)
+uint8_t RouteIO_TakeStartRequest(void) { return take_request(&start_pending); }
+uint8_t RouteIO_TakeStopRequest(void) { return take_request(&stop_pending); }
+void RouteIO_SetRunning(uint8_t running)
 {
-    RouteLidarFrame frame;
-    ChassisOdomFrame pose;
-    if (ROUTE_REVERSE_TEST_ENABLE) {
-        /* 单击只控制限时后退，不启动导航；不依赖激光数据。 */
-        if (reverse_test_running) {
-            reverse_test_running = 0U;
-            RouteIO_SetVelocity(0.0f, 0.0f);
-        } else if (Route_TaskCreated && RouteIO_Ready() && RouteIO_ChassisStopped() &&
-                   ROUTE_REVERSE_TEST_SPEED_MPS > 0.0f &&
-                   ROUTE_REVERSE_TEST_DURATION_MS > 0UL) {
-            reverse_test_started = xTaskGetTickCount();
-            reverse_test_running = 1U;
-        }
-        return;
-    }
-    RouteIO_ReadLidar(&frame);
-    ChassisOdom_Read(&pose);
-    if (!start_requested && Route_TaskCreated && RoutePlan_Calibrated() &&
-        RouteIO_Ready() && RouteIO_ChassisStopped() && frame.fresh && pose.valid) {
-        ChassisOdom_Reset((uint32_t)xTaskGetTickCount());
-        HeadingControl_Reset();
-        start_requested = 1U;
-    }
+    /* An input interrupt/task may have requested manual takeover during Nav_Tick. */
+    uint32_t mask = __get_PRIMASK();
+    __disable_irq();
+    start_requested = running && !stop_pending;
+    __set_PRIMASK(mask);
 }
+void RouteIO_SetHeading(float yaw_rad) { heading_target = yaw_rad; }
 uint8_t RouteIO_StartRequested(void) { return start_requested; }
 
 void RouteIO_SetVelocity(float vx_mps, float vy_mps)
@@ -124,35 +136,16 @@ void RouteIO_ReadDiagnostics(RouteIODiagnostics *d)
 void RouteIO_ApplyDrive(void)
 {
     RouteCommand latest;
-    ChassisOdomFrame pose;
-    if (ROUTE_REVERSE_TEST_ENABLE) {
-        /* 本分支仍使用四轮原速度 PI；不叠加侧墙或航向修正。
-         * 失能、机构忙、低电压和到时均结束本轮，恢复后不会自动重启。 */
-        float vx = 0.0f;
-        if (reverse_test_running &&
-            (!RouteIO_Ready() || (TickType_t)(xTaskGetTickCount() - reverse_test_started) >=
-             pdMS_TO_TICKS(ROUTE_REVERSE_TEST_DURATION_MS)))
-            reverse_test_running = 0U;
-        if (reverse_test_running) vx = -ROUTE_REVERSE_TEST_SPEED_MPS;
-        RouteIO_SetVelocity(vx, 0.0f);
-        if (!reverse_test_running)
-            smooth_control.VX = smooth_control.VY = smooth_control.VZ = 0.0f;
-        Drive_Motor(vx, 0.0f, 0.0f);
-        return;
-    }
     taskENTER_CRITICAL();
     latest = command;
     taskEXIT_CRITICAL();
-    ChassisOdom_Read(&pose);
-    if (!start_requested || !RouteIO_Ready() || !pose.valid ||
-        (TickType_t)(xTaskGetTickCount() - latest.tick) >= pdMS_TO_TICKS(ROUTE_COMMAND_TTL_MS) ||
-        (latest.vx_mps == 0.0f && latest.vy_mps == 0.0f)) {
+    if (!start_requested || !RouteIO_Ready() || !command_seen ||
+        (TickType_t)(xTaskGetTickCount() - latest.tick) >= pdMS_TO_TICKS(ROUTE_COMMAND_TTL_MS)) {
         smooth_control.VX = smooth_control.VY = smooth_control.VZ = 0.0f;
         Drive_Motor(0.0f, 0.0f, 0.0f);
         return;
     }
-    Drive_Motor(latest.vx_mps, latest.vy_mps, HEADING_CONTROL_ENABLE ?
-                HeadingControl_HoldYaw(0.0f, pose.yaw_rad, imu.gyro.z) : 0.0f);
+    Chassis_NavigationDrive(latest.vx_mps, latest.vy_mps, heading_target);
 }
 
 uint8_t RouteIO_ChassisStopped(void)

@@ -311,5 +311,6 @@ static inline VisionAlign_Output VisionAlign_Update(VisionAlign_State *s,
 }
 /* Atomic phase snapshot for the existing OLED camera page. */
 uint8_t VisionAlign_GetPhase(void);
+uint8_t VisionAlign_ControlOwned(void);
 void VisionAlign_GetDiagnostics(VisionAlign_Diagnostics *data);
 #endif

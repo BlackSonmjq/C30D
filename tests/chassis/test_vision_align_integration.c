@@ -8,7 +8,7 @@
 #include "vision_align.h"
 #include "vision_strike.h"
 #include "route_io.h"
-typedef struct { float yaw_rad; uint32_t tick_ms; u8 valid; } ChassisOdomFrame;
+typedef struct { float yaw_rad; uint32_t tick_ms; u8 valid; float x_mm,y_mm; } ChassisOdomFrame;
 #define ROUTE_ODOM_MAX_GAP_MS 100U
 #define CONTROL_DELAY 1000U
 #define MANUAL_RC_MAX_MMPS 480.0f
@@ -73,6 +73,12 @@ static uint32_t xTaskGetTickCount(void) { return now; }
 void Camera_GetData(Camera_Data *data) { *data=camera.data; }
 uint8_t RouteIO_ChassisStopped(void) { return chassis_stopped; }
 uint8_t RouteIO_ControlOwned(void) { return route_owned; }
+/* Route-specific fixtures provide the real command application below. */
+#ifndef NAVIGATION_MERGE_TEST
+void RouteIO_ApplyDrive(void) { dx=dy=dz=0; }
+#endif
+static uint8_t route_stop_requested;
+void RouteIO_RequestManual(void) { route_owned=0; route_stop_requested=1; }
 static void Get_RC(void) {}
 static void Remote_Control(void) {}
 static int StepperTask_IsBusy(void) { return tool_busy; }

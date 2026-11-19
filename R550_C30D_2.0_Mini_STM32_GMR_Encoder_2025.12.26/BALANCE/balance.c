@@ -55,10 +55,16 @@ static uint8_t vision_align_ready;
 static uint16_t vision_align_blocked = 8192U;
 uint8_t VisionAlign_GetPhase(void)
 { return vision_align.phase; }
+uint8_t VisionAlign_ControlOwned(void)
+{
+    return vision_align.phase == VISION_ALIGN_ACQUIRE ||
+        vision_align.phase == VISION_ALIGN_TRACK || vision_align.phase == VISION_ALIGN_LOST ||
+        vision_pick_phase != PICK_IDLE;
+}
 static void VisionAlign_Drive(float forward, float left);
 static uint8_t VisionAlign_ControlAllowed(void)
 {
-    return VISION_ALIGN_ENABLE && !RouteIO_ControlOwned() && !APP_ON_Flag &&
+    return VISION_ALIGN_ENABLE && !APP_ON_Flag &&
         !Remote_ON_Flag && !CAN_ON_Flag && !Usart1_ON_Flag && !Usart5_ON_Flag &&
         !Allow_Recharge && (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550);
 }
@@ -489,7 +495,11 @@ void Balance_task(void *pvParameters)
 		}
 
         vision_park_braking = 0U;
-        if (RouteIO_ControlOwned() || APP_ON_Flag ||
+        if (RouteIO_ControlOwned() && PS2_ON_Flag && GamePadInterface &&
+            (fabsf((float)GamePadInterface->LY - 127.0f) >= 20.0f ||
+             fabsf((float)GamePadInterface->RX - 127.0f) >= 20.0f))
+            RouteIO_RequestManual();
+        if (APP_ON_Flag ||
             (!Remote_ON_Flag && !PS2_ON_Flag &&
              !VisionAlign_ControlAllowed()) ||
             !EN || Flag_Stop)
@@ -948,6 +958,8 @@ Output  : none
 //xbox360游戏手柄按键回调函数
 void Xbox360GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 {
+    if (keyid == Xbox360KEY_Y && event == GamePadKeyEvent_SINGLECLICK)
+        RouteIO_RequestStart();
 	//按下start按键
 	if( keyid == Xbox360KEY_Menu && event == GamePadKeyEvent_SINGLECLICK )
 		GamePadInterface->StartFlag = 1;
@@ -993,6 +1005,8 @@ void Xbox360GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 //有线USB手柄回调函数
 void Wired_USB_PS2GamePad_KeyEvent_Callback(uint8_t keyid,GamePadKeyEventType_t event)
 {
+    if (keyid == PS2KEY_1GREEN && event == GamePadKeyEvent_SINGLECLICK)
+        RouteIO_RequestStart();
 	//按下start按键
 	if( keyid == PS2KEY_START && event == GamePadKeyEvent_SINGLECLICK )
 		GamePadInterface->StartFlag = 1;
@@ -1087,7 +1101,7 @@ static void VisionAlign_Drive(float forward, float left)
         (!EN ? 4U : 0U) | (Flag_Stop ? 8U : 0U) | (!(Voltage >= 10.0f) ? 16U : 0U) |
         (SysVal.Time_count < CONTROL_DELAY ? 32U : 0U) | (!pose.valid ? 64U : 0U) |
         ((uint32_t)(now - pose.tick_ms) > ROUTE_ODOM_MAX_GAP_MS ? 128U : 0U) |
-        (RouteIO_ControlOwned() ? 256U : 0U) | (StepperTask_IsBusy() ? 512U : 0U) |
+        (StepperTask_IsBusy() ? 512U : 0U) |
         (ServoTask_IsBusy() ? 1024U : 0U) | (USART_ServoControlBusy() ? 2048U : 0U) |
         (RouteIO_WorkReserved() ? 4096U : 0U);
     ready = vision_align_ready = vision_align_blocked == 0U;
@@ -1426,6 +1440,14 @@ detection_timeout:
     ManualMecanum_Drive(forward, left, 0U);
 }
 
+void Chassis_NavigationDrive(float forward, float left, float yaw_target)
+{
+    if (!manual_heading_locked) HeadingControl_Reset();
+    manual_heading_target = yaw_target;
+    manual_heading_locked = 1U;
+    VisionAlign_Drive(forward, left);
+}
+
 void PS2_control(void)
 {
     if (Car_Mode == Mec_Car || Car_Mode == Mec_Car_V550) {
@@ -1661,9 +1683,7 @@ void Key(void)
 		{
         if (ROUTE_DEMO_ENABLE && (tmp == single_click || tmp == double_click))
         {
-            if (tmp == single_click) {
-                RouteIO_RequestStart();
-            }
+            /* The rebuild navigation task owns USER debounce and start/stop. */
             return;
         }
 

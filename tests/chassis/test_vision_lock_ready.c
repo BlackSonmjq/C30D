@@ -28,6 +28,8 @@ int main(void)
     frame(1,-4);frame(1,-4);frame(1,-4);
     REQUIRE(vision_align.phase==VISION_ALIGN_TRACK && dy==0 && strikes==0);
     frame(1,-4);
+    REQUIRE(dy==0 && strikes==0);
+    frame(1,-4);
     REQUIRE(dy<-.059f && strikes==0);
     frame(1,0);frame(1,0);frame(1,0);
     REQUIRE(vision_pick_phase==PICK_HOLD && vision_lock_count==1);

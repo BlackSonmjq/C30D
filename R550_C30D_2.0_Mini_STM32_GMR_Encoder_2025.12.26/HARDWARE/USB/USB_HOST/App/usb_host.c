@@ -122,6 +122,7 @@ static void USBH_UserProcess  (USBH_HandleTypeDef *phost, uint8_t id)
 }
 
 #include "system.h"
+#include "route_io.h"
 
 extern USBH_StatusTypeDef USBH_HID_PS2_Decode(USBH_HandleTypeDef *phost);
 
@@ -138,6 +139,12 @@ void USBH_HID_EventCallback(USBH_HandleTypeDef *phost)
     }
 
 	//游戏手柄模式启动
+    if (RouteIO_ControlOwned() &&
+        (abs((int)GamePadInterface->LY - 127) >= 20 ||
+         abs((int)GamePadInterface->RX - 127) >= 20)) {
+        RouteIO_RequestManual();
+        PS2_ON_Flag=1; Remote_ON_Flag=APP_ON_Flag=CAN_ON_Flag=Usart1_ON_Flag=Usart5_ON_Flag=0;
+    }
 	if( GamePadInterface->StartFlag == 1 && PS2_ON_Flag==0 && SysVal.Time_count>=CONTROL_DELAY && GamePadInterface->LY > 150 )
 	{
 		PS2_ON_Flag=1,Remote_ON_Flag=0,APP_ON_Flag=0,CAN_ON_Flag=0,Usart1_ON_Flag=0,Usart5_ON_Flag=0;

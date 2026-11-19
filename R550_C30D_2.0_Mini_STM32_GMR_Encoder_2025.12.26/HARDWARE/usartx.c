@@ -537,11 +537,6 @@ void data_task(void *pvParameters)
 			//��������20Hz��Ƶ������
 			vTaskDelayUntil(&lastWakeTime, F2T(RATE_20_HZ));
             CAN_Test_Process();
-            {
-                CAN_LidarFrame lidar;
-                if (CAN1_TakeLidar(&lidar))
-                    RouteIO_PublishLidar(lidar.front_mm,lidar.behind_mm,lidar.left_mm,lidar.right_mm);
-            }
             if (vision_hit_report) {
                 any_printf(USART1, "CMD HIT_DONE %u\r\n", (unsigned)vision_hit_report);
                 vision_hit_report = 0U;

@@ -9,6 +9,7 @@
 #include "my_chassis_task.h"
 #include "route_io.h"
 #include "route_config.h"
+#include "nav_core.h"
 int Voltage_Show;
 unsigned char i;
 unsigned char Send_Count;
@@ -292,58 +293,22 @@ static void draw_route_status(void)
 
 static void draw_route_process(void)
 {
-    RouteStatus status;
-    ChassisOdomFrame pose;
-    const char sensor_names[] = {'F', 'B', 'L', 'R', '-'};
-    char range[6] = "----";
+    RouteNavigationStatus status;
     char line[32];
-    Route_ReadStatus(&status);
-    ChassisOdom_Read(&pose);
-    if (status.measured_mm != 0U)
-        snprintf(range, sizeof(range), "%4u", (unsigned int)status.measured_mm);
-
-    snprintf(line, sizeof(line), "AT:%02u GO:%02u L:%u",
-             (unsigned int)status.at_point, (unsigned int)status.target_point,
-             (unsigned int)status.lane);
+    Route_ReadNavigationStatus(&status);
+    snprintf(line, sizeof(line), "%s P%02u>%02u", Nav_StateName((NavState)status.state),
+             status.confirmed, status.target);
     draw_route_status_line(0, line);
-    snprintf(line, sizeof(line), "%s %s>%s", RouteNav_PhaseName(status.phase),
-             RoutePlan_MotionName(status.motion), RoutePlan_MotionName(status.next_motion));
+    snprintf(line, sizeof(line), "%s", Nav_ReasonName((NavReason)status.reason));
     draw_route_status_line(12, line);
-    if (status.phase == ROUTE_WAIT_START)
-        snprintf(line, sizeof(line), "X:%+5d Y:%+5d", (int)pose.x_mm, (int)pose.y_mm);
-    else if (status.reference == ROUTE_REF_WALL)
-        /* G 是本段估计终点，C 是捕获帧数；接管后 G 可区别于原计划长度。 */
-        snprintf(line, sizeof(line), "S:%4d G:%4d C:%u/%u",
-                 (int)status.progress_mm, (int)status.estimated_end_mm,
-                 (unsigned int)status.capture_confirmed, (unsigned int)ROUTE_CAPTURE_FRAMES);
-    else
-        snprintf(line, sizeof(line), "S:%5d/%4umm",
-                 (int)status.progress_mm, (unsigned int)status.estimated_end_mm);
+    snprintf(line, sizeof(line), "MAIN:%+5d CROSS:%+5d",
+             (int)status.main_error_mm, (int)status.cross_error_mm);
     draw_route_status_line(24, line);
-    if (status.reference == ROUTE_REF_EDGE)
-        snprintf(line, sizeof(line), "%c:%s E:%u A:%c%4u",
-                 sensor_names[status.sensor <= ROUTE_LIDAR_COUNT ? status.sensor : ROUTE_LIDAR_COUNT],
-                 range, (unsigned int)status.edge_state,
-                 sensor_names[status.aux_sensor <= ROUTE_LIDAR_COUNT ? status.aux_sensor : ROUTE_LIDAR_COUNT],
-                 (unsigned int)status.aux_measured_mm);
-    else
-        snprintf(line, sizeof(line), "%c:%s T:%4u N:%u/%u",
-                 sensor_names[status.sensor <= ROUTE_LIDAR_COUNT ? status.sensor : ROUTE_LIDAR_COUNT],
-                 range, (unsigned int)status.target_mm, (unsigned int)status.confirmed,
-                 (unsigned int)ROUTE_CONFIRM_FRAMES);
+    snprintf(line, sizeof(line), "YAW:%+5d START:%4d",
+             (int)(status.heading_error_rad * 57.2957795f), (int)status.start_front_mm);
     draw_route_status_line(36, line);
-    if (status.stop_flags != 0U)
-        snprintf(line, sizeof(line), "E:%s D:%02X", RouteNav_ErrorName(status.reason),
-                 (unsigned int)status.stop_flags);
-    else if (status.phase != ROUTE_WAIT_START && status.reason == ROUTE_ERROR_NONE)
-        /* R 用于实际接近控制；O 只是计划里程剩余。R 为负时将确认并小幅回调。 */
-        snprintf(line, sizeof(line), "R:%+5d Q:%u/%02X%s%s",
-                 (int)status.control_remaining_mm,
-                 (unsigned int)(status.reference == ROUTE_REF_EDGE ? status.aux_confidence : status.confidence),
-                 (unsigned int)(status.reference == ROUTE_REF_EDGE ? status.aux_reject_reason : status.reject_reason),
-                 status.odom_untrusted ? " !O" : "", status.speed_limited ? " S" : "");
-    else
-        snprintf(line, sizeof(line), "E:%s", RouteNav_ErrorName(status.reason));
+    snprintf(line, sizeof(line), "ROUTE:%u VISION:%u",
+             RouteIO_ControlOwned(), VisionAlign_ControlOwned());
     draw_route_status_line(48, line);
 }
 

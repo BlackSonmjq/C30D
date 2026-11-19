@@ -1,5 +1,6 @@
 #include "delay.h"
 #include "sys.h"
+#include "route_io.h"
 //////////////////////////////////////////////////////////////////////////////////
 //如果使用OS,则包括下面的头文件即可
 #if SYSTEM_SUPPORT_OS
@@ -19,6 +20,7 @@ void SysTick_Handler(void)
 {
     if(xTaskGetSchedulerState()!=taskSCHEDULER_NOT_STARTED)//系统已经运行
     {
+        RouteIO_Tick1ms();
         xPortSysTickHandler();
     }
 }

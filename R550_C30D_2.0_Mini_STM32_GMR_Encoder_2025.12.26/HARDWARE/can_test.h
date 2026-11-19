@@ -3,7 +3,8 @@
 
 #include "sys.h"
 
-#define CAN_TEST_TIMEOUT_MS 500U
+#include "nav_config.h"
+#define CAN_TEST_TIMEOUT_MS NAV_LIDAR_TTL_MS
 
 extern volatile uint32_t g_can_test_rx_count;
 extern volatile uint32_t g_can_test_last_counter;
