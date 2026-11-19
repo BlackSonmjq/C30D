@@ -457,6 +457,7 @@ void Balance_task(void *pvParameters)
 	float chassis_vz;
 	u8 heading_control_active;
 	u8 chassis_allowed, actuator_parked, wheel_output_active;
+    IMU_HeadingFrame heading;
 	static u8 imu_ready_beeped = 0;
 
     while(1)
@@ -472,6 +473,7 @@ void Balance_task(void *pvParameters)
 		//and convert to transposition international units
 		//获取编码器数据，即车轮实时速度，并转换位国际单位
         Get_Velocity_Form_Encoder();
+        Imu_ReadHeading(&heading);
         if (ROUTE_DEMO_ENABLE || VISION_ALIGN_ENABLE) {
             /* Encoder 按固定 CONTROL_FREQUENCY 换算过速度；除以同一频率恢复
              * 本次计数对应的位移，平移里程不再重复乘实际采样时间。单位 mm。 */
@@ -489,7 +491,7 @@ void Balance_task(void *pvParameters)
 		Key();
 
 		/* One short beep when startup IMU calibration has completed. */
-		if((SysVal.Time_count >= CONTROL_DELAY) && (imu_ready_beeped == 0))
+		if((SysVal.Time_count >= CONTROL_DELAY) && heading.ready && (imu_ready_beeped == 0))
 		{
 			Buzzer_count = 0;
 			imu_ready_beeped = 1;
@@ -593,7 +595,8 @@ void Balance_task(void *pvParameters)
 		//If there is no abnormity in the battery voltage, and the enable switch is in the ON position,
 		//and the software failure flag is 0
 		//如果电池电压不存在异常，而且使能开关在ON档位，而且软件失能标志位为0
-		if(Turn_Off(Voltage)==0||(!RouteIO_ControlOwned()&&Allow_Recharge&&EN&&!Flag_Stop))
+		if((Turn_Off(Voltage)==0||(!RouteIO_ControlOwned()&&Allow_Recharge&&EN&&!Flag_Stop)) &&
+           heading.ready && (uint32_t)(xTaskGetTickCount()-heading.tick_ms)<100U)
 		{
 			//Speed closed-loop control to calculate the PWM value of each motor,
 			//PWM represents the actual wheel speed

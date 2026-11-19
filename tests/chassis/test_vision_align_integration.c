@@ -163,7 +163,7 @@ int main(void)
     VisionAlign_GetDiagnostics(&diag);
     REQUIRE(diag.heading_locked && diag.imu_fresh && diag.yaw_target_deg==0);
     REQUIRE(fabsf(diag.yaw_deg-5.729578f)<.001f && fabsf(diag.yaw_error_deg+5.729578f)<.001f);
-    REQUIRE(fabsf(diag.gyro_z_dps-751.0f*500.0f/32768.0f)<.001f);
+    REQUIRE(fabsf(diag.gyro_z_dps-751.0f/65.5f)<.001f);
     REQUIRE(diag.heading_i_radps==HeadingControl_GetIntegralOutput());
     {
         float saved_target=manual_heading_target;

@@ -13,8 +13,8 @@ typedef struct {
 } ChassisOdomFrame;
 
 void ChassisOdom_Reset(uint32_t now_ms);
-/* 每次读取并清零编码器后调用一次，传入本次计数对应的位移，单位 mm。
- * 平移直接累加；只有 IMU 角速度积分使用实际时间，避免采样抖动放大位移。 */
+/* Accumulate each encoder delta once. Yaw is the timestamped IMU task snapshot;
+ * gyro_z remains in the call signature for existing callers. */
 void ChassisOdom_UpdateDelta(float forward_mm, float lateral_mm, short gyro_z,
                             uint32_t now_ms, uint8_t calibrated);
 void ChassisOdom_Read(ChassisOdomFrame *frame);

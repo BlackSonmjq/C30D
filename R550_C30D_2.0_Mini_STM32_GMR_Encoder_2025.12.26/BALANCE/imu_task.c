@@ -1,105 +1,101 @@
 #include "imu_task.h"
+#include "route_io.h"
+#include "nav_config.h"
 
-//imu数据结构体
 IMU_DATA_t imu;
-
-static long gyro_sum_x;
-static long gyro_sum_y;
-static long gyro_sum_z;
-static long accel_sum_x;
-static long accel_sum_y;
-static long accel_sum_z;
-static u16 imu_calibration_samples;
-
-/* Average all stationary startup samples instead of using one noisy sample. */
-static void ImuStartupCalibration_Update(void)
+static IMU_HeadingFrame heading;
+static void publish_heading(float yaw, float rate, int ready)
 {
-    gyro_sum_x += imu.gyro.x;
-    gyro_sum_y += imu.gyro.y;
-    gyro_sum_z += imu.gyro.z;
-    accel_sum_x += imu.accel.x;
-    accel_sum_y += imu.accel.y;
-    accel_sum_z += imu.accel.z;
-    imu_calibration_samples++;
-
-    imu.Deviation_gyro.x = (short)(gyro_sum_x / imu_calibration_samples);
-    imu.Deviation_gyro.y = (short)(gyro_sum_y / imu_calibration_samples);
-    imu.Deviation_gyro.z = (short)(gyro_sum_z / imu_calibration_samples);
-    imu.Deviation_accel.x = (short)(accel_sum_x / imu_calibration_samples);
-    imu.Deviation_accel.y = (short)(accel_sum_y / imu_calibration_samples);
-    imu.Deviation_accel.z = (short)(accel_sum_z / imu_calibration_samples);
+    taskENTER_CRITICAL();
+    heading.yaw_rad=yaw; heading.rate_rad_s=rate;
+    heading.tick_ms=RouteIO_Millis(); heading.ready=(uint8_t)(ready!=0);
+    taskEXIT_CRITICAL();
 }
-
-void MPU6050_task(void *pvParameters)
+void Imu_ReadHeading(IMU_HeadingFrame *out)
 {
-    u32 lastWakeTime = getSysTickCnt();
-    while(1)
-    {
-        //This task runs at 100Hz
-        //此任务以100Hz的频率运行
-        vTaskDelayUntil(&lastWakeTime, F2T(IMU_TASK_RATE));
-        //Get acceleration sensor data
-        MPU6050_Get_Accelscope();
-
-        //Get gyroscope data
-        MPU6050_Get_Gyroscope(); //得到陀螺仪数据
-
-        //Average the stationary IMU samples collected during startup.
-        //开机静止期间，对IMU零偏进行多次平均
-        if(SysVal.Time_count<CONTROL_DELAY)
-            ImuStartupCalibration_Update();
-
-    }
+    taskENTER_CRITICAL();
+    *out=heading;
+    taskEXIT_CRITICAL();
 }
-
-
-void ICM20948_task(void *pvParameters)
+static int16_t read16(uint8_t address,uint8_t high,uint8_t low)
 {
-    u32 lastWakeTime = getSysTickCnt();
-    while(1)
-    {
-        //This task runs at 100Hz
-        //此任务以100Hz的频率运行
-        vTaskDelayUntil(&lastWakeTime, F2T(IMU_TASK_RATE));
-
-        //Get acceleration sensor data
-        ICM20948_Get_Accel(); //得到加速度传感器数据
-
-        //Get gyroscope data
-        ICM20948_Get_Gyroscope(); //得到陀螺仪数据
-
-        //Average the stationary IMU samples collected during startup.
-        //开机静止期间，对IMU零偏进行多次平均
-        if(SysVal.Time_count<CONTROL_DELAY)
-            ImuStartupCalibration_Update();
-
-#if 0 // 未使用磁力计数据,不开启采集
-        static u8 mag_count=0;
-        //Get magnetometer data
-        mag_count++;
-        if(mag_count>=13)	 //磁力计最大采样速率为8hz，因此每进入这个函数13次才采样一次磁力计信息
-        {
-            invMSMagRead(&magnet[0], &magnet[1], &magnet[2]); //得到磁力计数据
-            mag_count=0;
+    return (int16_t)(((uint16_t)I2C_ReadOneByte(address,high)<<8)|I2C_ReadOneByte(address,low));
+}
+static float wheel_max(void)
+{
+    float m=float_abs(MOTOR_A.Encoder);
+    if(float_abs(MOTOR_B.Encoder)>m) m=float_abs(MOTOR_B.Encoder);
+    if(float_abs(MOTOR_C.Encoder)>m) m=float_abs(MOTOR_C.Encoder);
+    if(float_abs(MOTOR_D.Encoder)>m) m=float_abs(MOTOR_D.Encoder);
+    return m;
+}
+static void sample_task(int icm)
+{
+    u32 wake=getSysTickCnt(),last=RouteIO_Millis(),now;
+    int32_t sums[3]={0,0,0};
+    unsigned count=0;
+    uint8_t calibrated=0, startup_released=0;
+    float bias[3]={0,0,0},yaw=0,dt,rate;
+    Flag_Stop=1;
+    while(1) {
+        int valid,ready;
+        int16_t gx,gy,gz;
+        vTaskDelayUntil(&wake,F2T(IMU_TASK_RATE));
+        now=RouteIO_Millis(); dt=(float)(uint32_t)(now-last)*0.001f; last=now;
+        valid=icm?(ICM20948_getDeviceID()==REG_VAL_WIA):
+                  (MPU6050_getDeviceID()==MPU6050_DEFAULT_ADDRESS);
+        if(!valid) {
+            if(!calibrated) { count=0; memset(sums,0,sizeof(sums)); }
+            publish_heading(yaw,0.0f,0); continue;
         }
-#endif
-
-
+        if(icm) {
+            gx=read16(I2C_ADD_ICM20948,REG_ADD_GYRO_XOUT_H,REG_ADD_GYRO_XOUT_L);
+            gy=read16(I2C_ADD_ICM20948,REG_ADD_GYRO_YOUT_H,REG_ADD_GYRO_YOUT_L);
+            gz=read16(I2C_ADD_ICM20948,REG_ADD_GYRO_ZOUT_H,REG_ADD_GYRO_ZOUT_L);
+            imu.accel.x=read16(I2C_ADD_ICM20948,REG_ADD_ACCEL_XOUT_H,REG_ADD_ACCEL_XOUT_L);
+            imu.accel.y=read16(I2C_ADD_ICM20948,REG_ADD_ACCEL_YOUT_H,REG_ADD_ACCEL_YOUT_L);
+            imu.accel.z=read16(I2C_ADD_ICM20948,REG_ADD_ACCEL_ZOUT_H,REG_ADD_ACCEL_ZOUT_L);
+        } else {
+            gx=read16(devAddr,MPU6050_RA_GYRO_XOUT_H,MPU6050_RA_GYRO_XOUT_L);
+            gy=read16(devAddr,MPU6050_RA_GYRO_YOUT_H,MPU6050_RA_GYRO_YOUT_L);
+            gz=read16(devAddr,MPU6050_RA_GYRO_ZOUT_H,MPU6050_RA_GYRO_ZOUT_L);
+            imu.accel.x=read16(devAddr,MPU6050_RA_ACCEL_XOUT_H,MPU6050_RA_ACCEL_XOUT_L);
+            imu.accel.y=read16(devAddr,MPU6050_RA_ACCEL_YOUT_H,MPU6050_RA_ACCEL_YOUT_L);
+            imu.accel.z=read16(devAddr,MPU6050_RA_ACCEL_ZOUT_H,MPU6050_RA_ACCEL_ZOUT_L);
+        }
+        imu.Original_gyro.x=gx; imu.Original_gyro.y=gy; imu.Original_gyro.z=gz;
+        if(!calibrated) {
+            /* Only a stationary startup average; never recalibrate at a waypoint. */
+            if(wheel_max()>NAV_STOP_WHEEL_MPS || abs(gx)>1000 || abs(gy)>1000 || abs(gz)>1000 ||
+               abs(imu.accel.z)<12000 || abs(imu.accel.z)>20000) {
+                count=0; memset(sums,0,sizeof(sums));
+            } else {
+                sums[0]+=gx; sums[1]+=gy; sums[2]+=gz;
+                if(++count>=NAV_IMU_CAL_SAMPLES) {
+                    unsigned i;
+                    for(i=0;i<3;i++) bias[i]=(float)sums[i]/(float)count;
+                    imu.Deviation_gyro.x=(short)bias[0]; imu.Deviation_gyro.y=(short)bias[1];
+                    imu.Deviation_gyro.z=(short)bias[2]; calibrated=1; yaw=0;
+                }
+            }
+        }
+        imu.gyro.x=(short)((float)gx-bias[0]); imu.gyro.y=(short)((float)gy-bias[1]);
+        imu.gyro.z=(short)((float)gz-bias[2]);
+        ready=calibrated && dt>0.0f && dt<0.1f;
+        rate=0.0f;
+        if(ready) {
+            rate=NAV_GYRO_SIGN*((float)gz-bias[2])/NAV_GYRO_LSB_PER_DPS*0.0174532925f;
+            yaw+=rate*dt;
+            if(yaw>3.14159265f) yaw-=6.28318531f;
+            if(yaw< -3.14159265f) yaw+=6.28318531f;
+        }
+        if (ready && SysVal.Time_count>=CONTROL_DELAY && !startup_released) {
+            Flag_Stop=0; startup_released=1;
+        }
+        Led_Count=calibrated?300:1;
+        publish_heading(yaw,rate,ready);
     }
 }
-
-
-/**************************************************************************
-函数功能：复制imu的数值
-入口参数：需要赋值的结构体变量，被复制的结构体变量
-返回  值：无
-作    者：WHEELTEC
-**************************************************************************/
-void ImuData_copy(IMU_BASE_t* req_val,const IMU_BASE_t* copied_val)
-{
-	req_val->x = copied_val -> x;
-	req_val->y = copied_val -> y;
-	req_val->z = copied_val -> z;
-}
-
-
+void MPU6050_task(void *p) { (void)p; sample_task(0); }
+void ICM20948_task(void *p) { (void)p; sample_task(1); }
+void ImuData_copy(IMU_BASE_t *out,const IMU_BASE_t *in) { *out=*in; }

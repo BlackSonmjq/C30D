@@ -24,6 +24,12 @@ typedef struct{
 }IMU_DATA_t;
 
 extern IMU_DATA_t imu;
+typedef struct {
+    float yaw_rad, rate_rad_s;
+    uint32_t tick_ms;
+    uint8_t ready;
+} IMU_HeadingFrame;
+void Imu_ReadHeading(IMU_HeadingFrame *out);
 
 //对外接口
 void MPU6050_task(void *pvParameters);
