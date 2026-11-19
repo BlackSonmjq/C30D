@@ -1792,12 +1792,17 @@ void Smooth_control(float vx,float vy,float vz)
 		step=0.01;
 	}
 
-	if	   (vx>0) 	smooth_control.VX+=step;
-	else if(vx<0)		smooth_control.VX-=step;
+    float translation_step = step;
+    /* Establish route wheel speed promptly; visual motion keeps its current ramp. */
+    if (RouteIO_ControlOwned() && !VisionAlign_ControlOwned() && translation_step < 0.03f)
+        translation_step = 0.03f;
+
+	if	   (vx>0) 	smooth_control.VX+=translation_step;
+	else if(vx<0)		smooth_control.VX-=translation_step;
 	else if(vx==0)	smooth_control.VX=smooth_control.VX*0.9f;
 
-	if	   (vy>0)   smooth_control.VY+=step;
-	else if(vy<0)		smooth_control.VY-=step;
+	if	   (vy>0)   smooth_control.VY+=translation_step;
+	else if(vy<0)		smooth_control.VY-=translation_step;
 	else if(vy==0)	smooth_control.VY=smooth_control.VY*0.9f;
 
     /* 航向减速、停车和反向制动立即跟随指令；仅同向加速保留平滑，避免旧方向延迟。 */

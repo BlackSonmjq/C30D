@@ -22,7 +22,9 @@ test = r'''
 #include <stdio.h>
 #include "heading_control.c"
 static struct { float VX,VY,VZ; } smooth_control;
-static int PS2_ON_Flag;
+static int PS2_ON_Flag,route_owned,vision_owned;
+static unsigned char RouteIO_ControlOwned(void){return route_owned;}
+static unsigned char VisionAlign_ControlOwned(void){return vision_owned;}
 static float float_abs(float v){return fabsf(v);}
 static float target_limit_float(float v,float lo,float hi){return v<lo?lo:v>hi?hi:v;}
 '''+smooth+r'''
@@ -116,6 +118,26 @@ int main(void) {
         smooth_control.VZ=-.3f;
         Smooth_control(0,0,.05f);assert(fabsf(smooth_control.VZ-.05f)<1e-6f);
         Smooth_control(0,0,.02f);assert(fabsf(smooth_control.VZ-.02f)<1e-6f);
+    }
+    /* Route startup reaches its existing limits promptly, with no overshoot. */
+    PS2_ON_Flag=0;route_owned=1;vision_owned=0;
+    smooth_control.VX=smooth_control.VY=smooth_control.VZ=0;
+    for(int n=0;n<10;n++) Smooth_control(.28f,-.48f,.2f);
+    assert(fabsf(smooth_control.VX-.28f)<1e-6f);
+    assert(smooth_control.VY<-.299f && smooth_control.VY>-.301f);
+    assert(smooth_control.VZ>.099f && smooth_control.VZ<.101f);
+    for(int n=0;n<6;n++) Smooth_control(.28f,-.48f,.2f);
+    assert(fabsf(smooth_control.VY+.48f)<1e-6f);
+    Smooth_control(.12f,-.18f,0);
+    assert(fabsf(smooth_control.VX-.12f)<1e-6f && fabsf(smooth_control.VY+.18f)<1e-6f);
+    Smooth_control(0,0,0);
+    assert(smooth_control.VX==0 && smooth_control.VY==0);
+    for(int mode=0;mode<3;mode++) {
+        route_owned=mode!=0;vision_owned=mode==1;PS2_ON_Flag=mode==2;
+        smooth_control.VX=smooth_control.VY=smooth_control.VZ=0;
+        Smooth_control(.48f,.48f,.2f);
+        float expected=mode==2?.05f:.01f;
+        assert(fabsf(smooth_control.VX-expected)<1e-6f && fabsf(smooth_control.VY-expected)<1e-6f);
     }
     /* Integrated gyro path retains startup lock and produces damping. */
     HeadingControl_Reset();assert(HeadingControl_Update(0)==0);
