@@ -33,8 +33,10 @@
 #define NAV_SIDE_FIELD_BAND_MM     80.0f
 #define NAV_ENTRY_CAPTURE_MM       80.0f
 #define NAV_HEADING_KP             1.8f
+#define NAV_HEADING_KD             0.75f
 #define NAV_HEADING_MAX_RAD_S      0.25f
 #define NAV_HEADING_TOL_RAD        0.035f
+#define NAV_HEADING_RATE_TOL_RAD_S 0.03f
 #define NAV_STOP_WHEEL_MPS         0.02f
 #define NAV_CROSS_STALL_MS         300U
 #define NAV_CROSS_STALL_PWM_RATIO  0.95f
@@ -45,6 +47,14 @@
 #define NAV_PWM_LIMIT              16700.0f
 #define NAV_WHEEL_KP               300.0f
 #define NAV_WHEEL_KI               300.0f
+/* 起步补偿按 A/B/C/D 轮分别标定。Kv 单位为 PWM/(m/s)。 */
+#define NAV_WHEEL_START_PWM_A      2000.0f
+#define NAV_WHEEL_START_PWM_B      2000.0f
+#define NAV_WHEEL_START_PWM_C      2000.0f
+#define NAV_WHEEL_START_PWM_D      2000.0f
+#define NAV_WHEEL_KS_PWM           500.0f
+#define NAV_WHEEL_KV_PWM           2000.0f
+#define NAV_WHEEL_LOAD_PWM         500.0f
 #define NAV_KEY_DEBOUNCE_MS        30U
 #define NAV_IMU_CAL_SAMPLES        200U /* 100 Hz 静止采样，约 2 秒 */
 #define NAV_IMU_TTL_MS             100U

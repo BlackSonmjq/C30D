@@ -9,7 +9,7 @@ typedef enum { NAV_OK, NAV_NEED_CALIBRATION, NAV_NEED_IMU, NAV_NEED_LIDAR,
                NAV_DISABLED, NAV_USER_STOP, NAV_WORK_PAUSE } NavReason;
 typedef struct {
     uint32_t now_ms;
-    float yaw_rad, wheel_max_mps, forward_step_mm;
+    float yaw_rad, yaw_rate_rad_s, wheel_max_mps, forward_step_mm;
     uint8_t imu_ready, enabled, start, stop, pause, resume;
     int8_t loaded_lateral; /* 接近满 PWM 的横移方向：左 +1、右 -1 */
 } NavInput;
@@ -44,6 +44,8 @@ typedef struct {
     uint8_t reference_mask;
 } NavCore;
 void Nav_Init(NavCore *n, const NavCalibration *cal, int calibrated);
+float Nav_HeadingError(float reference_rad,float yaw_rad);
+float Nav_HeadingCorrection(float error_rad,float yaw_rate_rad_s);
 void Nav_Tick(NavCore *n, const NavInput *in, const NavLidar *lidar);
 int Nav_IsActive(const NavCore *n);
 const char *Nav_StateName(NavState state);

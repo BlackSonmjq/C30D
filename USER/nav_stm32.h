@@ -16,7 +16,7 @@ void NavBoard_Init(void);
 void NavBoard_Tick1ms(void); /* SysTick: 不调用 FreeRTOS API */
 uint32_t NavBoard_Millis(void);
 void NavBoard_CanRx(uint32_t id,uint8_t ide,uint8_t rtr,uint8_t dlc,const uint8_t *data);
-void NavBoard_PublishImu(float yaw_rad,int ready);
+void NavBoard_PublishImu(float yaw_rad,float yaw_rate_rad_s,int ready);
 /* 每个有效报告发布一次。分别传入模式键（START/Menu）和导航启动键（△/Y）的按下状态。 */
 void RemoteBoard_Publish(uint8_t ly,uint8_t rx,int mode_pressed,int nav_start_pressed);
 void RemoteBoard_Disconnect(void);

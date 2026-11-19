@@ -3,11 +3,14 @@
 #include "nav_config.h"
 #include "wheel_control.h"
 
-static WheelPI rebuild_pi[4];
+static WheelDrive rebuild_wheels[4];
+static const float wheel_start_pwm[4]={
+    NAV_WHEEL_START_PWM_A, NAV_WHEEL_START_PWM_B, NAV_WHEEL_START_PWM_C, NAV_WHEEL_START_PWM_D
+};
 void Balance_ResetControl(void)
 {
     unsigned i;
-    for(i=0;i<4;i++) WheelPI_Reset(&rebuild_pi[i]);
+    for(i=0;i<4;i++) WheelDrive_Reset(&rebuild_wheels[i]);
     memset(&smooth_control,0,sizeof(smooth_control));
     MOTOR_A.Target=MOTOR_B.Target=MOTOR_C.Target=MOTOR_D.Target=0;
     MOTOR_A.Motor_Pwm=MOTOR_B.Motor_Pwm=MOTOR_C.Motor_Pwm=MOTOR_D.Motor_Pwm=0;
@@ -420,21 +423,28 @@ pwm代表增量输出
 在我们的速度控制闭环系统里面，只使用PI控制
 pwm+=Kp[e（k）-e(k-1)]+Ki*e(k)
 **************************************************************************/
+static int wheel_pwm(unsigned index,float encoder,float target)
+{
+    int translating=smooth_control.VX!=0.0f || smooth_control.VY!=0.0f;
+    return (int)WheelDrive_Update(&rebuild_wheels[index],encoder,target,Velocity_KP,Velocity_KI,
+                                  wheel_start_pwm[index],translating);
+}
+
 int Incremental_PI_A(float Encoder,float Target)
 {
-    return (int)WheelPI_Update(&rebuild_pi[0],Encoder,Target,Velocity_KP,Velocity_KI,NAV_PWM_LIMIT);
+    return wheel_pwm(0,Encoder,Target);
 }
 int Incremental_PI_B(float Encoder,float Target)
 {
-    return (int)WheelPI_Update(&rebuild_pi[1],Encoder,Target,Velocity_KP,Velocity_KI,NAV_PWM_LIMIT);
+    return wheel_pwm(1,Encoder,Target);
 }
 int Incremental_PI_C(float Encoder,float Target)
 {
-    return (int)WheelPI_Update(&rebuild_pi[2],Encoder,Target,Velocity_KP,Velocity_KI,NAV_PWM_LIMIT);
+    return wheel_pwm(2,Encoder,Target);
 }
 int Incremental_PI_D(float Encoder,float Target)
 {
-    return (int)WheelPI_Update(&rebuild_pi[3],Encoder,Target,Velocity_KP,Velocity_KI,NAV_PWM_LIMIT);
+    return wheel_pwm(3,Encoder,Target);
 }
 /**************************************************************************
 Function: Processes the command sent by APP through usart 2

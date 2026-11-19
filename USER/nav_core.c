@@ -11,10 +11,20 @@ typedef struct {
 } Observation;
 static float absolute(float x) { return x<0?-x:x; }
 static float limit(float x,float m) { return x>m?m:(x< -m?-m:x); }
-static float wrap(float x) {
-    while(x>3.14159265f) x-=6.28318531f;
-    while(x< -3.14159265f) x+=6.28318531f;
-    return x;
+float Nav_HeadingError(float reference_rad,float yaw_rad)
+{
+    float error=reference_rad-yaw_rad;
+    while(error>3.14159265f) error-=6.28318531f;
+    while(error< -3.14159265f) error+=6.28318531f;
+    return error;
+}
+float Nav_HeadingCorrection(float error_rad,float yaw_rate_rad_s)
+{
+    if(absolute(error_rad)<=NAV_HEADING_TOL_RAD) {
+        if(absolute(yaw_rate_rad_s)<=NAV_HEADING_RATE_TOL_RAD_S) return 0.0f;
+        error_rad=0.0f;
+    }
+    return limit(NAV_HEADING_KP*error_rad-NAV_HEADING_KD*yaw_rate_rad_s,NAV_HEADING_MAX_RAD_S);
 }
 static int raw_valid(uint16_t x) { return x>=NAV_LIDAR_MIN_MM && x<=NAV_LIDAR_MAX_MM; }
 static void clear_filters(NavCore *n) { memset(n->filter,0,sizeof(n->filter)); }
@@ -323,7 +333,7 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
         } else return;
     }
     n->output.drive_enabled=1;
-    n->heading_error_rad=wrap(n->heading_origin_rad-in->yaw_rad);
+    n->heading_error_rad=Nav_HeadingError(n->heading_origin_rad,in->yaw_rad);
     if(in->pause && !n->pause_latched) { n->pause_latched=1; n->state=NAV_PAUSING; n->arrival_count=0; }
     if(n->pause_latched) {
         n->output.quick_stop=1; n->reason=NAV_WORK_PAUSE;
@@ -382,8 +392,7 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
         n->output.vx=speed(o.ey,cap,NAV_POINT_TOL_MM);
         n->output.vy=-correction(o.ex);
     }
-    n->output.wz=limit(NAV_HEADING_KP*n->heading_error_rad,NAV_HEADING_MAX_RAD_S);
-    if(absolute(n->heading_error_rad)<=NAV_HEADING_TOL_RAD) n->output.wz=0;
+    n->output.wz=Nav_HeadingCorrection(n->heading_error_rad,in->yaw_rate_rad_s);
     if(blocked(n,&o)) { memset(&n->output,0,sizeof(n->output)); n->output.drive_enabled=1;
         wait_lidar(n,NAV_TOO_CLOSE,in->wheel_max_mps); return; }
     n->state=approaching?NAV_ALIGN:NAV_RUN;
@@ -391,9 +400,9 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
     if(p->motion==NAV_MOVE_CROSS && try_cross_nudge(n,in)) return;
     if(o.y_required && absolute(o.ex)<=NAV_POINT_TOL_MM && absolute(o.ey)<=NAV_POINT_TOL_MM &&
        absolute(n->heading_error_rad)<=NAV_HEADING_TOL_RAD) {
-        n->output.vx=0; n->output.vy=0; n->output.wz=0;
-        if(new_frame && o.full && in->wheel_max_mps<=NAV_STOP_WHEEL_MPS) n->arrival_count++;
-        else if(in->wheel_max_mps>NAV_STOP_WHEEL_MPS) n->arrival_count=0;
+        n->output.vx=0; n->output.vy=0;
+        if(n->output.wz!=0.0f || in->wheel_max_mps>NAV_STOP_WHEEL_MPS) n->arrival_count=0;
+        else if(new_frame && o.full) n->arrival_count++;
         if(n->arrival_count>=NAV_FILTER_FRAMES) {
             n->confirmed=n->target; n->estimated_point=n->target; n->arrival_count=0;
             n->output.reset_pi=1;

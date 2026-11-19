@@ -23,7 +23,7 @@ static void sample_task(int icm)
     uint8_t calibrated=0;
     float bias[3]={0,0,0},yaw=0,dt,rate;
     while(1) {
-        int valid;
+        int valid,ready;
         int16_t gx,gy,gz;
         vTaskDelayUntil(&wake,F2T(IMU_TASK_RATE));
         now=NavBoard_Millis(); dt=(float)(uint32_t)(now-last)*0.001f; last=now;
@@ -31,7 +31,7 @@ static void sample_task(int icm)
                   (MPU6050_getDeviceID()==MPU6050_DEFAULT_ADDRESS);
         if(!valid) {
             if(!calibrated) { count=0; memset(sums,0,sizeof(sums)); }
-            NavBoard_PublishImu(yaw,0); continue;
+            NavBoard_PublishImu(yaw,0.0f,0); continue;
         }
         if(icm) {
             gx=read16(I2C_ADD_ICM20948,REG_ADD_GYRO_XOUT_H,REG_ADD_GYRO_XOUT_L);
@@ -66,14 +66,16 @@ static void sample_task(int icm)
         }
         imu.gyro.x=(short)((float)gx-bias[0]); imu.gyro.y=(short)((float)gy-bias[1]);
         imu.gyro.z=(short)((float)gz-bias[2]);
-        if(calibrated && dt>0 && dt<0.1f) {
+        ready=calibrated && dt>0.0f && dt<0.1f;
+        rate=0.0f;
+        if(ready) {
             rate=NAV_GYRO_SIGN*((float)gz-bias[2])/NAV_GYRO_LSB_PER_DPS*0.0174532925f;
             yaw+=rate*dt;
             if(yaw>3.14159265f) yaw-=6.28318531f;
             if(yaw< -3.14159265f) yaw+=6.28318531f;
         }
         Led_Count=calibrated?300:1;
-        NavBoard_PublishImu(yaw,calibrated && dt>0 && dt<0.1f);
+        NavBoard_PublishImu(yaw,rate,ready);
     }
 }
 void MPU6050_task(void *p) { (void)p; sample_task(0); }

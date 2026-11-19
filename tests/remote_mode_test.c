@@ -12,6 +12,8 @@ int Allow_Recharge, Check, KEY=1, EN=1, Flag_Stop;
 static NavOutput command;
 static NavStatus status;
 static uint16_t front;
+static float imu_yaw, imu_rate;
+static int imu_publishing=1;
 static int tx_enabled;
 static unsigned sent_bytes, sent_frames;
 static uint8_t packet[NAV_VOFA_FRAME_BYTES];
@@ -60,7 +62,7 @@ static void advance(unsigned elapsed)
     for (unsigned time=0; time<elapsed; time+=10) {
         for (unsigned ms=0; ms<10; ms++) NavBoard_Tick1ms();
         if (NavBoard_Millis() % 50 == 10) publish_lidar();
-        NavBoard_PublishImu(0, 1);
+        if(imu_publishing) NavBoard_PublishImu(imu_yaw, imu_rate, 1);
         NavBoard_ControlStep(&command);
         Move_X=command.vx; Move_Y=command.vy; Move_Z=command.wz;
         NavBoard_PublishDrive(command.drive_enabled);
@@ -253,6 +255,31 @@ int main(void)
     advance(10);
     assert(!command.drive_enabled);
 
+    RemoteBoard_Publish(127, 127, 0, 0);
+    advance(10);
+    imu_yaw=0.20f;
+    RemoteBoard_Publish(127, 0, 0, 0);
+    advance(10);
+    assert(command.drive_enabled && command.vy>0 && command.wz==0);
+    imu_yaw=0.30f;
+    advance(10);
+    assert(command.wz<0 && status.heading_error_rad<0);
+    float correction=command.wz;
+    imu_rate=0.05f;
+    advance(10);
+    assert(command.wz<correction);
+    imu_publishing=0;
+    advance(NAV_IMU_TTL_MS);
+    assert(!status.imu_ready && command.drive_enabled && command.wz==0);
+    imu_rate=0;
+    imu_publishing=1;
+    advance(10);
+    assert(status.imu_ready && command.drive_enabled && command.wz==0);
+    RemoteBoard_Publish(127, 127, 0, 0);
+    advance(10);
+    assert(!command.drive_enabled && command.wz==0);
+    imu_yaw=0;
+
     KEY=0;
     RemoteBoard_Publish(127, 127, 1, 1);
     advance(50);
@@ -265,6 +292,6 @@ int main(void)
     assert(!command.drive_enabled);
     click_navigation();
     assert(command.drive_enabled && status.target == 1);
-    puts("PASS remote start and mode: input gating, reconnection, exclusive drive, CAN and VOFA continuity");
+    puts("PASS remote start and mode: input gating, reconnection, IMU heading hold and expiry, CAN and VOFA continuity");
     return 0;
 }

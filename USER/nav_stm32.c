@@ -12,12 +12,14 @@
 
 static volatile uint32_t clock_ms;
 static volatile NavLidar can_mailbox;
-static volatile struct { float yaw; uint32_t stamp; uint8_t ready; } imu_mailbox;
+static volatile struct { float yaw, yaw_rate; uint32_t stamp; uint8_t ready; } imu_mailbox;
 static volatile uint8_t work_requests;
 static volatile RemoteSample remote_mailbox;
 static NavCore navigation;
 static NavButton button;
 static RemoteControl remote;
+static float manual_heading_origin;
+static uint8_t manual_heading_locked;
 static NavStatus status;
 
 static uint32_t lock_irq(void) { uint32_t p=__get_PRIMASK(); __disable_irq(); return p; }
@@ -32,10 +34,11 @@ void NavBoard_CanRx(uint32_t id,uint8_t ide,uint8_t rtr,uint8_t dlc,const uint8_
     if(!next.sequence) next.sequence=1;
     can_mailbox=next; /* 仅 CAN ISR 写；任务以 PRIMASK 保护完整拷贝。 */
 }
-void NavBoard_PublishImu(float yaw,int ready)
+void NavBoard_PublishImu(float yaw,float yaw_rate,int ready)
 {
     uint32_t p=lock_irq();
-    imu_mailbox.yaw=yaw; imu_mailbox.stamp=clock_ms; imu_mailbox.ready=(uint8_t)(ready!=0);
+    imu_mailbox.yaw=yaw; imu_mailbox.yaw_rate=yaw_rate;
+    imu_mailbox.stamp=clock_ms; imu_mailbox.ready=(uint8_t)(ready!=0);
     unlock_irq(p);
 }
 void RemoteBoard_Publish(uint8_t ly,uint8_t rx,int mode_pressed,int nav_start_pressed)
@@ -65,6 +68,7 @@ void NavBoard_Init(void)
     Nav_Init(&navigation,&nav_calibration,NAV_CALIBRATED);
     NavButton_Init(&button);
     RemoteControl_Init(&remote);
+    manual_heading_locked=0;
     Velocity_KP=NAV_WHEEL_KP; Velocity_KI=NAV_WHEEL_KI; LineDiffParam=50;
     Allow_Recharge=0; Check=0;
     memset(&status,0,sizeof(status));
@@ -96,6 +100,7 @@ void NavBoard_ControlStep(NavOutput *out)
     NavLidar frame;
     RemoteSample remote_frame;
     NavOutput manual_output;
+    float manual_heading_error=0.0f;
     uint32_t p,stamp;
     uint8_t requests,ready;
     unsigned event,i;
@@ -104,6 +109,7 @@ void NavBoard_ControlStep(NavOutput *out)
     float w[4]={MOTOR_A.Encoder,MOTOR_B.Encoder,MOTOR_C.Encoder,MOTOR_D.Encoder};
     memset(&in,0,sizeof(in));
     p=lock_irq(); frame=can_mailbox; in.yaw_rad=imu_mailbox.yaw;
+    in.yaw_rate_rad_s=imu_mailbox.yaw_rate;
     stamp=imu_mailbox.stamp; ready=imu_mailbox.ready;
     remote_frame=remote_mailbox; remote_mailbox.link_reset=0;
     requests=work_requests; work_requests=0; unlock_irq(p);
@@ -128,6 +134,16 @@ void NavBoard_ControlStep(NavOutput *out)
         in.wheel_max_mps<=NAV_STOP_WHEEL_MPS;
     remote_event=RemoteControl_Step(&remote,&remote_frame,&in,can_switch,can_start && !active,&manual_output);
     if (remote_event==REMOTE_MODE_CHANGED) NavButton_Init(&button);
+    if(remote.manual && manual_output.drive_enabled && in.imu_ready) {
+        if(!manual_heading_locked) {
+            manual_heading_origin=in.yaw_rad;
+            manual_heading_locked=1;
+        }
+        manual_heading_error=Nav_HeadingError(manual_heading_origin,in.yaw_rad);
+        manual_output.wz=Nav_HeadingCorrection(manual_heading_error,in.yaw_rate_rad_s);
+    } else {
+        manual_heading_locked=0;
+    }
     if (remote.manual) {
         /* 继续更新导航观测。切回导航后需要新的启动按键。 */
         in.enabled=0;
@@ -158,7 +174,7 @@ void NavBoard_ControlStep(NavOutput *out)
         status.filtered_mm[i]=navigation.filter[i].count?navigation.filter[i].value:0;
         status.reference_target_mm[i]=(status.reference_mask&(1U<<i))?navigation.reference_target_mm[i]:0;
     }
-    status.heading_error_rad=navigation.heading_error_rad;
+    status.heading_error_rad=remote.manual?manual_heading_error:navigation.heading_error_rad;
     status.start_front_mm=navigation.start_front_mm;
     unlock_irq(p);
 }

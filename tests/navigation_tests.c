@@ -53,6 +53,7 @@ static void step(Simulation *s)
     s->input.now_ms+=10;
     if(!s->drop && (!s->frame.sequence || s->input.now_ms%100==0)) sensors(s);
     s->input.yaw_rad=s->yaw;
+    s->input.yaw_rate_rad_s=s->sw;
     s->input.wheel_max_mps=fabsf(s->sx)+fabsf(s->sy)+0.178f*fabsf(s->sw);
     Nav_Tick(&s->nav,&s->input,&s->frame);
     s->input.start=s->input.stop=s->input.pause=s->input.resume=0;
@@ -221,6 +222,82 @@ static void test_pi_ramp(void)
     puts("PASS PI clamp/reset and symmetric acceleration/deceleration/reversal ramp");
 }
 
+static void test_wheel_drive(void)
+{
+    WheelDrive wheel={0}, other={0};
+    const float start_pwm=2000.0f;
+    float full, fading, moving, tracking, turning, pwm=0;
+    unsigned i;
+
+    pwm=WheelDrive_Update(&wheel,0,0.008f,0,0,start_pwm,1);
+    full=WheelDrive_Update(&wheel,0,0.08f,0,0,start_pwm,1);
+    assert(pwm>0 && pwm<full && full>start_pwm);
+    fading=WheelDrive_Update(&wheel,0.03f,0.08f,0,0,start_pwm,1);
+    moving=WheelDrive_Update(&wheel,0.04f,0.08f,0,0,start_pwm,1);
+    assert(full>fading && fading>moving && moving>0);
+    assert(WheelDrive_Update(&other,0,0.08f,0,0,start_pwm*0.5f,1)==full-start_pwm*0.5f);
+
+    for(i=0;i<19;i++) assert(WheelDrive_Update(&wheel,0.005f,0.08f,0,0,start_pwm,1)==moving);
+    assert(WheelDrive_Update(&wheel,0.006f,0.08f,0,0,start_pwm,1)==moving);
+    for(i=0;i<19;i++) assert(WheelDrive_Update(&wheel,0,0.08f,0,0,start_pwm,1)==moving);
+    assert(WheelDrive_Update(&wheel,0,0.08f,0,0,start_pwm,1)==full);
+
+    WheelDrive_Update(&wheel,0.04f,0.08f,0,0,start_pwm,1);
+    assert(WheelDrive_Update(&wheel,0,-0.08f,0,0,start_pwm,1)==-full);
+    WheelDrive_Update(&wheel,-0.04f,-0.08f,0,0,start_pwm,1);
+    assert(WheelDrive_Update(&wheel,0,0,0,0,start_pwm,1)==0);
+    assert(WheelDrive_Update(&wheel,0,-0.08f,0,0,start_pwm,1)==-full);
+
+    WheelDrive_Reset(&wheel);
+    tracking=WheelDrive_Update(&wheel,0.08f,0.08f,0,0,start_pwm,1);
+    pwm=WheelDrive_Update(&wheel,0.10f,0.08f,0,0,start_pwm,1);
+    assert(tracking>pwm && pwm>0);
+    assert(WheelDrive_Update(&wheel,0.12f,0.08f,0,0,start_pwm,1)==0);
+    assert(WheelDrive_Update(&wheel,0.12f,0.08f,NAV_WHEEL_KP,NAV_WHEEL_KI,start_pwm,1)<0);
+
+    WheelDrive_Reset(&wheel);
+    WheelDrive_Reset(&other);
+    turning=WheelDrive_Update(&wheel,0,0.02f,0,0,start_pwm,0);
+    assert(turning>0 && turning<WheelDrive_Update(&other,0,0.02f,0,0,start_pwm,1));
+    assert(WheelDrive_Update(&wheel,0.02f,0.02f,0,0,start_pwm,0)<turning);
+
+    WheelDrive_Reset(&wheel);
+    for(i=0;i<1000;i++) {
+        pwm=WheelDrive_Update(&wheel,0,0.08f,NAV_WHEEL_KP,NAV_WHEEL_KI,start_pwm,1);
+        assert(pwm<=NAV_PWM_LIMIT);
+    }
+    assert(pwm==NAV_PWM_LIMIT && fabsf(wheel.pi.pwm-(NAV_PWM_LIMIT-full))<0.01f);
+    WheelDrive_Reset(&wheel);
+    assert(WheelDrive_Update(&wheel,0,0,NAV_WHEEL_KP,NAV_WHEEL_KI,start_pwm,1)==0);
+    puts("PASS independent wheel startup, taper, reverse, stall rearm, braking and PI headroom");
+}
+
+static void test_heading_damping(void)
+{
+    Simulation s;
+    unsigned i;
+    assert(fabsf(Nav_HeadingError(3.13f,-3.13f)+0.0231853f)<0.0001f);
+    assert(Nav_HeadingCorrection(0.01f,0.02f)==0);
+    assert(Nav_HeadingCorrection(0.10f,0.50f)<0);
+    assert(Nav_HeadingCorrection(-0.1f,1.0f)==-NAV_HEADING_MAX_RAD_S);
+
+    start_sim(&s); s.nav.target=2; s.nav.confirmed=1; s.x=2700; s.y=0;
+    memset(s.nav.filter,0,sizeof(s.nav.filter));
+    s.input.wheel_max_mps=0;
+    s.input.yaw_rate_rad_s=0.08f;
+    for(i=0;i<NAV_FILTER_FRAMES+1U;i++) {
+        s.input.now_ms+=10; sensors(&s); Nav_Tick(&s.nav,&s.input,&s.frame);
+        assert(s.nav.output.vx==0 && s.nav.output.vy==0 && s.nav.output.wz<0);
+        assert(s.nav.target==2 && s.nav.confirmed==1);
+    }
+    s.input.yaw_rate_rad_s=0;
+    for(i=0;i<NAV_FILTER_FRAMES;i++) {
+        s.input.now_ms+=10; sensors(&s); Nav_Tick(&s.nav,&s.input,&s.frame);
+    }
+    assert(s.nav.target==3 && s.nav.confirmed==2);
+    puts("PASS gyro damping persists at the waypoint until rotation settles");
+}
+
 static void tick_cross_nudge(Simulation *s)
 {
     s->input.now_ms+=10;
@@ -290,7 +367,7 @@ static void test_cross_nudge(void)
 
 int main(void)
 {
-    test_can(); test_freshness(); test_button(); test_pi_ramp();
+    test_can(); test_freshness(); test_button(); test_pi_ramp(); test_wheel_drive(); test_heading_damping();
     test_cross_nudge();
     test_no_repeated_arrival(); test_complete(0); test_complete(1); test_recovery_pause_stop();
     puts("ALL TESTS PASSED (host simulation; not a physical acceptance test)");
