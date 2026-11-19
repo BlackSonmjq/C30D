@@ -10,6 +10,8 @@ void Route_ReadStatus(RouteStatus *status);
 typedef struct {
     uint8_t state, reason, target, confirmed;
     float main_error_mm, cross_error_mm, heading_error_rad, start_front_mm;
+    float command_vx_mps, command_vy_mps;
+    uint8_t reference_mask;
 } RouteNavigationStatus;
 void Route_ReadNavigationStatus(RouteNavigationStatus *status);
 #endif

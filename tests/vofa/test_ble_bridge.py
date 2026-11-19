@@ -15,6 +15,24 @@ import ble_vofa_bridge as bridge_module
 
 
 class BridgeTest(unittest.TestCase):
+    def test_merged_navigation_channels_forward_and_record(self):
+        values = [0.] * 58
+        values[:9] = [1, -2, 1, 2, 100, 2, 1, 45, 120]
+        values[16:19] = [1, 1, 0]
+        values[31:35] = [127, 127, 89, 480]
+        values[38:43] = [0, 2, 1, 2, 12]
+        values[43:] = [100, 2700, 20, 2, 0, 5, 4, -50, 12, .125, -.25, 15, 0, 12000, 15]
+        packet = struct.pack('<58f', *values) + TAIL
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+            receiver.bind(('127.0.0.1', 0)); receiver.settimeout(.2)
+            records = []; forwarder = Forwarder(sender, receiver.getsockname(), records.append)
+            stream = packet + packet
+            for offset in range(0, len(stream), 20):
+                forwarder.receive(None, stream[offset:offset+20])
+            self.assertEqual(receiver.recv(1024), packet)
+            self.assertEqual(receiver.recv(1024), packet)
+            self.assertEqual(records, [tuple(values)] * 2)
+
     def test_busy_port_exits_cleanly_without_empty_log(self):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as owner, tempfile.TemporaryDirectory() as folder:
             owner.bind(('127.0.0.1', 0))

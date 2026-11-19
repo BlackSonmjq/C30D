@@ -1,6 +1,7 @@
 #include "route_debug.h"
 #include "route_config.h"
 #include "vision_align.h"
+#include "my_chassis_task.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <string.h>
@@ -72,15 +73,22 @@ uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
 {
     Camera_Data camera;
     RouteLidarFrame lidar;
+    NavLidar received;
+    RouteNavigationStatus navigation;
     VisionAlign_Diagnostics align;
     float channels[ROUTE_VOFA_CHANNEL_COUNT];
     uint32_t bits;
+    uint32_t now_ms;
+    uint8_t valid_mask = 0U;
     uint16_t channel;
     if (bytes == 0 || capacity < ROUTE_VOFA_FRAME_BYTES) return 0U;
     /* Visual telemetry remains live before route start and after a route fault. */
     Camera_GetData(&camera);
     VisionAlign_GetDiagnostics(&align);
     RouteIO_ReadLidar(&lidar);
+    RouteIO_ReadNavigationLidar(&received);
+    Route_ReadNavigationStatus(&navigation);
+    now_ms = RouteIO_Millis();
     channels[0] = (float)camera.pole;
     channels[1] = (float)camera.offset;
     channels[2] = (float)camera.green;
@@ -121,6 +129,24 @@ uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
     channels[40] = (float)align.hit_count;
     channels[41] = (float)align.locked_region;
     channels[42] = (float)align.lock_count;
+
+    channels[43] = (float)lidar.mm[ROUTE_LIDAR_LEFT];
+    channels[44] = (float)lidar.mm[ROUTE_LIDAR_RIGHT];
+    channels[45] = received.sequence ? (float)(uint32_t)(now_ms - received.received_ms) : -1.0f;
+    channels[46] = (float)navigation.state;
+    channels[47] = (float)navigation.reason;
+    channels[48] = (float)navigation.target;
+    channels[49] = (float)navigation.confirmed;
+    channels[50] = navigation.main_error_mm;
+    channels[51] = navigation.cross_error_mm;
+    channels[52] = navigation.command_vx_mps;
+    channels[53] = navigation.command_vy_mps;
+    channels[54] = (float)navigation.reference_mask;
+    channels[55] = (float)VisionAlign_ControlOwned();
+    channels[56] = (float)now_ms;
+    for (channel = 0U; channel < ROUTE_LIDAR_COUNT; ++channel)
+        if (lidar.fresh && lidar.mm[channel]) valid_mask |= (uint8_t)(1U << channel);
+    channels[57] = (float)valid_mask;
 
     /* Emit little-endian float32 without depending on structure padding. */
     for (channel = 0U; channel < ROUTE_VOFA_CHANNEL_COUNT; ++channel) {

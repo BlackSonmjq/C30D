@@ -15,8 +15,8 @@ typedef struct {
     uint8_t can_fresh, frozen;
 } RouteDebugFrame;
 
-/* Compact vision, alignment, rear range and completion telemetry. */
-#define ROUTE_VOFA_CHANNEL_COUNT 43U
+/* Keep vision/wheel channels 0..42; append merged navigation diagnostics. */
+#define ROUTE_VOFA_CHANNEL_COUNT 58U
 #define ROUTE_VOFA_FRAME_BYTES (ROUTE_VOFA_CHANNEL_COUNT * 4U + 4U)
 #define ROUTE_VOFA_TASK_PRIO TASK_PRIORITY_VISION
 #define ROUTE_VOFA_TASK_STACK 256U

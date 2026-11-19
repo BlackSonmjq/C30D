@@ -53,6 +53,9 @@ static void publish_status(void)
     snapshot.cross_error_mm = navigator.cross_error_mm;
     snapshot.heading_error_rad = navigator.heading_error_rad;
     snapshot.start_front_mm = navigator.start_front_mm;
+    snapshot.command_vx_mps = navigator.output.vx;
+    snapshot.command_vy_mps = navigator.output.vy;
+    snapshot.reference_mask = navigator.reference_mask;
     taskENTER_CRITICAL();
     published_status = legacy;
     navigation_status = snapshot;

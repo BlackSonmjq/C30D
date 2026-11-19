@@ -59,7 +59,7 @@
  * 由独立 20 Hz 视觉任务检查，实际间隔以其 50 ms 周期为粒度；建议不小于 50 ms。
  * 串口忙时跳过该次输出，不等待串口、不阻塞导航；视觉数据不随路线故障冻结。
  */
-#define ROUTE_VOFA_PERIOD_MS           271U
+#define ROUTE_VOFA_PERIOD_MS           400U
 /* UART side of the original Bluetooth module; independent of PC BLE connection. */
 #define ROUTE_VOFA_BAUD                9600U
 

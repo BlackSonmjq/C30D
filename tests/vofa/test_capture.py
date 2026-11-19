@@ -19,6 +19,8 @@ spec.loader.exec_module(capture)
 
 
 def packet(count):
+    if count == 58:
+        return packet(43) + [100, 2700, 20, 6, 10, 5, 4, -50, 12, .125, -.25, 15, 1, 12000, 15]
     if count == 43:
         return packet(41) + [3, 12]
     if count == 41:
@@ -59,6 +61,36 @@ def packet(count):
 
 
 class FramingTests(unittest.TestCase):
+    def test_merged_navigation_diagnostics(self):
+        values = packet(58)
+        self.assertEqual(capture.fields_for(58)[:43], capture.fields_for(43))
+        self.assertEqual(capture.fields_for(58)[43:], capture.NAV_FIELDS)
+        self.assertEqual(len(capture.fields_for(58)), 58)
+        self.assertEqual(capture.Framer.decode(struct.pack('<58f', *values)), tuple(values))
+        self.assertIn('NAV=PAUSED/WORK P04>05 OWNER=VISION', capture.camera_summary(values))
+        self.assertIn('L/R=100/2700mm AGE=20ms', capture.camera_summary(values))
+        self.assertIn('REF/VALID=0xF/F', capture.camera_summary(values))
+        for index, bad in ((43, -1), (44, 65536), (45, -2), (45, .5), (46, 9), (47, 14),
+                           (48, 18), (49, -.5), (50, float('nan')), (51, float('inf')),
+                           (54, 16), (55, 2), (56, -1), (57, .5), (0, 2)):
+            invalid = values.copy(); invalid[index] = bad
+            self.assertIsNone(capture.Framer.decode(struct.pack('<58f', *invalid)))
+        values[45] = -1
+        self.assertIsNotNone(capture.Framer.decode(struct.pack('<58f', *values)))
+        values[47] = 13
+        self.assertIn('EXIT_TIMEOUT', capture.camera_summary(values))
+
+    def test_merged_partial_frame_never_becomes_legacy(self):
+        for values in (packet(58), [0.] * 58):
+            data = struct.pack('<58f', *values) + capture.TAIL
+            for start in range(1, len(data)):
+                parser = capture.Framer()
+                stream = data[start:] + data + data
+                frames = []
+                for offset in range(0, len(stream), 20):
+                    frames.extend(parser.feed(stream[offset:offset+20]))
+                self.assertEqual(frames, [tuple(values)] * 2, start)
+
     def test_lock_diagnostics(self):
         values=packet(43)
         self.assertEqual(capture.fields_for(43)[41:], ['locked_region','lock_count'])
@@ -107,7 +139,7 @@ class FramingTests(unittest.TestCase):
             self.assertIsNone(capture.Framer.decode(struct.pack('<34f', *values)))
 
     def test_split_corrupt_and_partial_start(self):
-        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 48, 64, 72):
+        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 48, 58, 64, 72):
             values = packet(count)
             data = struct.pack(f"<{count}f", *values) + capture.TAIL
             stream = b"noise" + data[100:] + data + data[:-7] + b"bad" + data + data
@@ -218,7 +250,7 @@ class FramingTests(unittest.TestCase):
                 self.assertEqual(list(parser.feed(data[start:]+data+data)),[tuple(values)]*2,start)
 
     def test_layout_switch_is_exposed(self):
-        counts = (8, 8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 48, 64, 72, 64, 48, 72, 32, 20, 8)
+        counts = (8, 8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 48, 58, 64, 72, 64, 48, 72, 32, 20, 8)
         stream = b''.join(struct.pack(f'<{n}f', *packet(n)) + capture.TAIL for n in counts)
         self.assertEqual([len(v) for v in capture.Framer().feed(stream)], list(counts))
         self.assertEqual(len(capture.FIELDS), 72)
@@ -279,7 +311,7 @@ class FramingTests(unittest.TestCase):
             self.assertEqual(frames, [tuple(values)] * 2, start)
 
     def test_visual_capture_csv_metadata_and_summary(self):
-        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43):
+        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 58):
             values = packet(count)
             data = struct.pack(f'<{count}f', *values) + capture.TAIL
 

@@ -3,9 +3,18 @@
 #include "camera_protocol.h"
 #include "route_debug.h"
 #include "vision_align.h"
+#include "my_chassis_task.h"
 static int fails;
 static RouteLidarFrame telemetry_lidar;
 void RouteIO_ReadLidar(RouteLidarFrame *frame) { *frame=telemetry_lidar; }
+static NavLidar telemetry_received;
+static RouteNavigationStatus telemetry_nav;
+static uint32_t telemetry_now;
+static uint8_t telemetry_owned;
+void RouteIO_ReadNavigationLidar(NavLidar *frame) { *frame=telemetry_received; }
+void Route_ReadNavigationStatus(RouteNavigationStatus *status) { *status=telemetry_nav; }
+uint32_t RouteIO_Millis(void) { return telemetry_now; }
+uint8_t VisionAlign_ControlOwned(void) { return telemetry_owned; }
 static Camera_Receiver telemetry_camera;
 static VisionAlign_Diagnostics telemetry_align;
 void VisionAlign_GetDiagnostics(VisionAlign_Diagnostics *data) { *data=telemetry_align; }
@@ -17,11 +26,12 @@ static float channel(const unsigned char *p,unsigned n) {
 }
 static void test_telemetry(void) {
  RouteController controller={0}; RouteInputs in={0}; RouteDebugFrame frozen;
- unsigned char before[176],after[176],visual[]={0x63,1,0xEC,1,3,0x66};
+ unsigned char before[236],after[236],visual[]={0x63,1,0xEC,1,3,0x66};
  RouteDebug_Reset();
- CHECK(ROUTE_VOFA_CHANNEL_COUNT==43 && ROUTE_VOFA_FRAME_BYTES==176);
- CHECK(RouteDebug_BuildPacket(before,sizeof(before))==176);
+ CHECK(ROUTE_VOFA_CHANNEL_COUNT==58 && ROUTE_VOFA_FRAME_BYTES==236);
+ CHECK(RouteDebug_BuildPacket(before,sizeof(before))==236);
  CHECK(channel(before,0)==0 && channel(before,5)==0);
+ CHECK(channel(before,45)==-1 && channel(before,57)==0);
  telemetry_align.ly=186;telemetry_align.rx=127;telemetry_align.control_flags=81;telemetry_align.rc_velocity_mmps=200;
  telemetry_align.phase=2;telemetry_align.vy_mps=-.14f;telemetry_align.wz_radps=.125f;
  telemetry_align.pick_phase=5;telemetry_align.hit_region=4;telemetry_align.hit_count=7;telemetry_align.locked_region=3;telemetry_align.lock_count=12;
@@ -35,7 +45,7 @@ static void test_telemetry(void) {
  }
  feed(&telemetry_camera,visual,6);
  /* No route capture is needed to publish fresh visual data. */
- CHECK(RouteDebug_BuildPacket(after,sizeof(after))==176);
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==236);
  CHECK(channel(after,0)==1 && channel(after,1)==-20);
  CHECK(channel(after,2)==1 && channel(after,3)==3);
  CHECK(channel(after,38)==5 && channel(after,39)==4 && channel(after,40)==7);
@@ -54,24 +64,40 @@ static void test_telemetry(void) {
   CHECK(channel(after,27+w)==(w%2 ? -16700 : 16700));
  }
  telemetry_lidar.mm[ROUTE_LIDAR_FRONT]=120;telemetry_lidar.mm[ROUTE_LIDAR_BEHIND]=60;telemetry_lidar.fresh=1;
- CHECK(RouteDebug_BuildPacket(after,sizeof(after))==176);
+ telemetry_lidar.mm[ROUTE_LIDAR_LEFT]=100;telemetry_lidar.mm[ROUTE_LIDAR_RIGHT]=2700;
+ telemetry_received.sequence=1;telemetry_received.received_ms=200;telemetry_now=220;
+ telemetry_nav.state=6;telemetry_nav.reason=10;telemetry_nav.target=5;telemetry_nav.confirmed=4;
+ telemetry_nav.main_error_mm=-50;telemetry_nav.cross_error_mm=12;
+ telemetry_nav.command_vx_mps=.125f;telemetry_nav.command_vy_mps=-.25f;
+ telemetry_nav.reference_mask=13;telemetry_owned=1;
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==236);
  CHECK(channel(after,7)==60 && channel(after,6)==1 && channel(after,8)==120);
- CHECK(after[172]==0 && after[173]==0 && after[174]==0x80 && after[175]==0x7f);
+ CHECK(channel(after,43)==100 && channel(after,44)==2700 && channel(after,45)==20);
+ CHECK(channel(after,46)==6 && channel(after,47)==10 && channel(after,48)==5 && channel(after,49)==4);
+ CHECK(channel(after,50)==-50 && channel(after,51)==12);
+ CHECK(channel(after,52)==.125f && channel(after,53)==-.25f);
+ CHECK(channel(after,54)==13 && channel(after,55)==1);
+ CHECK(channel(after,56)==220 && channel(after,57)==15);
+ telemetry_lidar.mm[ROUTE_LIDAR_LEFT]=0;
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==236 && channel(after,57)==11);
+ telemetry_now=600;telemetry_lidar.fresh=0;
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==236 && channel(after,45)==400 && channel(after,57)==0);
+ CHECK(after[232]==0 && after[233]==0 && after[234]==0x80 && after[235]==0x7f);
  visual[2]=0x80;feed(&telemetry_camera,visual,6);
- CHECK(RouteDebug_BuildPacket(after,sizeof(after))==176);
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==236);
  CHECK(channel(after,1)==-128 && channel(after,4)==2);
  controller.status.phase=ROUTE_FAULT;in.now_ms=1234;
  RouteDebug_Capture(&controller,&in,0,0);
  CHECK(RouteDebug_ReadFault(&frozen) && frozen.frozen);
- CHECK(RouteDebug_BuildPacket(before,sizeof(before))==176);
+ CHECK(RouteDebug_BuildPacket(before,sizeof(before))==236);
  visual[2]=0x7f;feed(&telemetry_camera,visual,6);
- CHECK(RouteDebug_BuildPacket(after,sizeof(after))==176);
+ CHECK(RouteDebug_BuildPacket(after,sizeof(after))==236);
  CHECK(channel(after,1)==127 && channel(after,4)==3);
  CHECK(memcmp(before,after,sizeof(before))!=0);
  CHECK(RouteDebug_ReadFault(&frozen) && frozen.tick_ms==1234);
  CHECK(RouteDebug_BuildPacket(after,sizeof(after)-1)==0);
  CHECK(RouteDebug_BuildPacket(0,sizeof(after))==0);
- if(!fails) printf("PASS: 43-channel wheels/IMU/live vision/rear range/alignment/physical job completion telemetry\n");
+ if(!fails) printf("PASS: 58-channel merged navigation and wheels/IMU/live vision/rear range/alignment/physical job completion telemetry\n");
 }
 int main(void) {
  Camera_Receiver r={0}; unsigned i;
