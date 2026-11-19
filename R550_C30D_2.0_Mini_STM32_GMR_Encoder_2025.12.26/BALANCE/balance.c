@@ -154,17 +154,18 @@ static void ManualMecanum_Drive(float forward, float left, uint8_t automatic)
         Drive_Motor(0.0f, 0.0f, 0.0f);
         return;
     }
-    /* Stop at 45 mm; taper longitudinal speed before the boundary.
-     * Missing/zero ranges cannot authorize travel toward that sensor. */
+    /* Navigation uses REBUILD references; manual/visual motion keeps its 45 mm guard. */
     RouteIO_ReadLidar(&lidar);
-    front_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_FRONT] > 45U ?
-        (lidar.mm[ROUTE_LIDAR_FRONT] - 45U) * 0.002f : 0.0f;
-    rear_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_BEHIND] > 45U ?
-        (lidar.mm[ROUTE_LIDAR_BEHIND] - 45U) * (automatic ? 0.004f : 0.002f) : 0.0f;
-    if (forward > front_limit) forward = front_limit;
-    if (forward < -rear_limit) forward = -rear_limit;
-    if (smooth_control.VX > front_limit) smooth_control.VX = front_limit;
-    if (smooth_control.VX < -rear_limit) smooth_control.VX = -rear_limit;
+    if (!RouteIO_ControlOwned() || automatic) {
+        front_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_FRONT] > 45U ?
+            (lidar.mm[ROUTE_LIDAR_FRONT] - 45U) * 0.002f : 0.0f;
+        rear_limit = lidar.fresh && lidar.mm[ROUTE_LIDAR_BEHIND] > 45U ?
+            (lidar.mm[ROUTE_LIDAR_BEHIND] - 45U) * (automatic ? 0.004f : 0.002f) : 0.0f;
+        if (forward > front_limit) forward = front_limit;
+        if (forward < -rear_limit) forward = -rear_limit;
+        if (smooth_control.VX > front_limit) smooth_control.VX = front_limit;
+        if (smooth_control.VX < -rear_limit) smooth_control.VX = -rear_limit;
+    }
     if (!manual_heading_locked) {
         manual_heading_target = pose.yaw_rad;
         HeadingControl_Reset();

@@ -32,6 +32,7 @@ stub = r'''
 typedef uint8_t u8;
 enum {ROUTE_LIDAR_FRONT,ROUTE_LIDAR_BEHIND};
 typedef struct {uint16_t mm[4];uint32_t sequence;uint8_t fresh;} RouteLidarFrame;
+static unsigned char RouteIO_ControlOwned(void){return 0;}
 static void RouteIO_ReadLidar(RouteLidarFrame *p){*p=(RouteLidarFrame){{1000,1000,1000,1000},1,1};}
 static float Velocity_KP,Velocity_KI;
 static unsigned LineDiffParam=50;

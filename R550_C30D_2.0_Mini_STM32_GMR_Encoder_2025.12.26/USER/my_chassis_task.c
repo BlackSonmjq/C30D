@@ -129,7 +129,7 @@ void my_chassis_task(void *parameters)
             RouteIO_CompleteWork();
             work_id = work_started = 0U;
         }
-        in.stop = stop || (request && active);
+        in.stop = stop;
         in.start = request && !active && !vision_owned && !StepperTask_IsBusy();
         in.pause = vision_owned || work_id || StepperTask_IsBusy();
         in.resume = navigator.pause_latched && !in.pause;
@@ -138,19 +138,6 @@ void my_chassis_task(void *parameters)
             navigator.exit_started_ms += (uint32_t)(in.now_ms - previous_ms);
         previous_ms = in.now_ms;
         Nav_Tick(&navigator, &in, &lidar);
-        /* Match the chassis' longitudinal safety gate before publishing RUN. */
-        if (navigator.output.vx != 0.0f) {
-            unsigned direction = navigator.output.vx > 0.0f ? NAV_FRONT : NAV_BACK;
-            uint16_t distance = lidar.mm[direction];
-            uint8_t valid = distance >= NAV_LIDAR_MIN_MM && distance <= NAV_LIDAR_MAX_MM;
-            if (!valid || distance <= 45U) {
-                navigator.output.vx = navigator.output.vy = navigator.output.wz = 0.0f;
-                navigator.output.quick_stop = navigator.output.reset_pi = 1U;
-                navigator.state = NAV_WAIT_LIDAR;
-                navigator.reason = valid ? NAV_TOO_CLOSE : NAV_NEED_LIDAR;
-                navigator.arrival_count = navigator.recovery_count = 0U;
-            }
-        }
         active = (uint8_t)Nav_IsActive(&navigator);
         if (!active && work_id && !work_started) {
             work_id = 0U;
@@ -162,7 +149,7 @@ void my_chassis_task(void *parameters)
             else { work_id = 0U; RouteIO_CompleteWork(); }
         }
         RouteIO_SetHeading(navigator.heading_origin_rad);
-        RouteIO_SetVelocity(navigator.output.vx, navigator.output.vy);
+        RouteIO_SetVelocity(navigator.output.vx, navigator.output.vy, navigator.output.quick_stop);
         RouteIO_SetRunning(active);
         RouteIO_AllowWork(active && !vision_owned && !work_id);
         publish_status();

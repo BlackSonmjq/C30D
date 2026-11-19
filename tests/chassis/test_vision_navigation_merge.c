@@ -13,7 +13,7 @@
 typedef uint32_t TickType_t;
 #define pdMS_TO_TICKS(ms) (ms)
 #define ROUTE_COMMAND_TTL_MS 120U
-typedef struct { float vx_mps,vy_mps; TickType_t tick; } RouteCommand;
+typedef struct { float vx_mps,vy_mps; TickType_t tick; uint8_t quick_stop; } RouteCommand;
 static RouteCommand command;
 static volatile NavLidar lidar;
 static uint8_t start_pending,command_seen;
@@ -82,7 +82,14 @@ int main(void)
     start_pending=1; now+=20; next_navigation_frame(); poll();
     REQUIRE(route_owned && Nav_IsActive(&navigator) && dx>0 && dy==0);
     target=navigator.target;
-    /* The core can locate P03 from the back laser while front clearance is lost. */
+    start_pending=1; now+=20; next_navigation_frame(); poll();
+    REQUIRE(route_owned && navigator.target==target && navigator.state==NAV_RUN);
+    /* A recently published command cannot extend the CAN 300 ms deadline. */
+    now+=300; pose.tick_ms=now;
+    RouteIO_SetVelocity(.28f,0,0); poll();
+    REQUIRE(dx==0 && dy==0);
+    next_navigation_frame(); poll();
+    /* REBUILD can locate P03 from the back laser while the optional front beam is lost. */
     {
         NavCore saved = navigator;
         navigator.state=NAV_RUN; navigator.target=3; navigator.confirmed=2;
@@ -91,13 +98,13 @@ int main(void)
         now+=20; pose.tick_ms=now;
         RouteIO_PublishLidar(65535,577,2700,100);
         navigation_step(); poll();
-        REQUIRE(navigator.state==NAV_WAIT_LIDAR && navigator.reason==NAV_NEED_LIDAR);
-        REQUIRE(navigator.target==3 && navigator.confirmed==2 && navigator.output.vx==0 && dx==0);
+        REQUIRE(navigator.state==NAV_ALIGN && navigator.reason==NAV_OK);
+        REQUIRE(navigator.target==3 && navigator.confirmed==2 && navigator.output.vx>.119f && dx>.119f);
         for(i=0;i<10;++i) {
             now+=20; pose.tick_ms=now;
             RouteIO_PublishLidar(0,577,2700,100);
             navigation_step(); poll();
-            REQUIRE(dx==0 && navigator.target==3 && navigator.confirmed==2);
+            REQUIRE(dx>.119f && navigator.target==3 && navigator.confirmed==2);
         }
         for(i=0;i<8;++i) {
             now+=20; pose.tick_ms=now;
@@ -108,14 +115,20 @@ int main(void)
         now+=20; pose.tick_ms=now;
         RouteIO_PublishLidar(45,577,2700,100);
         navigation_step(); poll();
+        REQUIRE(dx>.119f && navigator.target==3);
+        now+=20; pose.tick_ms=now;
+        RouteIO_PublishLidar(40,577,2700,100);
+        navigation_step(); poll();
         REQUIRE(navigator.state==NAV_WAIT_LIDAR && navigator.reason==NAV_TOO_CLOSE && dx==0);
         navigator=saved;
+        smooth_control.VX=.28f; smooth_control.VY=.48f;
         for(i=0;i<110;++i) {
             now+=20; pose.tick_ms=now;
             RouteIO_PublishLidar(5576,577,100,2700);
             navigation_step(); poll();
         }
         REQUIRE(navigator.state==NAV_WAIT_LIDAR && navigator.target==1 && navigator.confirmed==0);
+        REQUIRE(smooth_control.VX==0 && smooth_control.VY==0 && command.quick_stop);
         navigator=saved;
         next_navigation_frame(); poll();
     }
@@ -162,7 +175,7 @@ int main(void)
     REQUIRE(navigator.exit_remaining_mm==400 && navigator.reason==NAV_OK);
     navigation_rear_mm=0;
     now+=20; next_navigation_frame();
-    REQUIRE(navigator.state==NAV_WAIT_LIDAR && navigator.reason==NAV_NEED_LIDAR && navigator.output.vx==0);
+    REQUIRE(navigator.state==NAV_RUN && navigator.output.vx==-NAV_EXIT_SPEED_MPS);
     puts("PASS: actual CAN age, route-to-vision handover, same-target resume, tool pause and stick cancellation");
     return 0;
 }

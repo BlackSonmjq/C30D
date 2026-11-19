@@ -41,6 +41,7 @@ static struct { struct { short z; } gyro; } imu;
 static unsigned now=10000;
 static ChassisOdomFrame pose={.4f,10000,1};
 static RouteLidarFrame manual_lidar={{1000,1000,1000,1000},1,1};
+static unsigned char RouteIO_ControlOwned(void){return 0;}
 void RouteIO_ReadLidar(RouteLidarFrame *data) { *data=manual_lidar; }
 static void ChassisOdom_Read(ChassisOdomFrame *p){*p=pose;}
 static unsigned xTaskGetTickCount(void){return now;}

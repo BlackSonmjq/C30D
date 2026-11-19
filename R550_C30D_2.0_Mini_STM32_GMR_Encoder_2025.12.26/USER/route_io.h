@@ -35,7 +35,7 @@ void RouteIO_SetRunning(uint8_t running);
 void RouteIO_SetHeading(float yaw_rad);
 uint8_t RouteIO_StartRequested(void);
 uint8_t RouteIO_ReverseTestRunning(void);
-void RouteIO_SetVelocity(float vx_mps, float vy_mps);
+void RouteIO_SetVelocity(float vx_mps, float vy_mps, uint8_t quick_stop);
 void RouteIO_ReadDiagnostics(RouteIODiagnostics *diagnostics);
 void RouteIO_ApplyDrive(void);
 uint8_t RouteIO_ChassisStopped(void);

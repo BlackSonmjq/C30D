@@ -7,7 +7,7 @@
 #include <math.h>
 #include <string.h>
 
-typedef struct { float vx_mps, vy_mps; TickType_t tick; } RouteCommand;
+typedef struct { float vx_mps, vy_mps; TickType_t tick; uint8_t quick_stop; } RouteCommand;
 static RouteCommand command;
 static volatile uint8_t start_requested, start_pending, stop_pending;
 static volatile uint32_t clock_ms;
@@ -104,13 +104,14 @@ void RouteIO_SetRunning(uint8_t running)
 void RouteIO_SetHeading(float yaw_rad) { heading_target = yaw_rad; }
 uint8_t RouteIO_StartRequested(void) { return start_requested; }
 
-void RouteIO_SetVelocity(float vx_mps, float vy_mps)
+void RouteIO_SetVelocity(float vx_mps, float vy_mps, uint8_t quick_stop)
 {
     TickType_t now = xTaskGetTickCount();
     taskENTER_CRITICAL();
     command.vx_mps = vx_mps;
     command.vy_mps = vy_mps;
     command.tick = now;
+    command.quick_stop = quick_stop;
     command_seen = 1U;
     taskEXIT_CRITICAL();
 }
@@ -136,15 +137,18 @@ void RouteIO_ReadDiagnostics(RouteIODiagnostics *d)
 void RouteIO_ApplyDrive(void)
 {
     RouteCommand latest;
+    RouteLidarFrame ranges;
     taskENTER_CRITICAL();
     latest = command;
     taskEXIT_CRITICAL();
-    if (!start_requested || !RouteIO_Ready() || !command_seen ||
+    RouteIO_ReadLidar(&ranges);
+    if (!start_requested || !RouteIO_Ready() || !command_seen || !ranges.fresh ||
         (TickType_t)(xTaskGetTickCount() - latest.tick) >= pdMS_TO_TICKS(ROUTE_COMMAND_TTL_MS)) {
         smooth_control.VX = smooth_control.VY = smooth_control.VZ = 0.0f;
         Drive_Motor(0.0f, 0.0f, 0.0f);
         return;
     }
+    if (latest.quick_stop) smooth_control.VX = smooth_control.VY = 0.0f;
     Chassis_NavigationDrive(latest.vx_mps, latest.vy_mps, heading_target);
 }
 
