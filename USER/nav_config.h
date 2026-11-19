@@ -15,7 +15,12 @@
 #define NAV_CENTER_DEADBAND_MM     10.0f
 #define NAV_CROSS_SLOWDOWN_MM      800.0f
 #define NAV_LONGITUDINAL_SLOWDOWN_MM 300.0f
-#define NAV_SLOWDOWN_MM            300.0f /* 返程和退场 */
+#define NAV_SLOWDOWN_MM            300.0f /* 侧道返程 */
+#define NAV_EXIT_LATERAL_TOL_MM     30.0f
+#define NAV_EXIT_SPEED_MPS          0.12f
+#define NAV_EXIT_MAX_MM             800.0f
+#define NAV_EXIT_TIMEOUT_MS         8000U
+#define NAV_EXIT_HEADING_MAX_RAD    0.105f /* 倒退时超过约 6 度则停车 */
 #define NAV_LIDAR_JUMP_RESIDUAL_MM  100.0f
 #define NAV_LIDAR_REACQUIRE_FRAMES 3U
 #define NAV_LIDAR_BRIDGE_SPEED_MPS 0.18f

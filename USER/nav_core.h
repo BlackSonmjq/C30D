@@ -6,7 +6,8 @@ typedef enum { NAV_BOOT, NAV_READY, NAV_RUN, NAV_ALIGN, NAV_WAIT_LIDAR,
                NAV_PAUSING, NAV_PAUSED, NAV_STOPPED, NAV_DONE } NavState;
 typedef enum { NAV_OK, NAV_NEED_CALIBRATION, NAV_NEED_IMU, NAV_NEED_LIDAR,
                NAV_NEED_X, NAV_NEED_Y, NAV_BAD_SCENE, NAV_TOO_CLOSE,
-               NAV_DISABLED, NAV_USER_STOP, NAV_WORK_PAUSE } NavReason;
+               NAV_DISABLED, NAV_USER_STOP, NAV_WORK_PAUSE, NAV_EXIT_RANGE,
+               NAV_EXIT_HEADING, NAV_EXIT_TIMEOUT } NavReason;
 typedef struct {
     uint32_t now_ms;
     float yaw_rad, yaw_rate_rad_s, wheel_max_mps, forward_step_mm, lateral_step_mm;
@@ -42,6 +43,9 @@ typedef struct {
     uint8_t lidar_bridge_state;
     uint32_t lidar_bridge_since_ms;
     float lidar_bridge_speed, lidar_bridge_travel_mm, lidar_rearm_origin_mm;
+    uint8_t exit_phase;
+    uint32_t exit_started_ms;
+    float exit_remaining_mm;
     /* 只读遥测镜像；不作为控制输入。目标与本次 observe 使用的参考一致。 */
     float reference_target_mm[4];
     uint8_t reference_mask;

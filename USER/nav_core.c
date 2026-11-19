@@ -6,6 +6,8 @@
 enum { REF_NONE, REF_FIELD, REF_NEAR };
 enum { POSITION_X=1U, POSITION_Y=2U };
 enum { LIDAR_BRIDGE_READY, LIDAR_BRIDGE_MOVING, LIDAR_BRIDGE_USED };
+enum { EXIT_ALIGN_POINT=16, EXIT_STOP_POINT=17 };
+enum { EXIT_ALIGN_LATERAL, EXIT_ALIGN_HEADING, EXIT_REVERSE, EXIT_BRAKE };
 typedef struct {
     float x, ex, ey, main_error;
     uint8_t x_ok, y_ok, y_required, full, known[4];
@@ -170,7 +172,7 @@ static Observation observe(NavCore *n)
     const NavLaneCalibration *c=&n->cal->lane[p->lane];
     float f=0,target_x;
     memset(&o,0,sizeof(o)); o.full=1; o.y_required=1;
-    if(p->motion==NAV_MOVE_ENTRY || p->motion==NAV_MOVE_EXIT) {
+    if(p->motion==NAV_MOVE_ENTRY) {
         o.y_ok=(uint8_t)reference(n,NAV_FRONT,REF_FIELD,0,&f);
         reference(n,NAV_BACK,REF_NONE,0,&f);
         if(o.y_ok) {
@@ -179,11 +181,11 @@ static Observation observe(NavCore *n)
             n->reference_mask|=1U<<NAV_FRONT;
         }
         o.known[NAV_FRONT]=o.y_ok;
-        o.ey=f-(p->motion==NAV_MOVE_ENTRY?c->side_front_mm:n->start_front_mm);
-        n->reference_target_mm[NAV_FRONT]=p->motion==NAV_MOVE_ENTRY?c->side_front_mm:n->start_front_mm;
+        o.ey=f-c->side_front_mm;
+        n->reference_target_mm[NAV_FRONT]=c->side_front_mm;
         o.main_error=o.ey;
         if(n->filter[NAV_FRONT].count<NAV_FILTER_FRAMES) o.full=0;
-        if(p->motion==NAV_MOVE_ENTRY && o.y_ok && absolute(o.ey)<=NAV_ENTRY_CAPTURE_MM) {
+        if(o.y_ok && absolute(o.ey)<=NAV_ENTRY_CAPTURE_MM) {
             o.x_ok=(uint8_t)read_x(n,&o); o.ex=n->cal->left_stop_mm-o.x;
             n->reference_target_mm[NAV_LEFT]=n->cal->left_stop_mm;
             n->reference_target_mm[NAV_RIGHT]=n->cal->lr_sum_mm-n->cal->left_stop_mm;
@@ -208,13 +210,12 @@ static Observation observe(NavCore *n)
         int right=o.x>=n->cal->lr_sum_mm-n->cal->right_stop_mm-NAV_SIDE_FIELD_BAND_MM;
         int nf=o.x>=c->front_begin_left_mm && o.x<=c->front_end_left_mm;
         int nb=o.x>=c->back_begin_left_mm && o.x<=c->back_end_left_mm;
-        if(left||right) o.y_ok=(uint8_t)read_y(n,&o,right?NAV_SIDE_RIGHT:NAV_SIDE_LEFT,0,0,1);
-        else if(nf||nb) o.y_ok=(uint8_t)read_y(n,&o,0,nf,nb,0);
-        else {
-            /* 有限的入口/出口过渡区：靠横移进度与航向通过，不追远墙居中。 */
+        if((left && n->target==EXIT_ALIGN_POINT) || (!left && !right && !nf && !nb)) {
+            /* 过渡区和退场对齐区只用侧向参考。 */
             reference(n,NAV_FRONT,REF_NONE,0,&f); reference(n,NAV_BACK,REF_NONE,0,&f);
             o.y_required=0; o.y_ok=1; o.ey=0;
-        }
+        } else if(left||right) o.y_ok=(uint8_t)read_y(n,&o,right?NAV_SIDE_RIGHT:NAV_SIDE_LEFT,0,0,1);
+        else o.y_ok=(uint8_t)read_y(n,&o,0,nf,nb,0);
         o.main_error=o.ex;
     } else {
         if(absolute(o.ex)>NAV_SIDE_FIELD_BAND_MM) return o;
@@ -237,6 +238,7 @@ int Nav_IsActive(const NavCore *n)
 static void stopped(NavCore *n,NavState state,NavReason reason)
 {
     n->state=state; n->reason=reason; n->arrival_count=0; n->recovery_count=0;
+    n->output.drive_enabled=0;
     n->output.reset_pi=1; n->output.quick_stop=1; n->pause_latched=0;
 }
 static void wait_lidar(NavCore *n,NavReason reason,float wheel_speed)
@@ -250,6 +252,20 @@ static void wait_lidar(NavCore *n,NavReason reason,float wheel_speed)
     if(wheel_speed<=NAV_STOP_WHEEL_MPS && !n->zero_reset_done) {
         n->output.reset_pi=1; n->zero_reset_done=1;
     }
+}
+static int recover_lidar(NavCore *n,const NavInput *in,int new_frame,int full)
+{
+    const unsigned frames=NAV_LIDAR_REACQUIRE_FRAMES>NAV_FILTER_FRAMES?
+                          NAV_LIDAR_REACQUIRE_FRAMES:NAV_FILTER_FRAMES;
+    if(n->state!=NAV_WAIT_LIDAR) return 1;
+    n->output.quick_stop=1;
+    if(in->wheel_max_mps>NAV_STOP_WHEEL_MPS) { n->recovery_count=0; return 0; }
+    if(!n->zero_reset_done) { n->output.reset_pi=1; n->zero_reset_done=1; }
+    if(new_frame && n->recovery_count<frames) n->recovery_count++;
+    if(n->recovery_count<frames || !full) return 0;
+    n->state=NAV_RUN; n->reason=NAV_OK; n->output.quick_stop=0; n->output.reset_pi=1;
+    n->zero_reset_done=0;
+    return 1;
 }
 static float speed(float e,float cap,float deadband)
 {
@@ -366,17 +382,50 @@ static void bridge_rearm(NavCore *n,const Observation *o,int new_frame,float pre
         n->lidar_bridge_state=LIDAR_BRIDGE_READY;
 }
 
+static void run_exit(NavCore *n,const NavInput *in)
+{
+    n->state=NAV_ALIGN; n->reason=NAV_OK;
+    n->main_error_mm=-n->exit_remaining_mm; n->cross_error_mm=0;
+    if(n->target==EXIT_ALIGN_POINT) {
+        n->output.wz=Nav_HeadingCorrection(n->heading_error_rad,in->yaw_rate_rad_s);
+        if(absolute(n->heading_error_rad)>NAV_HEADING_TOL_RAD || n->output.wz!=0 ||
+           in->wheel_max_mps>NAV_STOP_WHEEL_MPS) return;
+        if(!(n->exit_remaining_mm>0 && n->exit_remaining_mm<=NAV_EXIT_MAX_MM)) {
+            stopped(n,NAV_STOPPED,NAV_EXIT_RANGE); return;
+        }
+        n->confirmed=EXIT_ALIGN_POINT; n->estimated_point=EXIT_ALIGN_POINT;
+        n->target=EXIT_STOP_POINT; n->exit_phase=EXIT_REVERSE; n->exit_started_ms=in->now_ms;
+        n->output.reset_pi=1;
+        return;
+    }
+
+    if(n->exit_remaining_mm<=0) n->exit_phase=EXIT_BRAKE;
+    if(n->exit_phase==EXIT_BRAKE) {
+        n->output.quick_stop=1;
+        if(in->wheel_max_mps<=NAV_STOP_WHEEL_MPS) {
+            n->confirmed=EXIT_STOP_POINT; n->estimated_point=EXIT_STOP_POINT;
+            stopped(n,NAV_DONE,NAV_OK);
+        }
+        return;
+    }
+    if(absolute(n->heading_error_rad)>NAV_EXIT_HEADING_MAX_RAD) {
+        stopped(n,NAV_STOPPED,NAV_EXIT_HEADING); return;
+    }
+    n->state=NAV_RUN;
+    n->output.vx=-NAV_EXIT_SPEED_MPS;
+    n->output.wz=Nav_HeadingCorrection(n->heading_error_rad,in->yaw_rate_rad_s);
+}
+
 void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
 {
     int fresh,new_frame,forward_segment,approaching,lateral,refs_ok,can_bridge;
-    float f=0,cap,slowdown_mm;
+    int waiting,exit_lateral,exit_aligned;
+    float f=0,cap,slowdown_mm,point_tol;
     float previous_vx=n->output.vx, previous_vy=n->output.vy, previous_speed, main_step;
     Observation o;
     const NavPoint *p;
     NavReason missing;
     unsigned i;
-    const unsigned recovery_frames=NAV_LIDAR_REACQUIRE_FRAMES>NAV_FILTER_FRAMES?
-                                   NAV_LIDAR_REACQUIRE_FRAMES:NAV_FILTER_FRAMES;
     memset(&n->output,0,sizeof(n->output));
     n->reference_mask=0;
     memset(n->reference_target_mm,0,sizeof(n->reference_target_mm));
@@ -410,12 +459,18 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
             n->arrival_count=0; n->recovery_count=0; n->pause_latched=0; n->zero_reset_done=0;
             n->cross_nudge_state=CROSS_NUDGE_READY;
             n->lidar_bridge_state=LIDAR_BRIDGE_READY;
+            n->exit_phase=EXIT_ALIGN_LATERAL;
             clear_filters(n); n->state=NAV_RUN; n->reason=NAV_OK; n->output.reset_pi=1;
         } else return;
     }
     n->output.drive_enabled=1;
     predict_ranges(n,in);
     n->heading_error_rad=Nav_HeadingError(n->heading_origin_rad,in->yaw_rad);
+    if(n->target>=EXIT_ALIGN_POINT) {
+        /* 将车体位移投影到起跑航向。向前偏移会增加剩余倒退距离。 */
+        n->exit_remaining_mm+=in->forward_step_mm*cosf(n->heading_error_rad)+
+                              in->lateral_step_mm*sinf(n->heading_error_rad);
+    }
     if(in->pause && !n->pause_latched) {
         n->pause_latched=1; n->state=NAV_PAUSING; n->arrival_count=0;
         if(n->lidar_bridge_state==LIDAR_BRIDGE_MOVING) n->lidar_bridge_state=LIDAR_BRIDGE_USED;
@@ -434,7 +489,14 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
         clear_filters(n); /* 继续前必须重新取得控制参考，保留点号与起跑前距。 */
         return;
     }
+    if(n->target==EXIT_STOP_POINT && (uint32_t)(in->now_ms-n->exit_started_ms)>=NAV_EXIT_TIMEOUT_MS) {
+        stopped(n,NAV_STOPPED,NAV_EXIT_TIMEOUT); return;
+    }
     if(!fresh) { clear_filter_windows(n); wait_lidar(n,NAV_NEED_LIDAR,in->wheel_max_mps); return; }
+    if(n->target>=EXIT_ALIGN_POINT && n->exit_phase!=EXIT_ALIGN_LATERAL) {
+        if(recover_lidar(n,in,new_frame,1)) run_exit(n,in);
+        return;
+    }
     o=observe(n); p=&nav_plan[n->target-1U];
     if(new_frame) for(i=0;i<NAV_DIRECTIONS;i++) if(n->reference_mask&(1U<<i)) {
         n->filter[i].predicted_mm=(float)n->lidar.mm[i];
@@ -472,16 +534,9 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
         } else wait_lidar(n,missing,in->wheel_max_mps);
         return;
     }
-    if(n->state==NAV_WAIT_LIDAR) {
-        n->output.quick_stop=1;
-        if(!n->zero_reset_done && in->wheel_max_mps<=NAV_STOP_WHEEL_MPS) {
-            n->output.reset_pi=1; n->zero_reset_done=1;
-        }
-        if(in->wheel_max_mps>NAV_STOP_WHEEL_MPS) { n->recovery_count=0; return; }
-        if(new_frame && n->recovery_count<recovery_frames) n->recovery_count++;
-        if(n->recovery_count<recovery_frames || !o.full) return;
-        n->state=NAV_RUN; n->reason=NAV_OK; n->output.quick_stop=0; n->output.reset_pi=1;
-        n->zero_reset_done=0;
+    waiting=n->state==NAV_WAIT_LIDAR;
+    if(!recover_lidar(n,in,new_frame,o.full)) return;
+    if(waiting) {
         if(n->cross_nudge_state==CROSS_NUDGE_STALLING) n->cross_nudge_state=CROSS_NUDGE_READY;
         else if(n->cross_nudge_state!=CROSS_NUDGE_READY) n->cross_nudge_state=CROSS_NUDGE_USED;
     }
@@ -497,27 +552,39 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
     else if(forward_segment) slowdown_mm=NAV_LONGITUDINAL_SLOWDOWN_MM;
     approaching=absolute(o.main_error)<=slowdown_mm;
     cap=approaching?NAV_SPEED_APPROACH:NAV_SPEED_CRUISE;
+    exit_lateral=n->target==EXIT_ALIGN_POINT && !o.y_required &&
+                 o.x<=n->cal->left_stop_mm+NAV_SIDE_FIELD_BAND_MM;
+    point_tol=exit_lateral?NAV_EXIT_LATERAL_TOL_MM:NAV_POINT_TOL_MM;
+    exit_aligned=exit_lateral && absolute(o.ex)<=point_tol;
     /* 进场和侧道换垄的接近、越点回调共用纵向限速。 */
     if(forward_segment && (approaching || o.main_error<0)) cap=NAV_SPEED_LONGITUDINAL_APPROACH;
-    if((p->motion==NAV_MOVE_EXIT || p->motion==NAV_MOVE_RETURN) && o.main_error>0) cap=NAV_SPEED_ALIGN;
+    if(p->motion==NAV_MOVE_RETURN && o.main_error>0) cap=NAV_SPEED_ALIGN;
     if(p->motion==NAV_MOVE_CROSS && n->target>1) {
         int expected_right=p->side==NAV_SIDE_RIGHT;
         if(approaching || (expected_right?o.ex<0:o.ex>0)) cap=NAV_SPEED_CROSS_APPROACH;
         else cap=NAV_SPEED_CROSS_CRUISE;
-        n->output.vy=-speed(o.ex,cap,NAV_POINT_TOL_MM);
+        n->output.vy=-speed(o.ex,cap,point_tol);
         n->output.vx=o.y_required?correction(o.ey):0;
     } else {
         n->output.vx=speed(o.ey,cap,NAV_POINT_TOL_MM);
         n->output.vy=-correction(o.ex);
     }
-    n->output.wz=Nav_HeadingCorrection(n->heading_error_rad,in->yaw_rate_rad_s);
+    if(!exit_aligned) n->output.wz=Nav_HeadingCorrection(n->heading_error_rad,in->yaw_rate_rad_s);
     if(blocked(n,&o)) { memset(&n->output,0,sizeof(n->output)); n->output.drive_enabled=1;
         wait_lidar(n,NAV_TOO_CLOSE,in->wheel_max_mps); return; }
     n->state=approaching?NAV_ALIGN:NAV_RUN;
     n->reason=NAV_OK;
     if(p->motion==NAV_MOVE_CROSS && try_cross_nudge(n,in)) return;
     bridge_rearm(n,&o,new_frame,previous_speed,main_step);
-    if(o.y_required && absolute(o.ex)<=NAV_POINT_TOL_MM && absolute(o.ey)<=NAV_POINT_TOL_MM &&
+    if(exit_aligned) {
+        if(in->wheel_max_mps>NAV_STOP_WHEEL_MPS || absolute(n->last_x_mm-n->cal->left_stop_mm)>point_tol)
+            n->arrival_count=0;
+        else if(new_frame && o.full) n->arrival_count++;
+        if(n->arrival_count>=NAV_FILTER_FRAMES) {
+            n->exit_phase=EXIT_ALIGN_HEADING; n->arrival_count=0;
+        }
+    } else if(n->target<EXIT_ALIGN_POINT && o.y_required &&
+       absolute(o.ex)<=NAV_POINT_TOL_MM && absolute(o.ey)<=NAV_POINT_TOL_MM &&
        absolute(n->heading_error_rad)<=NAV_HEADING_TOL_RAD) {
         n->output.vx=0; n->output.vy=0;
         if(n->output.wz!=0.0f || in->wheel_max_mps>NAV_STOP_WHEEL_MPS) n->arrival_count=0;
@@ -525,13 +592,15 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
         if(n->arrival_count>=NAV_FILTER_FRAMES) {
             n->confirmed=n->target; n->estimated_point=n->target; n->arrival_count=0;
             n->output.reset_pi=1;
-            if(n->target==17) { stopped(n,NAV_DONE,NAV_OK); n->output.drive_enabled=0; }
-            else {
-                n->target++; n->state=NAV_RUN; n->reference_mask=0;
-                n->cross_nudge_state=CROSS_NUDGE_READY;
-                n->lidar_bridge_travel_mm=0;
-                n->lidar_rearm_origin_mm=-1.0f;
+            if(n->target==EXIT_ALIGN_POINT-1) {
+                /* P15 的纵向误差可来自前距、后距或两者。 */
+                float front_equivalent=n->cal->lane[p->lane].side_front_mm+o.ey;
+                n->exit_remaining_mm=n->start_front_mm-front_equivalent;
             }
+            n->target++; n->state=NAV_RUN; n->reference_mask=0;
+            n->cross_nudge_state=CROSS_NUDGE_READY;
+            n->lidar_bridge_travel_mm=0;
+            n->lidar_rearm_origin_mm=-1.0f;
         }
     } else n->arrival_count=0;
 }
@@ -542,6 +611,7 @@ const char *Nav_StateName(NavState s)
 }
 const char *Nav_ReasonName(NavReason r)
 {
-    static const char *const names[]={"OK","CAL","IMU","LIDAR","X_REF","Y_REF","SCENE","CLEARANCE","DISABLED","KEY_STOP","WORK"};
+    static const char *const names[]={"OK","CAL","IMU","LIDAR","X_REF","Y_REF","SCENE","CLEARANCE",
+                                     "DISABLED","KEY_STOP","WORK","EXIT_RANGE","EXIT_YAW","EXIT_TIMEOUT"};
     return (unsigned)r<sizeof(names)/sizeof(names[0])?names[r]:"?";
 }

@@ -20,7 +20,9 @@ size_t NavVofa_Build(const NavStatus *s,uint32_t sequence,uint8_t *out,size_t ca
     }
     v[12]=(float)s->valid_mask; v[13]=(float)s->reference_mask;
     v[14]=s->lidar_age_ms==0xFFFFFFFFU?-1.0f:(float)s->lidar_age_ms;
-    v[15]=(float)s->state; v[16]=(float)s->reason;
+    v[15]=(float)s->state;
+    /* NAV48 接收端识别原有原因码。详细退场原因由 OLED 和串口 CSV 显示。 */
+    v[16]=(float)(s->reason>=NAV_EXIT_RANGE?NAV_BAD_SCENE:s->reason);
     v[17]=(float)s->target; v[18]=(float)s->confirmed;
     v[19]=s->main_error_mm; v[20]=s->cross_error_mm;
     v[21]=s->heading_error_rad*57.295779513f;

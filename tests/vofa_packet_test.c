@@ -48,6 +48,11 @@ int main(int argc,char **argv)
     }
     s.lidar_age_ms=0xFFFFFFFFU; NavVofa_Build(&s,1,packet,sizeof(packet));
     assert(get_float(packet+14*4)==-1);
+    for(i=NAV_EXIT_RANGE;i<=NAV_EXIT_TIMEOUT;i++) {
+        s.reason=(uint8_t)i;
+        assert(NavVofa_Build(&s,1,packet,sizeof(packet))==196);
+        assert(get_float(packet+16*4)==NAV_BAD_SCENE);
+    }
     puts("PASS firmware 48-channel LE layout, tail, bounded buffer, TX busy/period, time wrap and exact sequence");
     return 0;
 }
