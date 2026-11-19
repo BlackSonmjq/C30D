@@ -9,7 +9,7 @@ typedef enum { NAV_OK, NAV_NEED_CALIBRATION, NAV_NEED_IMU, NAV_NEED_LIDAR,
                NAV_DISABLED, NAV_USER_STOP, NAV_WORK_PAUSE } NavReason;
 typedef struct {
     uint32_t now_ms;
-    float yaw_rad, yaw_rate_rad_s, wheel_max_mps, forward_step_mm;
+    float yaw_rad, yaw_rate_rad_s, wheel_max_mps, forward_step_mm, lateral_step_mm;
     uint8_t imu_ready, enabled, start, stop, pause, resume;
     int8_t loaded_lateral; /* 接近满 PWM 的横移方向：左 +1、右 -1 */
 } NavInput;
@@ -18,9 +18,9 @@ typedef struct {
     uint8_t drive_enabled, quick_stop, reset_pi, work_stopped;
 } NavOutput;
 typedef struct {
-    float samples[NAV_FILTER_FRAMES], value;
+    float samples[NAV_FILTER_FRAMES], value, predicted_mm;
     uint32_t last_sequence;
-    uint8_t count, next, role;
+    uint8_t count, next, role, anchored;
 } NavFilter;
 typedef struct {
     const NavCalibration *cal;
@@ -39,6 +39,9 @@ typedef struct {
     uint8_t cross_nudge_state;
     uint32_t cross_nudge_since_ms;
     float cross_nudge_remaining_mm;
+    uint8_t lidar_bridge_state;
+    uint32_t lidar_bridge_since_ms;
+    float lidar_bridge_speed, lidar_bridge_travel_mm, lidar_rearm_origin_mm;
     /* 只读遥测镜像；不作为控制输入。目标与本次 observe 使用的参考一致。 */
     float reference_target_mm[4];
     uint8_t reference_mask;

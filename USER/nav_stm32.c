@@ -118,6 +118,7 @@ void NavBoard_ControlStep(NavOutput *out)
     in.enabled=(uint8_t)(EN && !Flag_Stop && Voltage>=10.0f);
     for(i=0;i<4;i++) if(float_abs(w[i])>in.wheel_max_mps) in.wheel_max_mps=float_abs(w[i]);
     in.forward_step_mm=(w[0]+w[1]+w[2]+w[3])*(250.0f/CONTROL_FREQUENCY);
+    in.lateral_step_mm=(w[0]-w[1]+w[2]-w[3])*(250.0f/CONTROL_FREQUENCY);
     if(status.motor_allowed) {
         const float lateral_pwm=0.25f*(MOTOR_A.Motor_Pwm-MOTOR_B.Motor_Pwm+
                                        MOTOR_C.Motor_Pwm-MOTOR_D.Motor_Pwm);
