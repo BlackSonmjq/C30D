@@ -57,7 +57,7 @@ int main(void) {
     imu.gyro.z=-751; ManualMecanum_Drive(.2f,-.1f,0U);
     assert(dx==.2f && dy==-.1f && dz>0);
     imu.gyro.z=0;pose.yaw_rad=.5f;ManualMecanum_Drive(.2f,-.1f,0U);
-    assert(fabsf(dz+.18f)<.001f); /* Stronger correction for 0.1 rad yaw drift. */
+    assert(fabsf(dz+.2404f)<.001f); /* Stronger correction for 0.1 rad yaw drift. */
     pose.yaw_rad=.3f;ManualMecanum_Drive(.2f,-.1f,0U);assert(dz>0);
     imu.gyro.z=32767;ManualMecanum_Drive(.2f,0,0U);
     assert(dz<0 && fabsf(dz)<=HEADING_CONTROL_MAX_ANGULAR_VELOCITY);

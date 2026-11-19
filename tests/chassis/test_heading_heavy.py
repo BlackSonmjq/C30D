@@ -29,23 +29,86 @@ static float float_abs(float v){return fabsf(v);}
 static float target_limit_float(float v,float lo,float hi){return v<lo?lo:v>hi?hi:v;}
 '''+smooth+r'''
 int main(void) {
-    /* Compare with the upstream PD law over both signs and saturation. */
-    for(int e=-100;e<=100;e++) for(int g=-20;g<=20;g++) {
-        float error=e*.01f,rate=g*.02f,expected;
-        if(fabsf(error)<=.035f) {
-            if(fabsf(rate)<=.03f) expected=0;
-            else expected=-.75f*rate;
-        } else expected=1.8f*error-.75f*rate;
-        if(expected>.25f) expected=.25f;
-        if(expected<-.25f) expected=-.25f;
-        HeadingControl_Reset();
-        assert(fabsf(HeadingControl_Output(error,rate,.01f)-expected)<1e-6f);
-        assert(HeadingControl_GetIntegralOutput()==0);
-    }
     HeadingControl_Reset();
-    for(int n=0;n<10000;n++)
-        assert(fabsf(HeadingControl_Output(.1f,0,.01f)-.18f)<1e-6f);
-    assert(HeadingControl_GetIntegralOutput()==0);
+    assert(HeadingControl_HoldYaw(0,0,0)==0);
+    /* A large stored effort from an earlier turn must not drive farther away. */
+    heading_state.integral=-.335f;
+    assert(HeadingControl_Output(.0376f,0,.01f)>0);
+    heading_state.integral=.335f;
+    assert(HeadingControl_Output(-.0376f,0,.01f)<0);
+    HeadingControl_Reset();
+    float small=HeadingControl_HoldYaw(.011f,0,0);
+    float medium=HeadingControl_HoldYaw(.05f,0,0);
+    assert(small>0 && small<.04f && medium>small && medium<.17f);
+    assert(HeadingControl_HoldYaw(-.011f,0,0)<0);
+    HeadingControl_Reset();
+    assert(HeadingControl_HoldYaw(.015f,0,0)<.04f);
+    HeadingControl_Reset();
+    assert(HeadingControl_HoldYaw(.05236f,0,0)>=.159f);
+
+    HeadingControl_Reset();
+    assert(fabsf(HeadingControl_HoldYaw(2,0,0)-HEADING_CONTROL_MAX_ANGULAR_VELOCITY)<1e-6f);
+    assert(fabsf(HeadingControl_HoldYaw(-2,0,0)+HEADING_CONTROL_MAX_ANGULAR_VELOCITY)<1e-6f);
+    for(int n=0;n<10000;n++) HeadingControl_Output(2,0,.01f);
+    assert(heading_state.integral==0);
+    for(int n=0;n<10000;n++) HeadingControl_Output(-2,0,.01f);
+    assert(heading_state.integral==0);
+    /* Small persistent offsets must build bounded correction in both directions. */
+    HeadingControl_Reset();
+    float first=HeadingControl_Output(.02f,0,.01f),last=first;
+    for(int n=0;n<3000;n++) last=HeadingControl_Output(.02f,0,.01f);
+    assert(last>first+.15f && heading_state.integral<=HEADING_CONTROL_INTEGRAL_LIMIT);
+    assert(HeadingControl_GetIntegralOutput()>.15f);
+    float stored=heading_state.integral;
+    HeadingControl_Output(-.02f,0,.01f);
+    assert(heading_state.integral<stored);
+    HeadingControl_Reset();
+    first=HeadingControl_Output(-.02f,0,.01f);
+    for(int n=0;n<3000;n++) last=HeadingControl_Output(-.02f,0,.01f);
+    assert(last<first-.15f);
+    /* Already turning toward target: preserve pre-crossing braking. */
+    HeadingControl_Reset();assert(HeadingControl_Output(.05f,.2f,.01f)<0);
+    HeadingControl_Reset();assert(HeadingControl_Output(-.05f,-.2f,.01f)>0);
+    HeadingControl_Reset();
+    float balance_rate=.05f*(HEADING_CONTROL_KP+HEADING_CONTROL_KI*.01f)/HEADING_CONTROL_KD;
+    assert(fabsf(HeadingControl_Output(.05f,balance_rate,.01f))<1e-6f);
+    assert(HeadingControl_Output(0,.2f,.01f)<0);
+    stored=heading_state.integral;
+    assert(fabsf(HeadingControl_Output(.005f,.01f,.01f)-HEADING_CONTROL_KI*stored)<1e-6f);
+    assert(heading_state.integral==stored);
+    HeadingControl_Reset();assert(HeadingControl_Output(.005f,.01f,.01f)==0);
+    /* Once across the target, release the old I effort inside tolerance. */
+    for(int sign=-1;sign<=1;sign+=2) {
+        heading_state.integral=sign*.4f;
+        for(int n=0;n<100;n++) HeadingControl_Output(-sign*.005f,0,.01f);
+        assert(fabsf(heading_state.integral)<.06f);
+    }
+
+    for(int sign=-1;sign<=1;sign+=2) {
+        heading_state.integral=sign*.4f;
+        for(int n=0;n<100;n++) HeadingControl_Output(sign*.002f,0,.01f);
+        assert(fabsf(heading_state.integral)<.15f);
+    }
+    HeadingControl_Reset();assert(HeadingControl_HoldYaw(.05f,0,751)<0);
+    assert(HeadingControl_GetIntegralOutput()<=HEADING_CONTROL_KI*HEADING_CONTROL_INTEGRAL_LIMIT);
+    /* Constant yaw disturbance leaves a residual with PD; I must reduce it. */
+    for(int direction=-1;direction<=1;direction+=2) {
+        float yaw=0,rate=0;
+        HeadingControl_Reset();
+        for(int n=0;n<4000;n++) {
+            float command=HeadingControl_Output(-yaw,rate,.01f);
+            rate+=(command+direction*.08f-rate)*.05f;
+            yaw+=rate*.01f;
+        }
+        assert(fabsf(yaw)<.02f);
+        /* Removing the external bias must let the retained integral unwind. */
+        for(int n=0;n<4000;n++) {
+            float command=HeadingControl_Output(-yaw,rate,.01f);
+            rate+=(command-rate)*.05f;
+            yaw+=rate*.01f;
+        }
+        assert(fabsf(yaw)<.02f && fabsf(rate)<.01f);
+    }
     for(int ps2=0;ps2<2;ps2++) {
         PS2_ON_Flag=ps2;
         smooth_control.VZ=.3f;
@@ -81,7 +144,7 @@ int main(void) {
     /* Integrated gyro path retains startup lock and produces damping. */
     HeadingControl_Reset();assert(HeadingControl_Update(0)==0);
     assert(HeadingControl_Update(751)<0);
-    puts("PASS: REBUILD PD law, no integral drift, navigation ramp and immediate angular braking/reversal");
+    puts("PASS: sustained yaw bias rejection, integral anti-windup, damping, bounded correction and immediate angular braking/reversal");
 }
 '''
 compiler = os.environ.get('ROUTE_HOST_CC') or shutil.which('gcc')
