@@ -172,7 +172,7 @@ static void ManualMecanum_Drive(float forward, float left, uint8_t automatic)
         manual_heading_locked = 1U;
     }
     if (HEADING_CONTROL_ENABLE)
-        angular = HeadingControl_HoldYaw(manual_heading_target, pose.yaw_rad, imu.gyro.z);
+        angular = HeadingControl_HoldYaw(manual_heading_target, pose.yaw_rad, imu.gyro.z, forward);
     /* The IMU controller already bounds yaw effort and damps measured rate. */
     smooth_control.VZ = angular;
     /* On a manual reversal, discard the old direction's ramp. Smooth_control

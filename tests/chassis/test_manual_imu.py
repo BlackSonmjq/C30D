@@ -48,6 +48,19 @@ static unsigned xTaskGetTickCount(void){return now;}
 static void Drive_Motor(float x,float y,float z){dx=x;dy=y;dz=z;}
 ''' + helper + r'''
 int main(void) {
+    /* The shared manual/route/visual entry corrects small yaw errors in both
+       longitudinal directions, without cancelling the translation request. */
+    for(int direction=-1;direction<=1;direction+=2) {
+        manual_heading_locked=0;pose.yaw_rad=.4f;imu.gyro.z=0;
+        ManualMecanum_Drive(direction*.2f,0,0U);
+        pose.yaw_rad=.405f;
+        ManualMecanum_Drive(direction*.2f,0,0U);
+        assert(dx==direction*.2f && dy==0 && dz<-.017f);
+        pose.yaw_rad=.395f;
+        ManualMecanum_Drive(direction*.2f,0,1U);
+        assert(dx==direction*.2f && dz>.017f);
+    }
+    manual_heading_locked=0;pose.yaw_rad=.4f;
     ManualMecanum_Drive(.2f,-.1f,0U);
     assert(dx==.2f && dy==-.1f && dz==0 && manual_heading_locked);
     /* Measured clockwise/counterclockwise rate produces opposite correction
@@ -57,7 +70,7 @@ int main(void) {
     imu.gyro.z=-751; ManualMecanum_Drive(.2f,-.1f,0U);
     assert(dx==.2f && dy==-.1f && dz>0);
     imu.gyro.z=0;pose.yaw_rad=.5f;ManualMecanum_Drive(.2f,-.1f,0U);
-    assert(fabsf(dz+.2404f)<.001f); /* Stronger correction for 0.1 rad yaw drift. */
+    assert(fabsf(dz+.3604f)<.001f); /* Stronger correction for 0.1 rad yaw drift. */
     pose.yaw_rad=.3f;ManualMecanum_Drive(.2f,-.1f,0U);assert(dz>0);
     imu.gyro.z=32767;ManualMecanum_Drive(.2f,0,0U);
     assert(dz<0 && fabsf(dz)<=HEADING_CONTROL_MAX_ANGULAR_VELOCITY);

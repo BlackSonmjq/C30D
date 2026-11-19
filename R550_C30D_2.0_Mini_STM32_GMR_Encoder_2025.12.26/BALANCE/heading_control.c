@@ -44,16 +44,25 @@ float HeadingControl_GetIntegralOutput(void)
     return HEADING_CONTROL_KI * heading_state.integral;
 }
 
-static float HeadingControl_Output(float error, float gyro_z_rad_s, float dt)
+static float HeadingControl_Output(float error, float gyro_z_rad_s, float dt, float forward_mps)
 {
     float output, minimum, error_scale, integral;
+    /* Blend symmetrically for forward/reverse; retain parked/lateral tuning. */
+    float moving = HeadingControl_Limit(HeadingControl_Abs(forward_mps) /
+        HEADING_CONTROL_LONGITUDINAL_FULL_MPS, 0.0f, 1.0f);
+    float kp = HEADING_CONTROL_KP + moving * (HEADING_CONTROL_LONGITUDINAL_KP - HEADING_CONTROL_KP);
+    float kd = HEADING_CONTROL_KD + moving * (HEADING_CONTROL_LONGITUDINAL_KD - HEADING_CONTROL_KD);
+    float yaw_tolerance = HEADING_CONTROL_YAW_TOLERANCE + moving *
+        (HEADING_CONTROL_LONGITUDINAL_YAW_TOLERANCE - HEADING_CONTROL_YAW_TOLERANCE);
+    float rate_tolerance = HEADING_CONTROL_GYRO_TOLERANCE + moving *
+        (HEADING_CONTROL_LONGITUDINAL_GYRO_TOLERANCE - HEADING_CONTROL_GYRO_TOLERANCE);
     /*
      * Do not release the correction while the chassis is still rotating.
      * Using gyro rate directly for the D term also avoids amplifying angle
      * integration noise and provides immediate braking near the target.
      */
-    if((HeadingControl_Abs(error) <= HEADING_CONTROL_YAW_TOLERANCE) &&
-       (HeadingControl_Abs(gyro_z_rad_s) <= HEADING_CONTROL_GYRO_TOLERANCE))
+    if((HeadingControl_Abs(error) <= yaw_tolerance) &&
+       (HeadingControl_Abs(gyro_z_rad_s) <= rate_tolerance))
     {
         /* Retain the bounded effort that counters a persistent load bias.
          * Explicit control reset still clears it when the heading is released. */
@@ -69,11 +78,11 @@ static float HeadingControl_Output(float error, float gyro_z_rad_s, float dt)
 
     /* When almost stationary, stale integral must not drive away from the target. */
     if (HeadingControl_Abs(gyro_z_rad_s) <= HEADING_CONTROL_MIN_ASSIST_RATE &&
-        (HEADING_CONTROL_KP * error + HEADING_CONTROL_KI * heading_state.integral) * error < 0.0f)
+        (kp * error + HEADING_CONTROL_KI * heading_state.integral) * error < 0.0f)
         heading_state.integral = 0.0f;
     integral = HeadingControl_Limit(heading_state.integral + error * dt,
         -HEADING_CONTROL_INTEGRAL_LIMIT, HEADING_CONTROL_INTEGRAL_LIMIT);
-    output = HEADING_CONTROL_KP * error - HEADING_CONTROL_KD * gyro_z_rad_s;
+    output = kp * error - kd * gyro_z_rad_s;
     /* Freeze integration into saturation; opposite errors can unwind it. */
     if ((output + HEADING_CONTROL_KI * integral > HEADING_CONTROL_MAX_ANGULAR_VELOCITY && error > 0.0f) ||
         (output + HEADING_CONTROL_KI * integral < -HEADING_CONTROL_MAX_ANGULAR_VELOCITY && error < 0.0f))
@@ -123,13 +132,13 @@ float HeadingControl_Update(short gyro_z_raw)
         heading_state.yaw + gyro_z_for_integration * dt);
     error = HeadingControl_NormalizeAngle(-heading_state.yaw);
 
-    return HeadingControl_Output(error, gyro_z_rad_s, dt);
+    return HeadingControl_Output(error, gyro_z_rad_s, dt, 0.0f);
 }
 
 /* Route odometry keeps yaw continuous while parked or waiting for the tool. */
-float HeadingControl_HoldYaw(float target_yaw, float measured_yaw, short gyro_z_raw)
+float HeadingControl_HoldYaw(float target_yaw, float measured_yaw, short gyro_z_raw, float forward_mps)
 {
     const float gyro_rate = NAV_GYRO_SIGN * (float)gyro_z_raw * HEADING_CONTROL_PI / (NAV_GYRO_LSB_PER_DPS * 180.0f);
     return HeadingControl_Output(HeadingControl_NormalizeAngle(target_yaw - measured_yaw),
-                                 gyro_rate, 1.0f / HEADING_CONTROL_RATE_HZ);
+                                 gyro_rate, 1.0f / HEADING_CONTROL_RATE_HZ, forward_mps);
 }

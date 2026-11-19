@@ -68,7 +68,7 @@ static void ChassisOdom_Read(ChassisOdomFrame *p){*p=pose;}
 static unsigned xTaskGetTickCount(void){return now;}
 static void HeadingControl_Reset(void){++resets;}
 static float HeadingControl_NormalizeAngle(float value){return atan2f(sinf(value),cosf(value));}
-static float HeadingControl_HoldYaw(float target,float yaw,short gyro){(void)gyro;return target-yaw;}
+static float HeadingControl_HoldYaw(float target,float yaw,short gyro,float forward){(void)gyro;(void)forward;return target-yaw;}
 static void Drive_Motor(float x,float y,float z){dx=x;dy=y;dz=z;Smooth_control(x,y,z);}
 static int target_limit_int(int x,int low,int high){return x<low?low:x>high?high:x;}
 '''
