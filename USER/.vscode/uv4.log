@@ -1,0 +1,11 @@
+*** Using Compiler 'V5.06 update 6 (build 750)', folder: 'G:\keil5\ARM\ARMCC\Bin'
+Build target 'Mango_Rebuild'
+linking...
+..\OBJ\C30D_rebuild.axf: Error: L6218E: Undefined symbol RemoteControl_Init (referred from nav_stm32.o).
+..\OBJ\C30D_rebuild.axf: Error: L6218E: Undefined symbol RemoteControl_Step (referred from nav_stm32.o).
+Not enough information to list image symbols.
+Not enough information to list load addresses in the image map.
+Finished: 2 information, 0 warning and 2 error messages.
+"..\OBJ\C30D_rebuild.axf" - 2 Error(s), 0 Warning(s).
+Target not created.
+Build Time Elapsed:  00:00:02

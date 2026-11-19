@@ -1,0 +1,5 @@
+OBJ/
+build/
+__pycache__/
+*.uvguix.*
+*.uvoptx
