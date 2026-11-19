@@ -34,6 +34,7 @@ static void publish_status(void) {}
 static NavCore navigator;
 static ChassisOdomFrame previous_pose;
 static uint32_t previous_ms;
+static uint16_t navigation_rear_mm=45;
 static uint8_t work_id,work_started;
 static NavButton button;
 #define KEY 1
@@ -48,7 +49,7 @@ static void navigation_step(void)
 static void next_navigation_frame(void)
 {
     pose.tick_ms=now;
-    RouteIO_PublishLidar(5000,45,100,2700);
+    RouteIO_PublishLidar(5000,navigation_rear_mm,100,2700);
     navigation_step();
 }
 static void observed_frame(int pole, int offset)
@@ -81,6 +82,43 @@ int main(void)
     start_pending=1; now+=20; next_navigation_frame(); poll();
     REQUIRE(route_owned && Nav_IsActive(&navigator) && dx>0 && dy==0);
     target=navigator.target;
+    /* The core can locate P03 from the back laser while front clearance is lost. */
+    {
+        NavCore saved = navigator;
+        navigator.state=NAV_RUN; navigator.target=3; navigator.confirmed=2;
+        navigator.position_axes=0; navigator.lidar.sequence=0;
+        memset(navigator.filter,0,sizeof(navigator.filter));
+        now+=20; pose.tick_ms=now;
+        RouteIO_PublishLidar(65535,577,2700,100);
+        navigation_step(); poll();
+        REQUIRE(navigator.state==NAV_WAIT_LIDAR && navigator.reason==NAV_NEED_LIDAR);
+        REQUIRE(navigator.target==3 && navigator.confirmed==2 && navigator.output.vx==0 && dx==0);
+        for(i=0;i<10;++i) {
+            now+=20; pose.tick_ms=now;
+            RouteIO_PublishLidar(0,577,2700,100);
+            navigation_step(); poll();
+            REQUIRE(dx==0 && navigator.target==3 && navigator.confirmed==2);
+        }
+        for(i=0;i<8;++i) {
+            now+=20; pose.tick_ms=now;
+            RouteIO_PublishLidar(3783,577,2700,100);
+            navigation_step(); poll();
+        }
+        REQUIRE(navigator.output.vx>0 && dx>0 && navigator.target==3);
+        now+=20; pose.tick_ms=now;
+        RouteIO_PublishLidar(45,577,2700,100);
+        navigation_step(); poll();
+        REQUIRE(navigator.state==NAV_WAIT_LIDAR && navigator.reason==NAV_TOO_CLOSE && dx==0);
+        navigator=saved;
+        for(i=0;i<110;++i) {
+            now+=20; pose.tick_ms=now;
+            RouteIO_PublishLidar(5576,577,100,2700);
+            navigation_step(); poll();
+        }
+        REQUIRE(navigator.state==NAV_WAIT_LIDAR && navigator.target==1 && navigator.confirmed==0);
+        navigator=saved;
+        next_navigation_frame(); poll();
+    }
     observed_frame(1,20); observed_frame(1,20); observed_frame(1,20);
     REQUIRE(VisionAlign_ControlOwned() && dx==0 && dy>0 && route_owned);
     next_navigation_frame();
@@ -114,6 +152,7 @@ int main(void)
     navigator.state=NAV_RUN; navigator.target=17; navigator.confirmed=16;
     navigator.exit_phase=EXIT_REVERSE; navigator.exit_remaining_mm=400;
     navigator.exit_started_ms=now;
+    navigation_rear_mm=1000; /* Retreat requires rear clearance above 45 mm. */
     vision_align.phase=VISION_ALIGN_TRACK;
     for(i=0;i<600;++i) { now+=20; next_navigation_frame(); }
     REQUIRE(navigator.pause_latched && navigator.state==NAV_PAUSED && navigator.target==17);
@@ -121,6 +160,9 @@ int main(void)
     for(i=0;i<5;++i) { now+=20; next_navigation_frame(); }
     REQUIRE(!navigator.pause_latched && navigator.state==NAV_RUN && navigator.target==17);
     REQUIRE(navigator.exit_remaining_mm==400 && navigator.reason==NAV_OK);
+    navigation_rear_mm=0;
+    now+=20; next_navigation_frame();
+    REQUIRE(navigator.state==NAV_WAIT_LIDAR && navigator.reason==NAV_NEED_LIDAR && navigator.output.vx==0);
     puts("PASS: actual CAN age, route-to-vision handover, same-target resume, tool pause and stick cancellation");
     return 0;
 }
