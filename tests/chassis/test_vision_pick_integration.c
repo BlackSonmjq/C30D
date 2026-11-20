@@ -114,7 +114,7 @@ int main(void)
                 REQUIRE(vision_pick_phase==PICK_IDLE && vision_detection_timed_out && strikes==before);
                 REQUIRE(vision_pick_attempts==2);
             }
-            camera_green=0;frame(0,0);
+            clear_fruit();
             REQUIRE(vision_pick_phase==PICK_IDLE && VisionAlign_GetPhase()==VISION_ALIGN_WAIT);
             REQUIRE(dx>.29f && dy==0 && strikes==before && vision_hit_report==id);
             REQUIRE(vision_pick_attempts==0);

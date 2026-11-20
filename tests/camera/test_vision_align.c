@@ -74,13 +74,13 @@ int main(void)
     out=frame(1,-3); REQUIRE(out.y_mps==0);
     out=frame(1,-3); REQUIRE(out.y_mps>-.04501f && out.y_mps<-.04499f);
     out=frame(1,0); REQUIRE(out.y_mps==0 && state.phase==VISION_ALIGN_TRACK);
-    out=update(0,1); REQUIRE(state.zero_frames==1 && state.phase==VISION_ALIGN_TRACK);
+    out=update(0,1); REQUIRE(state.center_history==1 && !state.approaching && state.phase==VISION_ALIGN_TRACK);
     out=frame(1,0); REQUIRE(state.phase==VISION_ALIGN_TRACK);
     out=frame(1,3); REQUIRE(state.zero_frames==0 && out.y_mps==0);
     out=frame(1,3); REQUIRE(out.y_mps==0);
     out=frame(1,3); REQUIRE(out.y_mps>0);
-    out=frame(1,-2); REQUIRE(state.zero_frames==1 && out.y_mps==0);
-    out=frame(1,2); REQUIRE(state.zero_frames==2 && out.y_mps==0);
+    out=frame(1,-2); REQUIRE(!state.approaching && (state.center_history&1U) && out.y_mps==0);
+    out=frame(1,2); REQUIRE(!state.approaching && (state.center_history&1U) && out.y_mps==0);
     out=frame(1,-1);
     REQUIRE(out.owned && out.x_mps==0 && out.y_mps==0 && state.phase==VISION_ALIGN_DONE); release_done();
     for(i=0;i<10;++i) { out=frame(1,i%2?2:-2); REQUIRE(!out.owned && out.y_mps==0 && state.phase==VISION_ALIGN_DONE); }

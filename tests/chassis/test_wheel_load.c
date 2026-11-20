@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "wheel_output.h"
+#include "heading_control.c"
 enum { Mec_Car, Mec_Car_V550, Diff_Car, Akm_Car, Tank_Car, Omni_Car };
 static int Car_Mode=Mec_Car,start_clear,clear_state,clear_done_once,wheel_output_active;
 static float Velocity_KP=300,Velocity_KI=300;
@@ -171,8 +172,11 @@ int main(void)
         WheelOutput_UpdateStartup(w,0,0,1);
         WheelOutput_UpdateStartup(w,.01f,0,1);
         wheel_output_translation_active=0;
-        assert(fabsf(WheelOutput_StartupAssist(w,0,.01f,0,1)-full*.0625f)<.01f);
-        assert(fabsf(WheelOutput_StartupAssist(w,0,-.01f,0,1)+full*.0625f)<.01f);
+        assert(fabsf(WheelOutput_StartupAssist(w,0,.01f,0,1)-full*.25f)<.01f);
+        assert(fabsf(WheelOutput_StartupAssist(w,0,-.01f,0,1)+full*.25f)<.01f);
+        assert(WheelOutput_StartupAssist(w,0,.005f,0,1)==0);
+        assert(WheelOutput_StartupAssist(w,-1000,.01f,0,1)==0); /* Preserve braking. */
+        assert(WheelOutput_StartupAssist(w,0,.01f,.01f,1)==0); /* Exit on movement. */
         wheel_output_translation_active=1;
         assert(WheelOutput_StartupAssist(w,0,.01f,0,1)==full);
     }
@@ -335,6 +339,37 @@ int main(void)
     production_targets(.04f,-.04f,0);
     production_pwm();
     assert(MOTOR_A.Target==0 && WheelOutput_StopAssist(0,.1f,1)==0);
-    puts("PASS: 10 motion patterns, repeated stall restart, stale PI removal, unequal loads, braking and anti-windup");
+    /* Coupled yaw controller + four real wheel PIs with unequal static friction.
+     * This is a finite software plant, not a calibration of the physical chassis. */
+    for(m=0;m<2;++m) {
+        float yaw=(m?1.0f:-1.0f)*.0104719755f, rate=0, peak=fabsf(yaw), tail_error=0;
+        HeadingControl_Reset(); WheelOutput_ResetStartup();
+        production_targets(0,0,0);
+        for(w=0;w<4;++w) motors[w]->Encoder=0;
+        production_pwm();
+        for(n=0;n<1500;++n) {
+            short raw=(short)(rate*57.2957795f*NAV_GYRO_LSB_PER_DPS);
+            float command=HeadingControl_HoldYaw(0,yaw,raw,0);
+            production_targets(0,0,command);
+            production_pwm();
+            for(w=0;w<4;++w) {
+                float output=(float)motors[w]->Motor_Pwm;
+                float speed=fabsf(output)>physical_ks[w]?(fabsf(output)-physical_ks[w])/physical_kv[w]:0;
+                if(output<0) speed=-speed;
+                motors[w]->Encoder+=(speed-motors[w]->Encoder)*.1f;
+                assert(abs(motors[w]->Motor_Pwm)<=16700);
+            }
+            rate=(-MOTOR_A.Encoder-MOTOR_B.Encoder+MOTOR_C.Encoder+MOTOR_D.Encoder)/
+                 (4.0f*(Axle_spacing+Wheel_spacing));
+            yaw+=rate*.01f;
+            if(fabsf(yaw)>peak) peak=fabsf(yaw);
+            if(n>=1000) tail_error+=fabsf(yaw);
+        }
+        printf("Small yaw plant sign %u: final=%f deg peak=%f deg tail_mean=%f deg\n",
+               m,yaw*57.2957795f,peak*57.2957795f,tail_error/500*57.2957795f);
+        assert(tail_error/500<.00383972f); /* Below 0.22 degrees in this software plant. */
+        assert(peak<.0174533f);
+    }
+    puts("PASS: 10 motion patterns, repeated stall restart, stale PI removal, unequal loads, braking, anti-windup and small-yaw friction plant");
     return 0;
 }

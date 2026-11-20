@@ -33,6 +33,8 @@ int main(void)
     frame(1,-3);frame(1,3);frame(1,3);
     REQUIRE(vision_pick_phase==PICK_WAIT && dy==0); /* Alternating signs cannot restart. */
     frame(1,3);
+    REQUIRE(vision_align.phase==VISION_ALIGN_DONE && dy==0);
+    frame(1,3); frame(1,3);
     REQUIRE(vision_align.phase==VISION_ALIGN_TRACK && dy>.044f && dy<.046f && strikes==0);
     frame(1,0);frame(1,0);frame(1,0);
     REQUIRE(vision_pick_phase==PICK_WAIT && dx==0 && dy==0 && strikes==0);

@@ -22,6 +22,8 @@ int main(void)
     for(i=0;i<20;++i) poll();
     REQUIRE(dy==0 && strikes==0); /* Cached snapshots cannot rearm. */
     frame(1,3);
+    REQUIRE(vision_align.phase==VISION_ALIGN_DONE && dy==0);
+    frame(1,3); frame(1,3);
     REQUIRE(vision_align.phase==VISION_ALIGN_TRACK && dy>.044f && dy<.046f && strikes==0);
     /* Slight remaining error during rear approach must also be corrected. */
     vision_align.approaching=1;vision_align.restart_frames=0;vision_align.restart_sign=0;

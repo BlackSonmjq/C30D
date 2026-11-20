@@ -27,7 +27,7 @@ int main(void)
     REQUIRE(vision_align.phase==VISION_ALIGN_WAIT && vision_hit_count==0);
     for(i=0;i<30;++i) frame(1,0);
     REQUIRE(strikes==2 && dx>.32f && !vision_hit_report);
-    camera_green=0;frame(0,0);
+    clear_fruit();
     REQUIRE(!vision_detection_timed_out && vision_pick_attempts==0);
     printf("PASS: safely returned failure rearms once, reconfirms alignment, then quota exhaustion releases; fault lock preserved (%u checks)\n",checks);
     return 0;

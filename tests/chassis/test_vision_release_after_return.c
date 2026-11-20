@@ -18,7 +18,7 @@ int main(void)
     now+=299; poll(); REQUIRE(vision_pick_phase==PICK_REPORT && dx==0);
     now+=1; poll(); REQUIRE(vision_detection_timed_out && vision_pick_phase==PICK_IDLE && dx==0);
     poll(); REQUIRE(dx>.29f && !vision_align.dx_hold_speed);
-    camera_green=0; frame(0,0); frame(0,0); frame(0,0); frame(0,0);
+    clear_fruit();
     camera_green=1; vision_hit_report=0;
     frame(1,20); frame(1,20); frame(1,20);
     for(i=0;i<15;++i) frame(1,0);

@@ -40,7 +40,7 @@
 #define NAV_LIDAR_MAX_MM            6000U
 #define NAV_POSITION_KP            0.0030f /* m/s per mm */
 #define NAV_CENTER_KP              0.0015f
-#define NAV_SCENE_TOL_MM           100.0f
+#define NAV_SCENE_TOL_MM           150.0f
 #define NAV_SIDE_FIELD_BAND_MM     80.0f
 #define NAV_ENTRY_CAPTURE_MM       80.0f
 #define NAV_HEADING_KP             1.8f

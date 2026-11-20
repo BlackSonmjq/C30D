@@ -26,7 +26,7 @@ int main(void)
     REQUIRE(vision_align.phase==VISION_ALIGN_WAIT && vision_pick_phase==PICK_IDLE);
     for(i=0;i<20;++i) frame(1,20);
     REQUIRE(dx>.29f && strikes==0 && vision_detection_timed_out);
-    camera_green=0;frame(0,0);
+    clear_fruit();
     REQUIRE(!vision_detection_timed_out);
     camera_green=1;frame(1,20);frame(1,20);frame(1,20);
     REQUIRE(vision_align.phase==VISION_ALIGN_TRACK);

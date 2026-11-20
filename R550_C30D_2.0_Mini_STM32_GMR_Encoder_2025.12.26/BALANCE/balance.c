@@ -44,15 +44,20 @@ static VisionStrike_State vision_pick;
 static uint8_t vision_pick_id;
 static uint8_t vision_pick_attempts;
 static uint8_t vision_detection_timed_out;
+static uint8_t vision_rearm_clear_active;
+static uint32_t vision_rearm_clear_since;
+static uint8_t vision_green_lost_active;
+static uint32_t vision_green_lost_since;
+static uint32_t vision_green_window_since, vision_green_window_frames, vision_green_window_good;
 static uint8_t vision_target_region;
 static uint8_t vision_resume_pending;
 static uint32_t vision_fruit_seen;
 static VisionPickRange_State vision_pick_range;
 static uint32_t vision_pick_phase_started;
-static uint32_t vision_pick_wait_started;
 #endif
 static uint8_t vision_align_ready;
 static uint16_t vision_align_blocked = 8192U;
+static uint8_t vision_stop_reason, vision_release_reason;
 uint8_t VisionAlign_GetPhase(void)
 { return vision_align.phase; }
 uint8_t VisionAlign_ControlOwned(void)
@@ -70,10 +75,13 @@ static uint8_t VisionAlign_ControlAllowed(void)
 }
 static void VisionAlign_ReleaseControl(void)
 {
+    if (VisionAlign_ControlOwned()) vision_release_reason = VISION_RELEASE_MODE;
+    vision_stop_reason = VISION_STOP_BASE;
     VisionAlign_Cancel(&vision_align);
     if (vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD)
         vision_pick_phase = PICK_IDLE;
 #if VISION_PICK_ENABLE
+    vision_green_lost_active = 0U;
     if (vision_pick_phase != PICK_WORK && vision_pick_phase != PICK_REPORT && vision_pick_phase != PICK_COOLDOWN)
         vision_target_region = 0U;
 #endif
@@ -118,6 +126,8 @@ void VisionAlign_GetDiagnostics(VisionAlign_Diagnostics *data)
                          fabsf((float)data->rx - 127.0f) >= 20.0f;
     data->ready = vision_align_ready;
     data->blocked = vision_align_blocked;
+    data->stop_reason = vision_stop_reason;
+    data->release_reason = vision_release_reason;
     data->vx_mps = Move_X;
     data->vy_mps = Move_Y;
     data->wz_radps = Move_Z;
@@ -1091,6 +1101,7 @@ static void VisionAlign_Drive(float forward, float left)
     uint32_t now = (uint32_t)xTaskGetTickCount();
     uint8_t ready;
 #if VISION_PICK_ENABLE
+    uint8_t release_reason = VISION_RELEASE_NONE;
     uint8_t previous_phase = vision_align.phase;
     uint8_t parked = vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD;
     uint8_t fruit_expired;
@@ -1109,8 +1120,12 @@ static void VisionAlign_Drive(float forward, float left)
         (ServoTask_IsBusy() ? 1024U : 0U) | (USART_ServoControlBusy() ? 2048U : 0U) |
         (RouteIO_WorkReserved() ? 4096U : 0U);
     ready = vision_align_ready = vision_align_blocked == 0U;
+    vision_stop_reason = ready ? VISION_STOP_NONE : VISION_STOP_BASE;
+    if (!ready && VisionAlign_ControlOwned() && vision_pick_phase != PICK_WORK)
+        vision_release_reason = VISION_RELEASE_BASE;
 #if VISION_PICK_ENABLE
     if (vision_pick_phase == PICK_WORK) {
+        vision_stop_reason = VISION_STOP_WORK;
         /* Ignore all vision decisions until safe return; consume frames without acting. */
         vision_align.last_frames = vision_manual_frames = camera.frames;
         vision_manual_seen = now;
@@ -1137,8 +1152,10 @@ static void VisionAlign_Drive(float forward, float left)
     }
     if (vision_resume_pending) {
         if (camera.frames == vision_align.last_frames) {
+            vision_stop_reason = VISION_STOP_REPORT;
             if ((uint32_t)(now - vision_pick_phase_started) >= VISION_ALIGN_FRESH_MS) {
                 vision_resume_pending = 0U;
+                release_reason = VISION_RELEASE_CAMERA_TIMEOUT;
                 goto detection_timeout;
             }
             VisionAlign_HoldYaw();
@@ -1146,18 +1163,62 @@ static void VisionAlign_Drive(float forward, float left)
         }
         vision_resume_pending = 0U;
     }
-    /* A fresh missing green fruit ends automatic ownership before the tool starts. */
-    if (ready && camera.frames != vision_manual_frames && camera.green == 0U &&
+    /* Check actual received packets; cached or coalesced task snapshots are not votes. */
+    if (ready && vision_target_region && vision_pick_phase <= PICK_HOLD &&
+        (parked || was_automatic || previous_phase == VISION_ALIGN_LOST) &&
+        (uint32_t)(now - vision_green_window_since) >= VISION_PICK_GREEN_WINDOW_MS) {
+        uint32_t frames = camera.frames - vision_green_window_frames;
+        uint32_t green = camera.green_frames - vision_green_window_good;
+        vision_green_window_since = now;
+        vision_green_window_frames = camera.frames;
+        vision_green_window_good = camera.green_frames;
+        if (!frames || green <= frames / 2U) {
+            release_reason = VISION_RELEASE_GREEN_RATIO;
+            goto detection_timeout;
+        }
+    }
+    /* A locked target may survive a brief missing-green observation while parked.
+     * Consume real snapshots, but never move or qualify a hit using missing fruit. */
+    if (ready && vision_target_region && !vision_green_lost_active &&
+        camera.frames != vision_manual_frames && camera.green == 0U &&
         (parked || was_automatic || previous_phase == VISION_ALIGN_LOST)) {
-        vision_target_region = 0U;
-        vision_pick_attempts = 0U;
-        vision_pick_phase = PICK_IDLE;
-        vision_manual_frames = vision_align.last_frames = camera.frames;
-        vision_manual_seen = now;
-        VisionAlign_Cancel(&vision_align);
-        vision_align.phase = VISION_ALIGN_WAIT;
-        VisionAlign_HardStop();
-        return;
+        vision_green_lost_active = 1U;
+        vision_green_lost_since = now;
+        vision_align.dx_hold_speed = 0.0f;
+        vision_align.zero_frames = vision_align.restart_frames = vision_align.reverse_frames = 0U;
+        vision_align.center_history = 0U;
+        if (parked) vision_pick_phase = PICK_WAIT;
+        else {
+            vision_align.phase = VISION_ALIGN_LOST;
+            vision_align.confirmed = 0U;
+        }
+    }
+    if (vision_green_lost_active) {
+        if (!ready) vision_green_lost_active = 0U;
+        else if (camera.frames == vision_manual_frames &&
+                 (uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS) {
+            release_reason = VISION_RELEASE_CAMERA_TIMEOUT;
+            goto detection_timeout;
+        }
+        else if (!parked && (uint32_t)(now - vision_align.started_ms) >= VISION_ALIGN_TIMEOUT_MS) {
+            release_reason = VISION_RELEASE_ALIGN_TIMEOUT;
+            goto detection_timeout;
+        }
+        else if (camera.frames != vision_manual_frames && camera.green == 1U) {
+            vision_green_lost_active = 0U;
+        } else {
+            if ((uint32_t)(now - vision_green_lost_since) >= VISION_PICK_GREEN_GAP_MS) {
+                release_reason = VISION_RELEASE_GREEN_LOST;
+                goto detection_timeout;
+            }
+            if (camera.frames != vision_manual_frames) {
+                vision_manual_frames = vision_align.last_frames = camera.frames;
+                vision_manual_seen = vision_align.last_seen_ms = now;
+            }
+            vision_stop_reason = VISION_STOP_GREEN_WAIT;
+            VisionAlign_HoldYaw();
+            return;
+        }
     }
     /* Evaluate the raw locked number before substituting it into the local snapshot.
      * Cached frames, another fruit and simulated DX cannot extend this deadline. */
@@ -1176,6 +1237,10 @@ static void VisionAlign_Drive(float forward, float left)
         camera.green == 1U && camera.region >= 1U && camera.region <= 4U)
     {
         vision_target_region = camera.region;
+        vision_release_reason = VISION_RELEASE_NONE;
+        vision_green_window_since = now;
+        vision_green_window_frames = camera.frames;
+        vision_green_window_good = camera.green_frames;
         ++vision_lock_count;
     }
     if (vision_target_region && camera.green == 1U) {
@@ -1183,6 +1248,9 @@ static void VisionAlign_Drive(float forward, float left)
             vision_fruit_seen = now;
         camera.region = vision_target_region;
     }
+    /* A receive gap cannot qualify continuous absence for rearming. */
+    if ((uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS)
+        vision_rearm_clear_active = 0U;
 #endif
     if (camera.frames != vision_manual_frames) {
         vision_manual_frames = camera.frames;
@@ -1204,27 +1272,46 @@ static void VisionAlign_Drive(float forward, float left)
     /* A timed-out green episode cannot immediately steal manual control back. */
     if (vision_detection_timed_out) {
         vision_target_region = 0U;
-        if (camera.frames != vision_align.last_frames && camera.green == 0U) {
-            vision_detection_timed_out = 0U;
-            vision_pick_attempts = 0U;
+        /* Consume absence for the completed-job latch as well as reentry. */
+        (void)VisionStrike_Update(&vision_pick, &camera, now, camera.green != 0U);
+        if (camera.frames != vision_align.last_frames) {
+            if (camera.green != 0U) vision_rearm_clear_active = 0U;
+            else if (!vision_rearm_clear_active) {
+                vision_rearm_clear_active = 1U;
+                vision_rearm_clear_since = now;
+            } else if ((uint32_t)(now - vision_rearm_clear_since) >= VISION_PICK_REARM_CLEAR_MS) {
+                vision_detection_timed_out = 0U;
+                vision_pick_attempts = 0U;
+                vision_rearm_clear_active = 0U;
+            }
         }
         vision_align.last_frames = camera.frames;
         ManualMecanum_Drive(forward, left, 0U);
         return;
     }
+    vision_rearm_clear_active = 0U;
     if (fruit_expired &&
         ((uint32_t)(now - vision_fruit_seen) >= VISION_PICK_FRUIT_GAP_MS ||
          (uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS))
+    {
+        release_reason = (uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS ?
+            VISION_RELEASE_CAMERA_TIMEOUT : VISION_RELEASE_REGION_TIMEOUT;
         goto detection_timeout;
+    }
     /* A transient absence during the parked decision belongs to the same episode. */
     if (!parked && vision_pick_phase != PICK_WORK && camera.frames &&
         camera.frames != vision_align.last_frames && camera.green == 0U)
         vision_pick_attempts = 0U;
     if (vision_pick_phase == PICK_REPORT) {
+        vision_stop_reason = VISION_STOP_REPORT;
         /* A fresh G=0 exits immediately. */
         if (camera.frames != vision_align.last_frames) {
             vision_align.last_frames = camera.frames;
             if (camera.green == 0U) {
+                vision_release_reason = VISION_RELEASE_POST_HIT_EMPTY;
+                vision_detection_timed_out = 1U;
+                vision_rearm_clear_active = 1U;
+                vision_rearm_clear_since = now;
                 (void)VisionStrike_Update(&vision_pick, &camera, now, 0U);
                 VisionAlign_Cancel(&vision_align);
                 vision_align.phase = VISION_ALIGN_WAIT;
@@ -1232,9 +1319,12 @@ static void VisionAlign_Drive(float forward, float left)
                 ManualMecanum_Drive(forward, left, 0U);
                 return;
             }
-            if (camera.green == 1U && vision_pick_attempts > VISION_PICK_MAX_REPEATS)
+            if (camera.green == 1U && vision_pick_attempts > VISION_PICK_MAX_REPEATS) {
+                release_reason = VISION_RELEASE_QUOTA;
                 goto detection_timeout;
+            }
             if (camera.green == 1U && camera.region == 0U) {
+                vision_release_reason = VISION_RELEASE_POST_HIT_REGION;
                 vision_detection_timed_out = 1U;
                 vision_pick_phase = PICK_IDLE;
                 VisionAlign_Cancel(&vision_align);
@@ -1257,6 +1347,7 @@ static void VisionAlign_Drive(float forward, float left)
         return;
     }
     if (vision_pick_phase == PICK_COOLDOWN) {
+        vision_stop_reason = VISION_STOP_COOLDOWN;
         /* Discard even the snapshot present at expiry; resume on a later frame. */
         vision_align.last_frames = vision_pick.last_frames = camera.frames;
         if ((uint32_t)(now - vision_pick_phase_started) >= VISION_PICK_COOLDOWN_MS) {
@@ -1269,9 +1360,13 @@ static void VisionAlign_Drive(float forward, float left)
                 vision_pick.last_seen_ms = now;
                 VisionAlign_Begin(&vision_align, now);
                 vision_align.last_seen_ms = now;
+                vision_green_window_since = now;
+                vision_green_window_frames = camera.frames;
+                vision_green_window_good = camera.green_frames;
                 VisionAlign_HardStop();
                 return;
             }
+            vision_release_reason = VISION_RELEASE_COOLDOWN;
             vision_detection_timed_out = 1U;
             VisionAlign_Cancel(&vision_align);
             vision_align.phase = VISION_ALIGN_WAIT;
@@ -1304,6 +1399,7 @@ static void VisionAlign_Drive(float forward, float left)
         (vision_align.phase == VISION_ALIGN_DONE ||
          (vision_align.phase == VISION_ALIGN_TRACK && vision_align.approaching))) {
         if (camera.frames != vision_align.last_frames) {
+            uint8_t small_error;
             int8_t sign = camera.pole == 1U && camera.green == 1U &&
                 !VisionAlign_Centered(camera.offset) ? (camera.offset > 0 ? 1 : -1) : 0;
             /* +/-2 identifies a persistent rear error separately from lateral +/-1. */
@@ -1313,13 +1409,28 @@ static void VisionAlign_Drive(float forward, float left)
                 if (rear_filtered < 45U ||
                     rear_filtered < VISION_ALIGN_REAR_MM - VISION_ALIGN_REAR_TOLERANCE_MM) sign = -2;
             }
-            if (!sign || sign != vision_align.restart_sign) vision_align.restart_frames = 0U;
+            small_error = parked &&
+                ((sign == 1 || sign == -1) ? (camera.offset > -VISION_ALIGN_RESTART_DX && camera.offset < VISION_ALIGN_RESTART_DX) :
+                 (rear_filtered >= 42U && rear_filtered <= 51U));
+            if (!sign || sign != vision_align.restart_sign || !vision_align.restart_frames) {
+                vision_align.restart_frames = 0U;
+                vision_align.restart_since_ms = now;
+            }
             vision_align.restart_sign = sign;
-            if (sign && ++vision_align.restart_frames >= VISION_ALIGN_RESTART_FRAMES) {
+            if (sign && parked) vision_stop_reason = VISION_STOP_REALIGN_WAIT;
+            if (sign && vision_align.restart_frames < VISION_ALIGN_RESTART_FRAMES)
+                ++vision_align.restart_frames;
+            if (sign && vision_align.restart_frames >= VISION_ALIGN_RESTART_FRAMES &&
+                (!small_error || (uint32_t)(now - vision_align.restart_since_ms) >= VISION_ALIGN_PARK_RESTART_MS)) {
+                /* A completed park starts a new correction attempt; LOST keeps its deadline. */
+                if (parked) vision_align.started_ms = now;
                 vision_align.phase = VISION_ALIGN_TRACK;
                 vision_align.approaching = sign == 2 || sign == -2;
                 vision_align.zero_frames = vision_align.restart_frames = 0U;
+                vision_align.center_history = 0U;
+                vision_align.dx_seen_ms = now; /* Restart is confirmed by a fresh real B/G frame. */
                 vision_pick_phase = PICK_IDLE;
+                vision_stop_reason = VISION_STOP_NONE;
             }
         }
     }
@@ -1338,9 +1449,17 @@ static void VisionAlign_Drive(float forward, float left)
     command = VisionAlign_Update(&vision_align, &camera, now, manual_active, ready,
         rear_filtered, align_lidar.fresh && rear_filtered != 0U);
 #if VISION_PICK_ENABLE
+    if (command.owned && command.x_mps == 0.0f && command.y_mps == 0.0f) {
+        if (!align_lidar.fresh || !rear_filtered) vision_stop_reason = VISION_STOP_LIDAR;
+        else if (camera.pole != 1U || camera.green != 1U || vision_align.phase == VISION_ALIGN_LOST)
+            vision_stop_reason = VISION_STOP_POLE_WAIT;
+        else if (vision_stop_reason == VISION_STOP_NONE) vision_stop_reason = VISION_STOP_CONFIRM;
+    }
     /* An exhausted attempt quota cannot enter an unfinishable stationary hold. */
-    if (vision_align.phase == VISION_ALIGN_DONE && vision_pick_attempts > VISION_PICK_MAX_REPEATS)
+    if (vision_align.phase == VISION_ALIGN_DONE && vision_pick_attempts > VISION_PICK_MAX_REPEATS) {
+        release_reason = VISION_RELEASE_QUOTA;
         vision_detection_timed_out = 1U;
+    }
     /* Alignment completion requires a locked target, not a new REGION reading. */
     if (ready && !parked && vision_align.phase == VISION_ALIGN_DONE &&
         (camera.pole != 1U || camera.green != 1U || !vision_target_region ||
@@ -1352,7 +1471,6 @@ static void VisionAlign_Drive(float forward, float left)
         vision_detection_timed_out = 1U;
     if (vision_align.phase == VISION_ALIGN_DONE && previous_phase != VISION_ALIGN_DONE && !vision_pick.latched) {
         vision_pick_phase = PICK_WAIT;
-        vision_pick_wait_started = now;
     }
     {
         uint8_t blocked = !ready || (!vision_pick.latched && (vision_align.phase != VISION_ALIGN_DONE ||
@@ -1375,20 +1493,26 @@ static void VisionAlign_Drive(float forward, float left)
                 fabsf(MOTOR_B.Encoder) <= VISION_PICK_STOP_MPS &&
                 fabsf(MOTOR_C.Encoder) <= VISION_PICK_STOP_MPS &&
                 fabsf(MOTOR_D.Encoder) <= VISION_PICK_STOP_MPS;
+            if (vision_stop_reason != VISION_STOP_REALIGN_WAIT) {
+                if (!ready) vision_stop_reason = VISION_STOP_BASE;
+                else if (camera.pole != 1U || camera.green != 1U) vision_stop_reason = VISION_STOP_POLE_WAIT;
+                else if (!align_lidar.fresh) vision_stop_reason = VISION_STOP_LIDAR;
+                else if (blocked || align_lidar.mm[ROUTE_LIDAR_BEHIND] < 45U ||
+                    align_lidar.mm[ROUTE_LIDAR_BEHIND] >= VISION_PICK_REAR_MAX_MM ||
+                    rear_filtered < 42U || rear_filtered > 48U) vision_stop_reason = VISION_STOP_POSITION;
+                else if (vision_hit_report) vision_stop_reason = VISION_STOP_REPORT;
+                else vision_stop_reason = qualified ? VISION_STOP_HOLD : VISION_STOP_WHEELS;
+            }
             if (!qualified) vision_pick_phase = PICK_WAIT;
             switch (vision_pick_phase) {
             case PICK_WAIT:
-                if ((uint32_t)(now - vision_pick_wait_started) >= VISION_PICK_WAIT_MS) {
-                    vision_detection_timed_out = 1U;
-                } else if (qualified) {
+                if (qualified) {
                     vision_pick_phase = PICK_HOLD;
                     vision_pick_phase_started = now;
                 }
                 break;
             case PICK_HOLD:
-                if ((uint32_t)(now - vision_pick_wait_started) >= VISION_PICK_WAIT_MS) {
-                    vision_detection_timed_out = 1U;
-                } else if ((uint32_t)(now - vision_pick_phase_started) >= VISION_PICK_STOP_HOLD_MS &&
+                if ((uint32_t)(now - vision_pick_phase_started) >= VISION_PICK_STOP_HOLD_MS &&
                     vision_target_region >= 1U && vision_target_region <= 4U &&
                     vision_pick_attempts <= VISION_PICK_MAX_REPEATS &&
                     StepperTask_RequestMango(vision_target_region)) {
@@ -1397,6 +1521,7 @@ static void VisionAlign_Drive(float forward, float left)
                     VisionStrike_Accept(&vision_pick);
                     VisionAlign_Cancel(&vision_align);
                     vision_pick_phase = PICK_WORK;
+                    vision_stop_reason = VISION_STOP_WORK;
                 }
                 break;
             default: break;
@@ -1409,6 +1534,19 @@ static void VisionAlign_Drive(float forward, float left)
     }
     if (vision_detection_timed_out) {
 detection_timeout:
+        if (release_reason == VISION_RELEASE_NONE) {
+            if ((uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS)
+                release_reason = VISION_RELEASE_CAMERA_TIMEOUT;
+            else if (vision_align.phase == VISION_ALIGN_TIMEOUT ||
+                     (vision_align.phase == VISION_ALIGN_LOST &&
+                      (uint32_t)(now - vision_align.started_ms) >= VISION_ALIGN_TIMEOUT_MS))
+                release_reason = VISION_RELEASE_ALIGN_TIMEOUT;
+            else release_reason = VISION_RELEASE_TARGET_INVALID;
+        }
+        vision_release_reason = release_reason;
+        vision_stop_reason = VISION_STOP_RELEASE;
+        vision_green_lost_active = 0U;
+        vision_rearm_clear_active = 0U;
         vision_detection_timed_out = 1U;
         vision_align.last_frames = camera.frames;
         vision_target_region = 0U;
@@ -1434,9 +1572,16 @@ detection_timeout:
                                   MOTOR_C.Encoder + MOTOR_D.Encoder) * 0.25f;
         if ((command.x_mps > 0.0f && forward_feedback < -VISION_PICK_STOP_MPS) ||
             (command.x_mps < 0.0f && forward_feedback > VISION_PICK_STOP_MPS)) {
+            vision_stop_reason = VISION_STOP_BRAKE;
             VisionAlign_HoldYaw();
             return;
         }
+        if (command.x_mps > 0.0f && command.x_mps >
+            (align_lidar.mm[ROUTE_LIDAR_FRONT] > 45U ? (align_lidar.mm[ROUTE_LIDAR_FRONT]-45U)*0.002f : 0.0f))
+            vision_stop_reason = VISION_STOP_FRONT_LIMIT;
+        if (command.x_mps < 0.0f && -command.x_mps >
+            (align_lidar.mm[ROUTE_LIDAR_BEHIND] > 45U ? (align_lidar.mm[ROUTE_LIDAR_BEHIND]-45U)*0.004f : 0.0f))
+            vision_stop_reason = VISION_STOP_REAR_LIMIT;
         ManualMecanum_Drive(command.x_mps, command.y_mps, 1U);
         return;
     }

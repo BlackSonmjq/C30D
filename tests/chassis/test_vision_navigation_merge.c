@@ -136,10 +136,21 @@ int main(void)
     REQUIRE(VisionAlign_ControlOwned() && dx==0 && dy>0 && route_owned);
     next_navigation_frame();
     REQUIRE(navigator.pause_latched && navigator.target==target && navigator.output.vx==0);
+    /* Navigation's paused zero must not erase the active visual owner's ramp
+       every chassis tick; otherwise 0.24m/s stays at the first 0.01m/s step. */
+    smooth_control.VX=0; smooth_control.VY=.12f;
+    for(i=0;i<5;++i) {
+        observed_frame(1,20);
+        REQUIRE(command.quick_stop && VisionAlign_ControlOwned());
+        REQUIRE(smooth_control.VY>.119f && dy>.19f);
+    }
     camera_green=0; observed_frame(0,0);
+    REQUIRE(VisionAlign_ControlOwned());
+    for(i=0;i<40;++i) { next_navigation_frame(); observed_frame(0,0); }
     REQUIRE(!VisionAlign_ControlOwned());
     for(i=0;i<5;++i) { now+=20; next_navigation_frame(); poll(); }
     REQUIRE(route_owned && navigator.target==target && !navigator.pause_latched && dx>0);
+    for(i=0;i<7;++i) { next_navigation_frame(); observed_frame(0,0); }
     camera_green=1; observed_frame(1,20); observed_frame(1,20); observed_frame(1,20);
     next_navigation_frame();
     for(i=0;i<15;++i) { next_navigation_frame(); observed_frame(1,0); }

@@ -28,6 +28,10 @@ with tempfile.TemporaryDirectory(prefix='wheel-load-') as temp:
     build.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(BALANCE/'wheel_output.h',build/'wheel_output.h')
     shutil.copyfile(ROOT/'tests/chassis/test_wheel_load.c',build/'test.c')
+    for name in ('heading_control.c','heading_control.h'):
+        shutil.copyfile(BALANCE/name,build/name)
+    shutil.copyfile(ROOT/'tests/chassis/stubs/sys.h',build/'sys.h')
+    shutil.copyfile(BALANCE.parent/'USER/nav_config.h',build/'nav_config.h')
     (build/'production.inc').write_text(logic,encoding='utf-8')
     if not compiler:
         # Finite multi-wheel plant loops execute software floating point on
