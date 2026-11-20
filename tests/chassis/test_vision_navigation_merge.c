@@ -140,6 +140,7 @@ int main(void)
     REQUIRE(!VisionAlign_ControlOwned());
     for(i=0;i<5;++i) { now+=20; next_navigation_frame(); poll(); }
     REQUIRE(route_owned && navigator.target==target && !navigator.pause_latched && dx>0);
+    for(i=0;i<7;++i) { next_navigation_frame(); observed_frame(0,0); }
     camera_green=1; observed_frame(1,20); observed_frame(1,20); observed_frame(1,20);
     next_navigation_frame();
     for(i=0;i<15;++i) { next_navigation_frame(); observed_frame(1,0); }

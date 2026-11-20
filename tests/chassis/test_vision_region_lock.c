@@ -44,7 +44,8 @@ int main(void)
     for(i=0;i<40;++i) observation(1,1,0,0);
     REQUIRE(vision_detection_timed_out && vision_pick_phase==PICK_IDLE);
     poll();REQUIRE(!vision_target_region);
-    observation(0,0,0,0);REQUIRE(!vision_detection_timed_out && !vision_pick_attempts);
+    for(i=0;i<7;++i) observation(0,0,0,0);
+    REQUIRE(!vision_detection_timed_out && !vision_pick_attempts);
     observation(1,1,1,20);REQUIRE(vision_target_region==1);
     now+=300;poll();REQUIRE(!vision_target_region && strikes==2);
     observation(1,1,2,20);REQUIRE(vision_target_region==2);

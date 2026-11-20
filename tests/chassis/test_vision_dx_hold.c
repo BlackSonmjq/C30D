@@ -24,20 +24,20 @@ int main(void)
     frame(0,0);REQUIRE(dy<-.239f && dy>=-.24001f);
     camera_green=0;frame(0,0);
     REQUIRE(vision_align.phase==VISION_ALIGN_WAIT && !vision_target_region && dy==0);
-    camera_green=1;frame(1,20);frame(1,20);frame(1,20);
+    clear_fruit();camera_green=1;frame(1,20);frame(1,20);frame(1,20);
     frame(0,0);lidar.fresh=0;poll();
     REQUIRE(dx==0 && dy==0 && vision_align.phase==VISION_ALIGN_LOST);
     lidar.fresh=1;for(i=0;i<6;++i) frame(1,20);
     frame(1,0); /* Never coast on the old direction after a real centered DX. */
     frame(0,0);REQUIRE(dx==0 && dy==0 && strikes==0);
-    camera_green=0;frame(0,0);camera_green=1;
+    clear_fruit();camera_green=1;
     frame(1,8);frame(1,8);frame(1,8);
     REQUIRE(dy>.119f && dy<.121f);
     frame(0,0);REQUIRE(dy>.179f && dy<.181f);
-    camera_green=0;frame(0,0);camera_green=1;
+    clear_fruit();camera_green=1;
     frame(1,20);frame(1,20);frame(1,20);
     frame(0,0);EN=0;poll();REQUIRE(dx==0 && dy==0);
-    EN=1;camera_green=0;frame(0,0);camera_green=1;
+    EN=1;clear_fruit();camera_green=1;
     frame(1,20);frame(1,20);frame(1,20);
     lidar.mm[ROUTE_LIDAR_BEHIND]=70;
     frame(1,0);frame(1,0);frame(1,0);

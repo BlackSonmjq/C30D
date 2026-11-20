@@ -48,6 +48,8 @@ static VisionPickPhase vision_pick_phase;
 static uint8_t vision_pick_id;
 static uint8_t vision_pick_attempts;
 static uint8_t vision_detection_timed_out;
+static uint8_t vision_rearm_clear_active;
+static uint32_t vision_rearm_clear_since;
 static VisionPickRange_State vision_pick_range;
 static uint8_t vision_target_region;
 static uint8_t vision_resume_pending;
@@ -57,8 +59,6 @@ static uint32_t vision_hit_count;
 static uint32_t vision_lock_count;
 static uint32_t vision_pick_phase_started;
 volatile uint8_t vision_hit_report;
-static uint32_t vision_pick_wait_started;
-static uint8_t vision_pick_wait_active;
 static int chassis_stopped=1;
 static uint8_t vision_align_ready;
 static uint16_t vision_align_blocked;
@@ -102,6 +102,13 @@ static void frame(int pole, int offset)
     data[2]=(uint8_t)offset;data[4]=pole && camera_green ? 2 : 0;
     for(i=0;i<6;++i) Camera_Push(&camera,data[i]);
     now+=50;poll();
+}
+/* Explicitly model stable absence when a test starts a separate fruit episode. */
+static void clear_fruit(void)
+{
+    unsigned k;
+    camera_green=0;
+    for(k=0;k<=VISION_PICK_REARM_CLEAR_MS/50U;++k) frame(0,0);
 }
 static void release_done(void) { unsigned k; imu.gyro.z=0; for(k=0;k<20;++k) frame(1,0); }
 static void restart(void)

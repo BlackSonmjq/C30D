@@ -1,5 +1,7 @@
 # Vision Parking Deadline Implementation Plan
 
+> 后续已按用户“5s可以删除”取消本方案的停车倒计时，本文保留历史实施记录。现行规则见 `docs/视觉控制逻辑.md`：目标丢失立即释放，连续300 ms新G=0解封，不要求拨杆动作。
+
 > **For agentic workers:** Use superpowers:executing-plans to implement this plan inline. Steps use checkbox syntax for tracking.
 
 **Goal:** 首次停车待击打后5秒未接受K任务则释放视觉控制，重新调节不能刷新期限。

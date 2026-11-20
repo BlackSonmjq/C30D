@@ -44,13 +44,13 @@ static VisionStrike_State vision_pick;
 static uint8_t vision_pick_id;
 static uint8_t vision_pick_attempts;
 static uint8_t vision_detection_timed_out;
+static uint8_t vision_rearm_clear_active;
+static uint32_t vision_rearm_clear_since;
 static uint8_t vision_target_region;
 static uint8_t vision_resume_pending;
 static uint32_t vision_fruit_seen;
 static VisionPickRange_State vision_pick_range;
 static uint32_t vision_pick_phase_started;
-static uint32_t vision_pick_wait_started;
-static uint8_t vision_pick_wait_active;
 #endif
 static uint8_t vision_align_ready;
 static uint16_t vision_align_blocked = 8192U;
@@ -75,7 +75,6 @@ static void VisionAlign_ReleaseControl(void)
     if (vision_pick_phase == PICK_WAIT || vision_pick_phase == PICK_HOLD)
         vision_pick_phase = PICK_IDLE;
 #if VISION_PICK_ENABLE
-    vision_pick_wait_active = 0U;
     if (vision_pick_phase != PICK_WORK && vision_pick_phase != PICK_REPORT && vision_pick_phase != PICK_COOLDOWN)
         vision_target_region = 0U;
 #endif
@@ -1153,7 +1152,9 @@ static void VisionAlign_Drive(float forward, float left)
         (parked || was_automatic || previous_phase == VISION_ALIGN_LOST)) {
         vision_target_region = 0U;
         vision_pick_attempts = 0U;
-        vision_pick_wait_active = 0U;
+        vision_detection_timed_out = 1U;
+        vision_rearm_clear_active = 1U;
+        vision_rearm_clear_since = now;
         vision_pick_phase = PICK_IDLE;
         vision_manual_frames = vision_align.last_frames = camera.frames;
         vision_manual_seen = now;
@@ -1162,11 +1163,6 @@ static void VisionAlign_Drive(float forward, float left)
         VisionAlign_HardStop();
         return;
     }
-    /* First parking starts one deadline, including any later position correction.
-     * Accepted tool work has returned above and must retain its safe-return lock. */
-    if (ready && vision_pick_wait_active &&
-        (uint32_t)(now - vision_pick_wait_started) >= VISION_PICK_WAIT_MS)
-        goto detection_timeout;
     /* Evaluate the raw locked number before substituting it into the local snapshot.
      * Cached frames, another fruit and simulated DX cannot extend this deadline. */
     fruit_expired = ready && vision_target_region && vision_pick_phase <= PICK_HOLD &&
@@ -1191,6 +1187,9 @@ static void VisionAlign_Drive(float forward, float left)
             vision_fruit_seen = now;
         camera.region = vision_target_region;
     }
+    /* A receive gap cannot qualify continuous absence for rearming. */
+    if ((uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS)
+        vision_rearm_clear_active = 0U;
 #endif
     if (camera.frames != vision_manual_frames) {
         vision_manual_frames = camera.frames;
@@ -1212,14 +1211,24 @@ static void VisionAlign_Drive(float forward, float left)
     /* A timed-out green episode cannot immediately steal manual control back. */
     if (vision_detection_timed_out) {
         vision_target_region = 0U;
-        if (camera.frames != vision_align.last_frames && camera.green == 0U) {
-            vision_detection_timed_out = 0U;
-            vision_pick_attempts = 0U;
+        /* Consume absence for the completed-job latch as well as reentry. */
+        (void)VisionStrike_Update(&vision_pick, &camera, now, camera.green != 0U);
+        if (camera.frames != vision_align.last_frames) {
+            if (camera.green != 0U) vision_rearm_clear_active = 0U;
+            else if (!vision_rearm_clear_active) {
+                vision_rearm_clear_active = 1U;
+                vision_rearm_clear_since = now;
+            } else if ((uint32_t)(now - vision_rearm_clear_since) >= VISION_PICK_REARM_CLEAR_MS) {
+                vision_detection_timed_out = 0U;
+                vision_pick_attempts = 0U;
+                vision_rearm_clear_active = 0U;
+            }
         }
         vision_align.last_frames = camera.frames;
         ManualMecanum_Drive(forward, left, 0U);
         return;
     }
+    vision_rearm_clear_active = 0U;
     if (fruit_expired &&
         ((uint32_t)(now - vision_fruit_seen) >= VISION_PICK_FRUIT_GAP_MS ||
          (uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS))
@@ -1233,6 +1242,9 @@ static void VisionAlign_Drive(float forward, float left)
         if (camera.frames != vision_align.last_frames) {
             vision_align.last_frames = camera.frames;
             if (camera.green == 0U) {
+                vision_detection_timed_out = 1U;
+                vision_rearm_clear_active = 1U;
+                vision_rearm_clear_since = now;
                 (void)VisionStrike_Update(&vision_pick, &camera, now, 0U);
                 VisionAlign_Cancel(&vision_align);
                 vision_align.phase = VISION_ALIGN_WAIT;
@@ -1291,10 +1303,7 @@ static void VisionAlign_Drive(float forward, float left)
     }
 #endif
 #if VISION_PICK_ENABLE
-    if (!ready) {
-        vision_target_region = 0U;
-        vision_pick_wait_active = 0U;
-    }
+    if (!ready) vision_target_region = 0U;
     if (ready && !vision_target_region && vision_pick_phase == PICK_IDLE &&
         (vision_align.phase == VISION_ALIGN_IDLE || vision_align.phase == VISION_ALIGN_WAIT)) {
         (void)VisionStrike_Update(&vision_pick, &camera, now, 0U);
@@ -1363,10 +1372,6 @@ static void VisionAlign_Drive(float forward, float left)
         vision_detection_timed_out = 1U;
     if (vision_align.phase == VISION_ALIGN_DONE && previous_phase != VISION_ALIGN_DONE && !vision_pick.latched) {
         vision_pick_phase = PICK_WAIT;
-        if (!vision_pick_wait_active) {
-            vision_pick_wait_started = now;
-            vision_pick_wait_active = 1U;
-        }
     }
     {
         uint8_t blocked = !ready || (!vision_pick.latched && (vision_align.phase != VISION_ALIGN_DONE ||
@@ -1403,7 +1408,6 @@ static void VisionAlign_Drive(float forward, float left)
                     vision_pick_attempts <= VISION_PICK_MAX_REPEATS &&
                     StepperTask_RequestMango(vision_target_region)) {
                     ++vision_pick_attempts;
-                    vision_pick_wait_active = 0U;
                     vision_pick_id = vision_target_region;
                     VisionStrike_Accept(&vision_pick);
                     VisionAlign_Cancel(&vision_align);
@@ -1420,7 +1424,7 @@ static void VisionAlign_Drive(float forward, float left)
     }
     if (vision_detection_timed_out) {
 detection_timeout:
-        vision_pick_wait_active = 0U;
+        vision_rearm_clear_active = 0U;
         vision_detection_timed_out = 1U;
         vision_align.last_frames = camera.frames;
         vision_target_region = 0U;

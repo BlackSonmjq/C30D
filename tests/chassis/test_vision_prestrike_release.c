@@ -31,7 +31,7 @@ int main(void)
     camera_green=0; frame(0,0);
     REQUIRE(vision_pick_phase==PICK_IDLE && vision_align.dx_hold_speed==0);
     pose.yaw_rad=0; vision_hit_report=0;
-    frame(0,0); frame(0,0); frame(0,0);
+    clear_fruit();
     camera_green=1;
     for(i=0;i<6;++i) frame(1,0);
     REQUIRE(vision_pick_phase==PICK_HOLD);
@@ -39,7 +39,7 @@ int main(void)
     frame(0,0);
     REQUIRE(!vision_target_region && vision_align.phase==VISION_ALIGN_WAIT && !dy && strikes==1);
     poll(); REQUIRE(dy>.29f && !vision_align.dx_hold_speed);
-    frame(0,0); camera_green=1;
+    clear_fruit(); camera_green=1;
     for(i=0;i<3;++i) frame(1,20);
     REQUIRE(vision_align.phase==VISION_ALIGN_TRACK);
     /* Keep sending real DX without a fruit number almost to the deadline. */
@@ -51,7 +51,7 @@ int main(void)
     REQUIRE(vision_detection_timed_out && !vision_target_region && !vision_align.dx_hold_speed);
     REQUIRE(dx==0 && dy==0 && dz==0 && strikes==1);
     poll(); REQUIRE(dy>.29f && vision_align.phase==VISION_ALIGN_WAIT);
-    camera_green=0; frame(0,0); camera_green=1;
+    clear_fruit(); camera_green=1;
     for(i=0;i<6;++i) frame(1,0);
     REQUIRE(vision_pick_phase==PICK_HOLD);
     now+=300; poll();
