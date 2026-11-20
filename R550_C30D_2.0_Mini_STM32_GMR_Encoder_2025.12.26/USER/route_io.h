@@ -35,12 +35,13 @@ void RouteIO_SetRunning(uint8_t running);
 void RouteIO_SetHeading(float yaw_rad);
 uint8_t RouteIO_StartRequested(void);
 uint8_t RouteIO_ReverseTestRunning(void);
-void RouteIO_SetVelocity(float vx_mps, float vy_mps, uint8_t quick_stop);
+void RouteIO_SetVelocity(float vx_mps, float vy_mps, uint8_t quick_stop, float probe_assist_pwm);
 void RouteIO_ReadDiagnostics(RouteIODiagnostics *diagnostics);
-void RouteIO_ApplyDrive(void);
+float RouteIO_ApplyDrive(void);
 uint8_t RouteIO_ChassisStopped(void);
 /* 中断只锁存一个疏果请求；任务层停车后再调用机构，完成/失败均有反馈。 */
 uint8_t RouteIO_QueueWorkFromISR(uint8_t mango_id);
+uint8_t RouteIO_ReserveServoDemo(void);
 uint8_t RouteIO_WorkReserved(void);
 uint8_t RouteIO_TakeWorkRequest(void);
 void RouteIO_AllowWork(uint8_t allowed);

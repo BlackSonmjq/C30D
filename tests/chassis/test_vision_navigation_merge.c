@@ -13,18 +13,20 @@
 typedef uint32_t TickType_t;
 #define pdMS_TO_TICKS(ms) (ms)
 #define ROUTE_COMMAND_TTL_MS 120U
-typedef struct { float vx_mps,vy_mps; TickType_t tick; uint8_t quick_stop; } RouteCommand;
+typedef struct { float vx_mps,vy_mps,probe_assist_pwm; TickType_t tick; uint8_t quick_stop; } RouteCommand;
 static RouteCommand command;
 static volatile NavLidar lidar;
-static uint8_t start_pending,command_seen;
+static uint8_t start_pending,command_seen,work_allowed;
 static float heading_target;
 #define start_requested route_owned
 #define stop_pending route_stop_requested
 #define clock_ms now
+#define work_reserved reserved
 #include "navigation_io.inc"
 #undef start_requested
 #undef stop_pending
 #undef clock_ms
+#undef work_reserved
 
 uint8_t RouteIO_BaseReady(void) { return EN && !Flag_Stop && Voltage>=10 && SysVal.Time_count>=CONTROL_DELAY; }
 uint8_t RouteIO_TakeWorkRequest(void) { return 0; }
@@ -35,7 +37,24 @@ static NavCore navigator;
 static ChassisOdomFrame previous_pose;
 static uint32_t previous_ms;
 static uint16_t navigation_rear_mm=45;
-static uint8_t work_id,work_started;
+static uint8_t work_id,work_started,demo_id,demo_started,demo_cancelled,demo_used;
+static const float half_cross_mm=1300.0f;
+enum { SERVO_TASK_IDLE, SERVO_TASK_RUNNING, SERVO_TASK_DONE };
+typedef struct { uint8_t id,state; } ServoTask_Data;
+static ServoTask_Data servo;
+static unsigned demo_starts;
+#define USART3 3
+static void any_printf(int port,const char *format,...) { (void)port; (void)format; }
+static void ServoTask_GetData(ServoTask_Data *data) { *data=servo; }
+static uint8_t ServoTask_Start(uint8_t id)
+{
+    servo.id=id; servo.state=SERVO_TASK_RUNNING; servo_busy=1; ++demo_starts;
+    return 1;
+}
+static void ServoTask_RequestCancel(void)
+{
+    servo.state=SERVO_TASK_IDLE; servo_busy=0;
+}
 static NavButton button;
 #define KEY 1
 static void navigation_step(void)
@@ -86,7 +105,7 @@ int main(void)
     REQUIRE(route_owned && navigator.target==target && navigator.state==NAV_RUN);
     /* A recently published command cannot extend the CAN 300 ms deadline. */
     now+=300; pose.tick_ms=now;
-    RouteIO_SetVelocity(.28f,0,0); poll();
+    RouteIO_SetVelocity(.28f,0,0,0); poll();
     REQUIRE(dx==0 && dy==0);
     next_navigation_frame(); poll();
     /* REBUILD can locate P03 from the back laser while the optional front beam is lost. */
@@ -187,6 +206,44 @@ int main(void)
     navigation_rear_mm=0;
     now+=20; next_navigation_frame();
     REQUIRE(navigator.state==NAV_RUN && navigator.output.vx==-NAV_EXIT_SPEED_MPS);
+    /* Fixed midpoint stops: exercise production dispatch and same-point resume. */
+    for(i=1;i<=2;++i) {
+        uint16_t front, rear;
+        Nav_Init(&navigator,&nav_calibration,NAV_CALIBRATED);
+        navigator.state=NAV_RUN; navigator.reason=NAV_OK; navigator.target=(uint8_t)(4U*i);
+        navigator.confirmed=(uint8_t)(navigator.target-1U);
+        navigator.output.vy=0.18f;
+        navigator.main_error_mm=-(half_cross_mm-5.0f);
+        route_owned=1; route_stop_requested=0;
+        now+=20; pose.tick_ms=now;
+        front=(uint16_t)nav_calibration.lane[nav_plan[navigator.target-1U].lane].center_front_mm;
+        rear=(uint16_t)nav_calibration.lane[nav_plan[navigator.target-1U].lane].center_back_mm;
+        RouteIO_PublishLidar(front,rear,1395,1405);
+        MOTOR_A.Encoder=0.08f;
+        navigation_step();
+        REQUIRE(navigator.state==NAV_PAUSING && reserved && !work_allowed && !servo_busy);
+        MOTOR_A.Encoder=0;
+        now+=20; pose.tick_ms=now;
+        navigation_step();
+        REQUIRE(navigator.state==NAV_PAUSED && servo.id==i && servo_busy && demo_starts==i);
+        if(i==2) {
+            route_stop_requested=1;
+            navigation_step();
+            REQUIRE(navigator.state==NAV_STOPPED && !servo_busy);
+            navigation_step();
+            REQUIRE(!reserved && demo_id==0);
+        } else {
+            servo.state=SERVO_TASK_DONE; servo_busy=0;
+            for(unsigned j=0;j<5;++j) {
+                now+=20; pose.tick_ms=now;
+                RouteIO_PublishLidar(front,rear,1395,1405);
+                navigation_step();
+            }
+            REQUIRE(navigator.state==NAV_RUN && !reserved && navigator.target==4);
+            REQUIRE(demo_starts==1);
+        }
+    }
+    puts("PASS: P04 servo 1, P08 servo 2, stop before motion, resume once and cancel");
     puts("PASS: actual CAN age, route-to-vision handover, same-target resume, tool pause and stick cancellation");
     return 0;
 }

@@ -8,7 +8,7 @@
 #include <math.h>
 #include <string.h>
 
-typedef struct { float vx_mps, vy_mps; TickType_t tick; uint8_t quick_stop; } RouteCommand;
+typedef struct { float vx_mps, vy_mps, probe_assist_pwm; TickType_t tick; uint8_t quick_stop; } RouteCommand;
 static RouteCommand command;
 static volatile uint8_t start_requested, start_pending, stop_pending;
 static volatile uint32_t clock_ms;
@@ -105,7 +105,7 @@ void RouteIO_SetRunning(uint8_t running)
 void RouteIO_SetHeading(float yaw_rad) { heading_target = yaw_rad; }
 uint8_t RouteIO_StartRequested(void) { return start_requested; }
 
-void RouteIO_SetVelocity(float vx_mps, float vy_mps, uint8_t quick_stop)
+void RouteIO_SetVelocity(float vx_mps, float vy_mps, uint8_t quick_stop, float probe_assist_pwm)
 {
     TickType_t now = xTaskGetTickCount();
     taskENTER_CRITICAL();
@@ -113,6 +113,7 @@ void RouteIO_SetVelocity(float vx_mps, float vy_mps, uint8_t quick_stop)
     command.vy_mps = vy_mps;
     command.tick = now;
     command.quick_stop = quick_stop;
+    command.probe_assist_pwm = probe_assist_pwm;
     command_seen = 1U;
     taskEXIT_CRITICAL();
 }
@@ -135,7 +136,7 @@ void RouteIO_ReadDiagnostics(RouteIODiagnostics *d)
     d->vy_mps = latest.vy_mps;
 }
 
-void RouteIO_ApplyDrive(void)
+float RouteIO_ApplyDrive(void)
 {
     RouteCommand latest;
     RouteLidarFrame ranges;
@@ -147,12 +148,14 @@ void RouteIO_ApplyDrive(void)
         (TickType_t)(xTaskGetTickCount() - latest.tick) >= pdMS_TO_TICKS(ROUTE_COMMAND_TTL_MS)) {
         smooth_control.VX = smooth_control.VY = smooth_control.VZ = 0.0f;
         Drive_Motor(0.0f, 0.0f, 0.0f);
-        return;
+        return 0.0f;
     }
     /* Paused navigation publishes zero; the visual owner controls its own ramp. */
     if (latest.quick_stop && !VisionAlign_ControlOwned())
         smooth_control.VX = smooth_control.VY = 0.0f;
     Chassis_NavigationDrive(latest.vx_mps, latest.vy_mps, heading_target);
+    return !latest.quick_stop && !VisionAlign_ControlOwned() && Move_X>0.0f && Move_Y==0.0f ?
+        latest.probe_assist_pwm : 0.0f;
 }
 
 uint8_t RouteIO_ChassisStopped(void)
@@ -186,6 +189,20 @@ uint8_t RouteIO_TakeWorkRequest(void)
     pending_work = 0U;
     __set_PRIMASK(mask);
     return id;
+}
+uint8_t RouteIO_ReserveServoDemo(void)
+{
+    uint32_t mask = __get_PRIMASK();
+    uint8_t accepted = 0U;
+    __disable_irq();
+    if (start_requested && !stop_pending && !work_reserved &&
+        !StepperTask_IsBusy() && !VisionAlign_ControlOwned()) {
+        work_reserved = 1U;
+        work_allowed = 0U;
+        accepted = 1U;
+    }
+    __set_PRIMASK(mask);
+    return accepted;
 }
 uint8_t RouteIO_WorkReserved(void) { return work_reserved; }
 void RouteIO_AllowWork(uint8_t allowed) { work_allowed = allowed; }

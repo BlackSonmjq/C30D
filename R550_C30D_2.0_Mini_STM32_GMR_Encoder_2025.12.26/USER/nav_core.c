@@ -469,7 +469,7 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
             n->arrival_count=0; n->recovery_count=0; n->pause_latched=0; n->zero_reset_done=0;
             n->cross_nudge_state=CROSS_NUDGE_READY;
             n->lidar_bridge_state=LIDAR_BRIDGE_READY;
-            n->front_short_used=0;
+            n->front_short_used=n->cross_probe_used=0;
             n->exit_phase=EXIT_ALIGN_LATERAL;
             clear_filters(n); n->state=NAV_RUN; n->reason=NAV_OK; n->output.reset_pi=1;
         } else return;
@@ -568,9 +568,18 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
         return;
     }
 
+    /* A normal lateral arrival can also lose its longitudinal reference
+     * during braking. Give that path the same one-shot forward search. */
+    if(lateral && (n->state==NAV_ALIGN || n->state==NAV_WAIT_LIDAR) && !n->cross_probe_used && o.x_ok && !o.y_ok &&
+       absolute(o.ex)<=NAV_POINT_TOL_MM &&
+       (n->reference_mask&(1U<<(p->side==NAV_SIDE_RIGHT?NAV_RIGHT:NAV_LEFT)))) {
+        wait_lidar(n,missing,in->wheel_max_mps);
+        n->lidar_bridge_state=LIDAR_BRIDGE_CROSS_PROBE_PENDING;
+    }
     if(n->lidar_bridge_state==LIDAR_BRIDGE_CROSS_PROBE_PENDING ||
        n->lidar_bridge_state==LIDAR_BRIDGE_CROSS_PROBE) {
         int moving=n->lidar_bridge_state==LIDAR_BRIDGE_CROSS_PROBE;
+        n->cross_probe_used=1;
         unsigned side=p->side==NAV_SIDE_RIGHT?NAV_RIGHT:NAV_LEFT;
         float margin=bridge_stop_margin(in,NAV_FRONT_PROBE_SPEED_MPS);
         /* Search ahead only while side position is still in tolerance. */
@@ -601,6 +610,11 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
             n->state=NAV_RUN;
         }
         bridge_drive(n,in,&o,0);
+        if(n->output.vx>0.0f && n->lidar_bridge_travel_mm<NAV_CROSS_PROBE_STARTED_MM) {
+            float elapsed=(float)(uint32_t)(in->now_ms-n->lidar_bridge_since_ms);
+            n->output.probe_assist_pwm=NAV_CROSS_PROBE_MAX_PWM*
+                fminf(elapsed/(float)NAV_CROSS_PROBE_RAMP_MS,1.0f);
+        }
         return;
     }
 
@@ -747,7 +761,7 @@ void Nav_Tick(NavCore *n,const NavInput *in,const NavLidar *frame)
                 float front_equivalent=n->cal->lane[p->lane].side_front_mm+o.ey;
                 n->exit_remaining_mm=n->start_front_mm-front_equivalent;
             }
-            n->front_short_used=0;
+            n->front_short_used=n->cross_probe_used=0;
             n->target++; n->state=NAV_RUN; n->reference_mask=0;
             n->cross_nudge_state=CROSS_NUDGE_READY;
             n->lidar_bridge_travel_mm=0;

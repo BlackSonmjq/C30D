@@ -507,6 +507,7 @@ void Balance_task(void *pvParameters)
 			imu_ready_beeped = 1;
 		}
 
+        wheel_output_probe_assist_pwm = 0.0f;
         vision_park_braking = 0U;
         if (RouteIO_ControlOwned() && PS2_ON_Flag && GamePadInterface &&
             (fabsf((float)GamePadInterface->LY - 127.0f) >= 20.0f ||
@@ -527,7 +528,7 @@ void Balance_task(void *pvParameters)
         else if (RouteIO_ControlOwned())
         {
             Allow_Recharge = 0;
-            RouteIO_ApplyDrive();
+            wheel_output_probe_assist_pwm = RouteIO_ApplyDrive();
         }
         else
         {

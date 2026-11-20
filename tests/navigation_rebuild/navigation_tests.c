@@ -628,6 +628,46 @@ static void test_lidar_bridge_cross(void)
     puts("PASS lidar bridge preserves lateral direction and waits without required clearance or references");
 }
 
+static void test_cross_probe_after_normal_arrival(void)
+{
+    Simulation s;
+    unsigned i;
+    float first_assist;
+    init_sim(&s);
+    s.nav.state=NAV_RUN; s.nav.target=8; s.nav.confirmed=7;
+    s.input.wheel_max_mps=0.05f;
+    s.frame.mm[NAV_LEFT]=125; s.frame.mm[NAV_RIGHT]=2675;
+    s.frame.mm[NAV_FRONT]=(uint16_t)s.nav.cal->lane[3].side_front_mm;
+    tick_lidar(&s,1);
+    assert(s.nav.state==NAV_ALIGN && s.nav.output.vy==0);
+
+    s.frame.mm[NAV_FRONT]+=900;
+    tick_lidar(&s,1);
+    check_lidar_wait(&s);
+    s.input.wheel_max_mps=0;
+    tick_lidar(&s,1);
+    assert(s.nav.target==8 && s.nav.confirmed==7);
+    assert(s.nav.output.vx==NAV_FRONT_PROBE_SPEED_MPS && s.nav.output.vy==0);
+    assert(s.nav.output.probe_assist_pwm==0);
+    tick_lidar(&s,1);
+    first_assist=s.nav.output.probe_assist_pwm;
+    assert(first_assist>0);
+    for(i=0;i<NAV_CROSS_PROBE_RAMP_MS/10U;i++) tick_lidar(&s,1);
+    assert(s.nav.output.probe_assist_pwm==NAV_CROSS_PROBE_MAX_PWM &&
+           s.nav.output.probe_assist_pwm>first_assist);
+    s.input.forward_step_mm=NAV_CROSS_PROBE_STARTED_MM;
+    tick_lidar(&s,1);
+    assert(s.nav.output.vx>0 && s.nav.output.probe_assist_pwm==0);
+    s.input.forward_step_mm=NAV_CROSS_FRONT_PROBE_MM-NAV_CROSS_PROBE_STARTED_MM;
+    tick_lidar(&s,1);
+    check_lidar_wait(&s);
+    assert(s.nav.output.probe_assist_pwm==0);
+    s.input.forward_step_mm=0;
+    tick_lidar(&s,1);
+    check_lidar_wait(&s); /* A sustained invalid range never re-arms this waypoint. */
+    puts("PASS: normal P08 arrival probes once with a bounded PWM ramp until movement");
+}
+
 static void test_exit(void)
 {
     Simulation s, fault;
@@ -728,7 +768,7 @@ int main(void)
 {
     test_can(); test_freshness(); test_button(); test_pi_ramp(); test_wheel_drive(); test_heading_damping();
     test_cross_nudge();
-    test_lidar_bridge_rearm(); test_lidar_bridge_limits(); test_short_front_return(); test_lidar_bridge_cross();
+    test_lidar_bridge_rearm(); test_lidar_bridge_limits(); test_short_front_return(); test_lidar_bridge_cross(); test_cross_probe_after_normal_arrival();
     test_exit();
     test_no_repeated_arrival(); test_complete(0); test_complete(1); test_recovery_pause_stop();
     puts("ALL TESTS PASSED (host simulation; not a physical acceptance test)");

@@ -5,6 +5,7 @@
 /* All IDs: feedback-confirmed home, half turn, home.
  * Existing 270-degree position modes are configured externally. */
 static volatile ServoTask_Data actuator = {0, SERVO_TASK_IDLE};
+static volatile uint8_t cancel_pending;
 static uint8_t start_pending, phase, stage, stable, failed, moved;
 static uint8_t motion_retries, stalled_samples, position_seen;
 static uint16_t last_position;
@@ -13,22 +14,25 @@ static TickType_t move_started, query_started;
 
 uint8_t ServoTask_IsBusy(void)
 {
-    return actuator.state == SERVO_TASK_RUNNING;
+    return cancel_pending || actuator.state == SERVO_TASK_RUNNING;
 }
 
 uint8_t ServoTask_Start(uint8_t id)
 {
     uint8_t accepted = 0;
+    uint32_t mask;
     if (id < 1U || id > SERVO_COUNT) return 0;
-    taskENTER_CRITICAL();
-    if (actuator.state != SERVO_TASK_RUNNING && !USART_ServoControlBusy()) {
+    /* Debug UART IRQs can preempt a FreeRTOS critical section. */
+    mask = __get_PRIMASK();
+    __disable_irq();
+    if (!ServoTask_IsBusy() && !USART_ServoControlBusy()) {
         actuator.id = id;
         actuator.state = SERVO_TASK_RUNNING;
         moved = 0;
         start_pending = 1;
         accepted = 1;
     }
-    taskEXIT_CRITICAL();
+    __set_PRIMASK(mask);
     return accepted;
 }
 
@@ -47,6 +51,11 @@ void ServoTask_Cancel(void)
         Servo_Stop(id);
         Servo_ClearRx();
     }
+}
+
+void ServoTask_RequestCancel(void)
+{
+    cancel_pending = 1U;
 }
 
 void ServoTask_GetData(ServoTask_Data *data)
@@ -103,6 +112,10 @@ void servo_task(void *pvParameters)
     char frame[SERVO_FRAME_CAPACITY];
     (void)pvParameters;
     for (;;) {
+        if (cancel_pending) {
+            ServoTask_Cancel();
+            cancel_pending = 0U;
+        }
         if (start_pending) {
             start_pending = 0;
             phase = stage = stable = failed = moved = 0;

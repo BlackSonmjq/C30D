@@ -23,6 +23,7 @@ typedef struct { unsigned state,result,mango_id; } StepperTask_Data;
 static StepperTask_Data tool;
 static void StepperTask_GetData(StepperTask_Data *data) { *data=tool; }
 static float Voltage=12,Move_X,Move_Y,Move_Z,dx,dy,dz;
+static float wheel_output_probe_assist_pwm;
 static struct { float VX,VY,VZ; } smooth_control;
 static struct { unsigned Time_count; } SysVal={2000};
 static struct { struct { short z; } gyro; } imu;
@@ -80,7 +81,7 @@ uint8_t RouteIO_ChassisStopped(void) { return chassis_stopped; }
 uint8_t RouteIO_ControlOwned(void) { return route_owned; }
 /* Route-specific fixtures provide the real command application below. */
 #ifndef NAVIGATION_MERGE_TEST
-void RouteIO_ApplyDrive(void) { dx=dy=dz=0; }
+float RouteIO_ApplyDrive(void) { dx=dy=dz=0; return 0.0f; }
 #endif
 static uint8_t route_stop_requested;
 void RouteIO_RequestManual(void) { route_owned=0; route_stop_requested=1; }

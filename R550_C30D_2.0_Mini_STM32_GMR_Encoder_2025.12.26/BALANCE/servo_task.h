@@ -27,6 +27,7 @@ typedef struct {
 uint8_t ServoTask_Start(uint8_t id);
 uint8_t ServoTask_IsBusy(void);
 void ServoTask_Cancel(void);
+void ServoTask_RequestCancel(void);
 void ServoTask_GetData(ServoTask_Data *data);
 void servo_task(void *pvParameters);
 
