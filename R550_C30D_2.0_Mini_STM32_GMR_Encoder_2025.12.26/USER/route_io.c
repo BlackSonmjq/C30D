@@ -4,6 +4,7 @@
 #include "nav_config.h"
 #include "balance.h"
 #include "stepper_task.h"
+#include "vision_align.h"
 #include <math.h>
 #include <string.h>
 
@@ -148,7 +149,9 @@ void RouteIO_ApplyDrive(void)
         Drive_Motor(0.0f, 0.0f, 0.0f);
         return;
     }
-    if (latest.quick_stop) smooth_control.VX = smooth_control.VY = 0.0f;
+    /* Paused navigation publishes zero; the visual owner controls its own ramp. */
+    if (latest.quick_stop && !VisionAlign_ControlOwned())
+        smooth_control.VX = smooth_control.VY = 0.0f;
     Chassis_NavigationDrive(latest.vx_mps, latest.vy_mps, heading_target);
 }
 
