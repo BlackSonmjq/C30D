@@ -40,7 +40,7 @@ typedef struct {
     uint8_t cross_nudge_state;
     uint32_t cross_nudge_since_ms;
     float cross_nudge_remaining_mm;
-    uint8_t lidar_bridge_state;
+    uint8_t lidar_bridge_state, front_far_count, front_short_used;
     uint32_t lidar_bridge_since_ms;
     float lidar_bridge_speed, lidar_bridge_travel_mm, lidar_rearm_origin_mm;
     uint8_t exit_phase;

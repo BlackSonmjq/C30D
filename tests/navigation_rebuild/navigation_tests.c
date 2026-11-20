@@ -384,8 +384,14 @@ static void start_lidar_bridge(Simulation *s)
     tick_lidar(s,1);
     assert(s->nav.output.vx>NAV_LIDAR_BRIDGE_SPEED_MPS);
     s->frame.mm[NAV_FRONT]=5400;
+    for(unsigned i=1;i<NAV_FRONT_PROBE_FRAMES;i++) {
+        tick_lidar(s,1);
+        assert(s->nav.output.quick_stop && s->nav.output.vx==0);
+        tick_lidar(s,0);
+        assert(s->nav.output.quick_stop && s->nav.output.vx==0);
+    }
     tick_lidar(s,1);
-    assert(s->nav.output.vx==NAV_LIDAR_BRIDGE_SPEED_MPS && s->nav.output.vy==0);
+    assert(s->nav.output.vx==NAV_FRONT_PROBE_SPEED_MPS && s->nav.output.vy==0);
     assert(!(s->nav.reference_mask&(1U<<NAV_FRONT)) && s->nav.target==1 && !s->nav.confirmed);
 }
 
@@ -414,7 +420,6 @@ static void test_lidar_bridge_rearm(void)
 {
     Simulation s;
     unsigned i;
-    float approach_speed;
     start_lidar_bridge(&s);
     s.input.forward_step_mm=2;
     s.input.wheel_max_mps=0.20f;
@@ -450,10 +455,14 @@ static void test_lidar_bridge_rearm(void)
     }
     s.input.forward_step_mm=0;
     for(i=1;i<NAV_FILTER_FRAMES;i++) tick_lidar(&s,1); /* Let the distance window catch up. */
-    approach_speed=s.nav.output.vx;
+    s.input.wheel_max_mps=0;
     s.frame.mm[NAV_FRONT]=5400;
+    for(i=1;i<NAV_FRONT_PROBE_FRAMES;i++) {
+        tick_lidar(&s,1);
+        check_lidar_wait(&s);
+    }
     tick_lidar(&s,1);
-    assert(s.nav.output.vx==fminf(approach_speed,NAV_LIDAR_BRIDGE_SPEED_MPS));
+    assert(s.nav.output.vx==NAV_FRONT_PROBE_SPEED_MPS);
     puts("PASS early lidar stop, settled distinct frames, one attempt and rearm only after confirmed motion");
 }
 
@@ -465,7 +474,7 @@ static void test_lidar_bridge_limits(void)
     s.input.forward_step_mm=1.25f;
     for(i=1;(float)i*s.input.forward_step_mm<NAV_LIDAR_BRIDGE_MAX_MM;i++) {
         tick_lidar(&s,1);
-        assert(s.nav.output.vx==NAV_LIDAR_BRIDGE_SPEED_MPS);
+        assert(s.nav.output.vx==NAV_FRONT_PROBE_SPEED_MPS);
     }
     assert(i*10U<NAV_LIDAR_BRIDGE_MAX_MS);
     tick_lidar(&s,1); check_lidar_wait(&s);
@@ -473,7 +482,7 @@ static void test_lidar_bridge_limits(void)
     start_lidar_bridge(&s);
     for(i=10;i<NAV_LIDAR_BRIDGE_MAX_MS;i+=10) {
         tick_lidar(&s,1);
-        assert(s.nav.output.vx==NAV_LIDAR_BRIDGE_SPEED_MPS);
+        assert(s.nav.output.vx==NAV_FRONT_PROBE_SPEED_MPS);
     }
     tick_lidar(&s,1); check_lidar_wait(&s);
 
@@ -492,6 +501,40 @@ static void test_lidar_bridge_limits(void)
     tick_lidar(&s,1);
     assert(s.nav.state==NAV_STOPPED && !s.nav.output.drive_enabled);
     puts("PASS lidar bridge respects distance, timeout, CAN age, clearance and disable");
+}
+
+static void test_short_front_return(void)
+{
+    Simulation s;
+    start_lidar_bridge(&s);
+    s.frame.mm[NAV_FRONT]=4700;
+    tick_lidar(&s,1);
+    resume_lidar_bridge(&s);
+
+    /* The earlier far-return probe must not block the descent continuation. */
+    s.frame.mm[NAV_FRONT]=707;
+    tick_lidar(&s,1);
+    assert(s.nav.state==NAV_RUN && !s.nav.output.quick_stop);
+    assert(s.nav.output.vx==NAV_LIDAR_BRIDGE_SPEED_MPS && s.nav.target==1);
+    s.frame.mm[NAV_FRONT]=4700;
+    tick_lidar(&s,1);
+    assert(s.nav.state==NAV_RUN && !s.nav.output.quick_stop && s.nav.output.vx>0);
+    s.frame.mm[NAV_FRONT]=707;
+    tick_lidar(&s,1);
+    check_lidar_wait(&s); /* A second short dropout gets no new budget. */
+
+    init_sim(&s);
+    s.nav.state=NAV_RUN;
+    s.frame.mm[NAV_FRONT]=4700;
+    tick_lidar(&s,1);
+    s.frame.mm[NAV_FRONT]=707;
+    tick_lidar(&s,1);
+    assert(s.nav.output.vx==NAV_LIDAR_BRIDGE_SPEED_MPS);
+    s.frame.mm[NAV_FRONT]=20;
+    tick_lidar(&s,1);
+    check_lidar_wait(&s);
+    assert(s.nav.reason==NAV_TOO_CLOSE);
+    puts("PASS short front echo continues after a far probe, resumes smoothly, and stops for near obstacles");
 }
 
 static void test_lidar_bridge_cross(void)
@@ -517,8 +560,59 @@ static void test_lidar_bridge_cross(void)
     s.frame.mm[NAV_FRONT]=4300; s.frame.mm[NAV_BACK]=100;
     tick_lidar(&s,1); assert(s.nav.output.vy<0);
     s.frame.mm[NAV_FRONT]=5200; s.frame.mm[NAV_BACK]=900;
-    tick_lidar(&s,1); check_lidar_wait(&s);
+    tick_lidar(&s,1);
+    assert(s.nav.output.vy<0 && !s.nav.output.quick_stop && s.nav.output.vx==0);
     assert(s.nav.target==2 && s.nav.confirmed==1);
+    s.input.lateral_step_mm=-30;
+    s.frame.mm[NAV_LEFT]=2660; s.frame.mm[NAV_RIGHT]=140;
+    for(i=0;i<NAV_FILTER_FRAMES && s.nav.state!=NAV_WAIT_LIDAR;i++) {
+        tick_lidar(&s,1);
+        s.input.lateral_step_mm=0;
+    }
+    check_lidar_wait(&s);
+    assert(s.nav.target==2 && s.nav.confirmed==1);
+
+    /* P08: left-side finish with a false far front return. */
+    init_sim(&s);
+    s.nav.state=NAV_RUN; s.nav.target=8; s.nav.confirmed=7;
+    s.frame.mm[NAV_LEFT]=162; s.frame.mm[NAV_RIGHT]=2638;
+    s.frame.mm[NAV_FRONT]=(uint16_t)s.nav.cal->lane[3].side_front_mm;
+    tick_lidar(&s,1);
+    assert(s.nav.output.vy>0);
+    s.frame.mm[NAV_FRONT]+=800;
+    tick_lidar(&s,1);
+    assert(s.nav.output.vy>0 && !s.nav.output.quick_stop && s.nav.output.vx==0);
+    {
+        Simulation probe=s;
+        probe.input.lateral_step_mm=22;
+        probe.frame.mm[NAV_LEFT]=140;
+        probe.frame.mm[NAV_RIGHT]=2660;
+        for(i=0;i<NAV_FILTER_FRAMES && probe.nav.state!=NAV_WAIT_LIDAR;i++) {
+            tick_lidar(&probe,1);
+            probe.input.lateral_step_mm=0;
+        }
+        check_lidar_wait(&probe);
+        tick_lidar(&probe,1);
+        assert(probe.nav.output.vx==NAV_FRONT_PROBE_SPEED_MPS && probe.nav.output.vy==0);
+        assert(probe.nav.target==8 && probe.nav.confirmed==7);
+        {
+            Simulation recovered=probe;
+            recovered.frame.mm[NAV_FRONT]=(uint16_t)s.nav.cal->lane[3].side_front_mm;
+            tick_lidar(&recovered,1);
+            check_lidar_wait(&recovered);
+            assert(recovered.nav.target==8 && recovered.nav.confirmed==7);
+        }
+        probe.input.forward_step_mm=NAV_CROSS_FRONT_PROBE_MM;
+        tick_lidar(&probe,1);
+        check_lidar_wait(&probe);
+        probe.input.forward_step_mm=0;
+        tick_lidar(&probe,1);
+        check_lidar_wait(&probe);
+    }
+    s.frame.mm[NAV_LEFT]=20; s.frame.mm[NAV_RIGHT]=0;
+    tick_lidar(&s,1);
+    check_lidar_wait(&s);
+    assert(s.nav.target==8 && s.nav.confirmed==7);
 
     init_sim(&s);
     s.nav.state=NAV_RUN; s.nav.target=3; s.nav.confirmed=2;
@@ -634,7 +728,7 @@ int main(void)
 {
     test_can(); test_freshness(); test_button(); test_pi_ramp(); test_wheel_drive(); test_heading_damping();
     test_cross_nudge();
-    test_lidar_bridge_rearm(); test_lidar_bridge_limits(); test_lidar_bridge_cross();
+    test_lidar_bridge_rearm(); test_lidar_bridge_limits(); test_short_front_return(); test_lidar_bridge_cross();
     test_exit();
     test_no_repeated_arrival(); test_complete(0); test_complete(1); test_recovery_pause_stop();
     puts("ALL TESTS PASSED (host simulation; not a physical acceptance test)");
