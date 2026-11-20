@@ -38,7 +38,7 @@ def on_code(uc, address, size, _):
         uc.reg_write(UC_ARM_REG_R0, tick)
     elif address == symbols['RouteDebug_BuildPacket'] & ~1:
         assert not interrupt_enabled(), 'building a frame while TX is active'
-        packet = struct.pack('<58f', *([float(len(packets) + 1)] * 58)) + bytes.fromhex('0000807f')
+        packet = struct.pack('<60f', *([float(len(packets) + 1)] * 60)) + bytes.fromhex('0000807f')
         assert uc.reg_read(UC_ARM_REG_R1) == len(packet)
         uc.mem_write(uc.reg_read(UC_ARM_REG_R0), packet)
         packets.append(packet)
@@ -71,7 +71,7 @@ for _ in range(20):
 tick = 1000  # Even an overdue poll must preserve a frame still in flight.
 invoke('RouteVofa_Poll')
 assert len(packets) == 1
-for _ in range(217):
+for _ in range(225):
     invoke('RouteVofa_Uart2TxIRQ')
 assert not interrupt_enabled() and bytes(sent) == packets[0]
 cpu.reg_write(UC_ARM_REG_PRIMASK, 1)
@@ -79,7 +79,7 @@ invoke('RouteVofa_Poll')
 assert cpu.reg_read(UC_ARM_REG_PRIMASK) == 1
 assert interrupt_enabled() and len(packets) == 2
 cpu.reg_write(UC_ARM_REG_PRIMASK, 0)
-for _ in range(237):
+for _ in range(245):
     invoke('RouteVofa_Uart2TxIRQ')
 assert not interrupt_enabled() and bytes(sent) == b''.join(packets)
 tick = 1399
@@ -88,7 +88,7 @@ assert not interrupt_enabled() and len(packets) == 2
 tick = 1400
 invoke('RouteVofa_Poll')
 assert interrupt_enabled() and len(packets) == 3
-for _ in range(237):
+for _ in range(245):
     invoke('RouteVofa_Uart2TxIRQ')
 assert not interrupt_enabled() and bytes(sent) == b''.join(packets)
-print('PASS: compiled 58-channel TX preserves busy frames, restores IRQ mask and waits 400 ms')
+print('PASS: compiled 60-channel TX preserves busy frames, restores IRQ mask and waits 400 ms')

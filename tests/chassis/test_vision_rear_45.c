@@ -18,6 +18,8 @@ int main(void)
     lidar.mm[ROUTE_LIDAR_BEHIND]=44;frame(1,0);
     REQUIRE(vision_pick_phase==PICK_WAIT && dx==0 && strikes==0);
     frame(1,0);frame(1,0);frame(1,0);
+    REQUIRE(dx==0 && strikes==0);
+    frame(1,0);
     REQUIRE(dx>0 && strikes==0); /* Move away from the rear safety boundary. */
     lidar.mm[ROUTE_LIDAR_BEHIND]=45;
     for(i=0;i<12;++i) frame(1,0);

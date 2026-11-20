@@ -33,6 +33,8 @@ int main(void)
     observation(1,1,4,0);
     REQUIRE(vision_target_region==2 && vision_pick_phase==PICK_HOLD && strikes==0);
     observation(0,0,0,0);
+    REQUIRE(vision_target_region==2 && vision_pick_phase==PICK_WAIT && strikes==0);
+    for(i=0;i<40;++i) observation(0,0,0,0);
     REQUIRE(!vision_target_region && vision_pick_phase==PICK_IDLE && strikes==0);
     printf("PASS: green alone stays manual, no numbered observation stays manual, first valid REGION locks through later zeros/jumps (%u checks)\n",checks);
     return 0;

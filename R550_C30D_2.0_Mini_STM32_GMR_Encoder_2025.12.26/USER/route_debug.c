@@ -147,6 +147,8 @@ uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
     for (channel = 0U; channel < ROUTE_LIDAR_COUNT; ++channel)
         if (lidar.fresh && lidar.mm[channel]) valid_mask |= (uint8_t)(1U << channel);
     channels[57] = (float)valid_mask;
+    channels[58] = (float)align.stop_reason;
+    channels[59] = (float)align.release_reason;
 
     /* Emit little-endian float32 without depending on structure padding. */
     for (channel = 0U; channel < ROUTE_VOFA_CHANNEL_COUNT; ++channel) {

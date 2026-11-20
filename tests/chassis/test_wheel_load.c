@@ -367,7 +367,7 @@ int main(void)
         }
         printf("Small yaw plant sign %u: final=%f deg peak=%f deg tail_mean=%f deg\n",
                m,yaw*57.2957795f,peak*57.2957795f,tail_error/500*57.2957795f);
-        assert(tail_error/500<.00523599f);
+        assert(tail_error/500<.00383972f); /* Below 0.22 degrees in this software plant. */
         assert(peak<.0174533f);
     }
     puts("PASS: 10 motion patterns, repeated stall restart, stale PI removal, unequal loads, braking, anti-windup and small-yaw friction plant");

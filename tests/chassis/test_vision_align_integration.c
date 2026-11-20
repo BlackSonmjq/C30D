@@ -50,6 +50,9 @@ static uint8_t vision_pick_attempts;
 static uint8_t vision_detection_timed_out;
 static uint8_t vision_rearm_clear_active;
 static uint32_t vision_rearm_clear_since;
+static uint8_t vision_green_lost_active;
+static uint32_t vision_green_lost_since;
+static uint32_t vision_green_window_since, vision_green_window_frames, vision_green_window_good;
 static VisionPickRange_State vision_pick_range;
 static uint8_t vision_target_region;
 static uint8_t vision_resume_pending;
@@ -62,6 +65,7 @@ volatile uint8_t vision_hit_report;
 static int chassis_stopped=1;
 static uint8_t vision_align_ready;
 static uint16_t vision_align_blocked;
+static uint8_t vision_stop_reason, vision_release_reason;
 static int PS2_ON_Flag,Remote_ON_Flag,APP_ON_Flag;
 static int CAN_ON_Flag,Usart1_ON_Flag,Usart5_ON_Flag,Allow_Recharge;
 static uint32_t __get_PRIMASK(void) { return 0; }
@@ -108,7 +112,7 @@ static void clear_fruit(void)
 {
     unsigned k;
     camera_green=0;
-    for(k=0;k<=VISION_PICK_REARM_CLEAR_MS/50U;++k) frame(0,0);
+    for(k=0;k<2U+(VISION_PICK_GREEN_GAP_MS+VISION_PICK_REARM_CLEAR_MS)/50U;++k) frame(0,0);
 }
 static void release_done(void) { unsigned k; imu.gyro.z=0; for(k=0;k<20;++k) frame(1,0); }
 static void restart(void)

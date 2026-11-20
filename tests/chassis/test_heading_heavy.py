@@ -37,6 +37,14 @@ int main(void) {
     HeadingControl_Reset();
     assert(HeadingControl_HoldYaw(0,-.00698132f,0,0)>.016f);
     HeadingControl_Reset();
+    assert(HeadingControl_HoldYaw(0,.00436332f,0,0)<0); /* Correct a parked 0.25 degree offset. */
+    HeadingControl_Reset();
+    assert(HeadingControl_HoldYaw(0,-.00436332f,0,0)>0);
+    HeadingControl_Reset();
+    assert(HeadingControl_Output(.002f,.02f,.01f,0)<0); /* Brake slow rotation inside the angle band. */
+    HeadingControl_Reset();
+    assert(HeadingControl_Output(-.002f,-.02f,.01f,0)>0);
+    HeadingControl_Reset();
     assert(HeadingControl_HoldYaw(0,.00349066f,0,0)==0); /* Keep a quiet 0.2 degree band. */
     /* A large stored effort from an earlier turn must not drive farther away. */
     heading_state.integral=-.335f;
@@ -81,13 +89,13 @@ int main(void) {
     assert(fabsf(HeadingControl_Output(.05f,balance_rate,.01f,0))<1e-6f);
     assert(HeadingControl_Output(0,.2f,.01f,0)<0);
     stored=heading_state.integral;
-    assert(fabsf(HeadingControl_Output(.005f,.01f,.01f,0)-HEADING_CONTROL_KI*stored)<1e-6f);
+    assert(fabsf(HeadingControl_Output(.0033f,.01f,.01f,0)-HEADING_CONTROL_KI*stored)<1e-6f);
     assert(heading_state.integral==stored);
-    HeadingControl_Reset();assert(HeadingControl_Output(.005f,.01f,.01f,0)==0);
+    HeadingControl_Reset();assert(HeadingControl_Output(.0033f,.01f,.01f,0)==0);
     /* Once across the target, release the old I effort inside tolerance. */
     for(int sign=-1;sign<=1;sign+=2) {
         heading_state.integral=sign*.4f;
-        for(int n=0;n<100;n++) HeadingControl_Output(-sign*.005f,0,.01f,0);
+        for(int n=0;n<100;n++) HeadingControl_Output(-sign*.0033f,0,.01f,0);
         assert(fabsf(heading_state.integral)<.06f);
     }
 
@@ -118,7 +126,7 @@ int main(void) {
     }
     /* Forward/reverse get earlier correction, with continuous speed blending. */
     HeadingControl_Reset();
-    assert(HeadingControl_HoldYaw(0,.005f,0,0)==0);
+    assert(HeadingControl_HoldYaw(0,.005f,0,0)<0);
     for(int sign=-1;sign<=1;sign+=2) {
         HeadingControl_Reset();
         assert(HeadingControl_HoldYaw(0,.005f,0,sign*.12f)<-.017f);

@@ -15,11 +15,14 @@
 #define VISION_ALIGN_CONFIRM_FRAMES 3U
 #define VISION_ALIGN_RECOVER_FRAMES 6U
 #define VISION_ALIGN_ZERO_FRAMES 3U
+#define VISION_ALIGN_CENTER_WINDOW 5U
+#define VISION_ALIGN_CENTER_MASK 0x1FU /* Last five real trunk observations. */
 #define VISION_ALIGN_DX_TOLERANCE 2
 #define VISION_ALIGN_FRESH_MS 300UL
 #define VISION_ALIGN_TIMEOUT_MS 10000UL
 #define VISION_ALIGN_RESTART_DX 5
 #define VISION_ALIGN_RESTART_FRAMES 3U
+#define VISION_ALIGN_PARK_RESTART_MS 200UL
 #define VISION_ALIGN_RETRY_PAUSE_MS 1000UL
 #define VISION_ALIGN_DONE_HOLD_MS 1000UL
 #define VISION_ALIGN_REAR_MM 45U
@@ -39,11 +42,25 @@ typedef enum {
     VISION_ALIGN_IDLE, VISION_ALIGN_ACQUIRE, VISION_ALIGN_TRACK,
     VISION_ALIGN_DONE, VISION_ALIGN_LOST, VISION_ALIGN_TIMEOUT, VISION_ALIGN_WAIT
 } VisionAlign_Phase;
+typedef enum {
+    VISION_STOP_NONE, VISION_STOP_BASE, VISION_STOP_FRONT_LIMIT, VISION_STOP_REAR_LIMIT,
+    VISION_STOP_LIDAR, VISION_STOP_GREEN_WAIT, VISION_STOP_POLE_WAIT, VISION_STOP_CONFIRM,
+    VISION_STOP_REALIGN_WAIT, VISION_STOP_POSITION, VISION_STOP_WHEELS, VISION_STOP_HOLD,
+    VISION_STOP_WORK, VISION_STOP_REPORT, VISION_STOP_COOLDOWN, VISION_STOP_BRAKE, VISION_STOP_RELEASE
+} VisionStopReason;
+typedef enum {
+    VISION_RELEASE_NONE, VISION_RELEASE_GREEN_LOST, VISION_RELEASE_GREEN_RATIO,
+    VISION_RELEASE_CAMERA_TIMEOUT, VISION_RELEASE_REGION_TIMEOUT, VISION_RELEASE_ALIGN_TIMEOUT,
+    VISION_RELEASE_POST_HIT_EMPTY, VISION_RELEASE_POST_HIT_REGION, VISION_RELEASE_QUOTA,
+    VISION_RELEASE_MODE, VISION_RELEASE_BASE, VISION_RELEASE_COOLDOWN, VISION_RELEASE_TARGET_INVALID
+} VisionReleaseReason;
 typedef struct {
-    uint32_t last_frames, last_seen_ms, started_ms, stopped_ms, dx_seen_ms;
+    uint32_t last_frames, last_seen_ms, started_ms, stopped_ms, dx_seen_ms, restart_since_ms;
+    uint32_t center_tick[VISION_ALIGN_CENTER_WINDOW];
     float dx_hold_speed;
     uint8_t phase, confirmed, zero_frames, restart_frames, manual_confirmed, approaching, reverse_frames;
     int8_t restart_sign, manual_sign, lateral_sign;
+    uint8_t center_history;
 } VisionAlign_State;
 typedef struct { float x_mps, y_mps; uint8_t owned; } VisionAlign_Output;
 typedef struct {
@@ -56,6 +73,7 @@ typedef struct {
     float wheel_target[4], wheel_feedback[4], wheel_pwm[4];
     float yaw_target_deg, yaw_deg, yaw_error_deg, gyro_z_dps, heading_i_radps;
     uint8_t heading_locked, imu_fresh;
+    uint8_t stop_reason, release_reason;
 } VisionAlign_Diagnostics;
 
 static inline uint8_t VisionAlign_Centered(int dx)
@@ -75,6 +93,7 @@ static inline void VisionAlign_Cancel(VisionAlign_State *s)
     s->reverse_frames = 0U;
     s->lateral_sign = 0;
     s->dx_hold_speed = 0.0f;
+    s->center_history = 0U;
 }
 
 static inline void VisionAlign_Begin(VisionAlign_State *s, uint32_t now_ms)
@@ -89,6 +108,7 @@ static inline void VisionAlign_Begin(VisionAlign_State *s, uint32_t now_ms)
     s->reverse_frames = 0U;
     s->lateral_sign = 0;
     s->dx_hold_speed = 0.0f;
+    s->center_history = 0U;
 }
 
 /* One chassis owner calls this at 100 Hz; only new valid camera snapshots
@@ -124,31 +144,41 @@ static inline VisionAlign_Output VisionAlign_Update(VisionAlign_State *s,
         if (s->phase != VISION_ALIGN_IDLE && s->phase != VISION_ALIGN_WAIT) {
             if (s->phase != VISION_ALIGN_DONE) s->phase = VISION_ALIGN_LOST;
             s->confirmed = s->zero_frames = s->restart_frames = 0U;
+            s->center_history = s->approaching = 0U;
             out.owned = 1U;
         }
         return out;
     }
     if (fresh && target) {
+        if (s->phase == VISION_ALIGN_TRACK &&
+            (uint32_t)(now_ms - s->dx_seen_ms) >= VISION_ALIGN_FRESH_MS) {
+            s->phase = VISION_ALIGN_LOST;
+            s->confirmed = s->zero_frames = s->center_history = s->approaching = 0U;
+        }
         s->dx_seen_ms = now_ms;
         s->dx_hold_speed = 0.0f;
     }
     if (s->phase == VISION_ALIGN_TRACK && !target) {
         out.owned = 1U;
         s->zero_frames = 0U;
-        /* Missing pole snapshots must not refresh the remembered DX age. */
-        if (data->green == 1U && !s->approaching && s->dx_hold_speed != 0.0f &&
+        /* Short trunk gaps pause approach without erasing recent centre evidence.
+         * Only lateral tracking may use remembered DX; never advance blind. */
+        if (data->green == 1U &&
             (uint32_t)(now_ms - s->dx_seen_ms) < VISION_ALIGN_FRESH_MS &&
             (uint32_t)(now_ms - s->started_ms) < VISION_ALIGN_TIMEOUT_MS) {
-            speed = s->dx_hold_speed * VISION_ALIGN_DX_HOLD_GAIN;
-            if (speed > VISION_ALIGN_MAX_MPS) speed = VISION_ALIGN_MAX_MPS;
-            if (speed < -VISION_ALIGN_MAX_MPS) speed = -VISION_ALIGN_MAX_MPS;
-            out.x_mps = speed * VISION_ALIGN_DX_TO_X;
-            out.y_mps = speed * VISION_ALIGN_DX_TO_Y;
+            if (!s->approaching && s->dx_hold_speed != 0.0f) {
+                speed = s->dx_hold_speed * VISION_ALIGN_DX_HOLD_GAIN;
+                if (speed > VISION_ALIGN_MAX_MPS) speed = VISION_ALIGN_MAX_MPS;
+                if (speed < -VISION_ALIGN_MAX_MPS) speed = -VISION_ALIGN_MAX_MPS;
+                out.x_mps = speed * VISION_ALIGN_DX_TO_X;
+                out.y_mps = speed * VISION_ALIGN_DX_TO_Y;
+            }
             return out;
         }
         s->dx_hold_speed = 0.0f;
         s->phase = VISION_ALIGN_LOST;
         s->confirmed = 0U;
+        s->center_history = s->approaching = 0U;
         return out;
     }
     /* Completion owns a full zero for one second, including held sticks.
@@ -246,6 +276,7 @@ static inline VisionAlign_Output VisionAlign_Update(VisionAlign_State *s,
     if ((!starting && expired) || (uint32_t)(now_ms - s->last_seen_ms) >= VISION_ALIGN_FRESH_MS) {
         s->phase = VISION_ALIGN_LOST;
         s->confirmed = s->zero_frames = 0U;
+        s->center_history = s->approaching = 0U;
         return out;
     }
     if (fresh) {
@@ -255,17 +286,28 @@ static inline VisionAlign_Output VisionAlign_Update(VisionAlign_State *s,
             return out;
         }
         if (s->confirmed < VISION_ALIGN_CONFIRM_FRAMES) ++s->confirmed;
-        if (!VisionAlign_Centered(error) &&
-            (!s->approaching || magnitude >= VISION_ALIGN_RESTART_DX)) {
+        if (magnitude >= VISION_ALIGN_RESTART_DX) {
             s->approaching = 0U;
             s->zero_frames = 0U;
+            s->center_history = 0U;
         } else if (!s->approaching) {
-            if (s->zero_frames < VISION_ALIGN_ZERO_FRAMES) ++s->zero_frames;
-            if (s->confirmed >= VISION_ALIGN_CONFIRM_FRAMES &&
-                s->zero_frames >= VISION_ALIGN_ZERO_FRAMES) {
+            uint8_t i, centered = 0U;
+            s->center_history = (uint8_t)(((s->center_history << 1U) |
+                VisionAlign_Centered(error)) & VISION_ALIGN_CENTER_MASK);
+            for (i = VISION_ALIGN_CENTER_WINDOW - 1U; i > 0U; --i)
+                if (s->center_history & (1U << i)) s->center_tick[i] = s->center_tick[i-1U];
+            s->center_tick[0] = now_ms;
+            for (i = 0U; i < VISION_ALIGN_CENTER_WINDOW; ++i) {
+                if (!(s->center_history & (1U << i))) continue;
+                if ((uint32_t)(now_ms - s->center_tick[i]) >= VISION_ALIGN_FRESH_MS)
+                    s->center_history &= (uint8_t)~(1U << i);
+                else ++centered;
+            }
+            if (VisionAlign_Centered(error) && s->confirmed >= VISION_ALIGN_CONFIRM_FRAMES &&
+                centered >= VISION_ALIGN_ZERO_FRAMES) {
                 s->approaching = 1U;
                 s->zero_frames = range_centered ? VISION_ALIGN_ZERO_FRAMES : 0U;
-            }
+            } else s->zero_frames = 0U;
         } else if (VisionAlign_Centered(error) && range_centered) {
             if (s->zero_frames < VISION_ALIGN_ZERO_FRAMES) ++s->zero_frames;
         } else s->zero_frames = 0U;

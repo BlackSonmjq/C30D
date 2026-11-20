@@ -145,6 +145,8 @@ int main(void)
         REQUIRE(smooth_control.VY>.119f && dy>.19f);
     }
     camera_green=0; observed_frame(0,0);
+    REQUIRE(VisionAlign_ControlOwned());
+    for(i=0;i<40;++i) { next_navigation_frame(); observed_frame(0,0); }
     REQUIRE(!VisionAlign_ControlOwned());
     for(i=0;i<5;++i) { now+=20; next_navigation_frame(); poll(); }
     REQUIRE(route_owned && navigator.target==target && !navigator.pause_latched && dx>0);

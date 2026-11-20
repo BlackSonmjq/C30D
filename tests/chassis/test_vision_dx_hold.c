@@ -23,7 +23,7 @@ int main(void)
     REQUIRE(vision_align.phase==VISION_ALIGN_TRACK && dy<-.19f && strikes==0);
     frame(0,0);REQUIRE(dy<-.239f && dy>=-.24001f);
     camera_green=0;frame(0,0);
-    REQUIRE(vision_align.phase==VISION_ALIGN_WAIT && !vision_target_region && dy==0);
+    REQUIRE(vision_align.phase==VISION_ALIGN_LOST && vision_target_region==2 && dy==0 && !vision_align.dx_hold_speed);
     clear_fruit();camera_green=1;frame(1,20);frame(1,20);frame(1,20);
     frame(0,0);lidar.fresh=0;poll();
     REQUIRE(dx==0 && dy==0 && vision_align.phase==VISION_ALIGN_LOST);

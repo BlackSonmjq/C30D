@@ -8,24 +8,33 @@ void RouteIO_ReadLidar(RouteLidarFrame *v) { *v=lidar; v->sequence=now; }
 int main(void)
 {
     unsigned i,j;
+    uint32_t started;
     GamePadInterface=&gamepad; PS2_ON_Flag=1; gamepad.RX=0;
     MOTOR_A.Encoder=MOTOR_B.Encoder=MOTOR_C.Encoder=MOTOR_D.Encoder=0;
     for(i=0;i<3;++i) frame(1,-80);
     REQUIRE(VisionAlign_ControlOwned() && dy<0 && !strikes);
+    started=vision_align.started_ms;
     camera_green=0; frame(1,-40);
-    REQUIRE(!VisionAlign_ControlOwned() && !vision_target_region);
-    poll(); REQUIRE(dy>.29f);
-    /* A one-frame green loss must not let the same fruit steal the input again. */
+    REQUIRE(VisionAlign_ControlOwned() && vision_target_region==2 && dx==0 && dy==0);
+    /* Flicker parks the existing attempt without restoring manual input or relocking. */
+    for(i=0;i<8;++i) {
+        camera_green=1;
+        for(j=0;j<8;++j) frame(1,-80);
+        REQUIRE(VisionAlign_ControlOwned() && dy<0 && vision_lock_count==1);
+        camera_green=0; frame(1,-40); frame(1,-40);
+        REQUIRE(VisionAlign_ControlOwned() && dx==0 && dy==0 && !strikes);
+    }
+    /* Repeated grace periods must not make an unfinished alignment unbounded. */
+    for(i=0;i<200 && !vision_detection_timed_out;++i) {
+        camera_green=(i%8)>=2;
+        frame(1,-40);
+    }
+    REQUIRE(vision_detection_timed_out && !VisionAlign_ControlOwned());
+    REQUIRE(now-started>=VISION_ALIGN_TIMEOUT_MS && now-started<=VISION_ALIGN_TIMEOUT_MS+50U);
     camera_green=1;
     for(i=0;i<8;++i) frame(1,-80);
     REQUIRE(!VisionAlign_ControlOwned() && dy>.29f && !vision_target_region);
-    for(i=0;i<8;++i) {
-        camera_green=0; frame(1,-40); frame(1,-40);
-        camera_green=1;
-        for(j=0;j<4;++j) frame(1,-80);
-        REQUIRE(!VisionAlign_ControlOwned() && dy>.29f && !strikes);
-    }
-    /* Continuous real absence, rather than a stick action, rearms automation. */
+    /* Only 300 ms of real absence rearms after release. */
     camera_green=0;
     for(i=0;i<7;++i) frame(1,-40);
     REQUIRE(!vision_detection_timed_out && !VisionAlign_ControlOwned());
@@ -39,11 +48,9 @@ int main(void)
     camera_green=1;
     for(i=0;i<6;++i) frame(1,-80);
     REQUIRE(!VisionAlign_ControlOwned() && dy>.29f);
-    camera_green=0;
-    for(i=0;i<7;++i) frame(1,-40);
-    camera_green=1;
+    clear_fruit(); camera_green=1;
     for(i=0;i<3;++i) frame(1,-80);
     REQUIRE(VisionAlign_ControlOwned());
-    puts("PASS: green flicker releases immediately without reacquiring; only 300ms fresh absence rearms, no stick gesture required");
+    puts("PASS: green flicker parks the same target, preserves deadline, and rearming needs fresh absence");
     return 0;
 }

@@ -19,6 +19,8 @@ spec.loader.exec_module(capture)
 
 
 def packet(count):
+    if count == 60:
+        return packet(58) + [2, 4]
     if count == 58:
         return packet(43) + [100, 2700, 20, 6, 10, 5, 4, -50, 12, .125, -.25, 15, 1, 12000, 15]
     if count == 43:
@@ -61,6 +63,23 @@ def packet(count):
 
 
 class FramingTests(unittest.TestCase):
+    def test_stop_release_diagnostics(self):
+        values = packet(60)
+        self.assertEqual(capture.fields_for(60)[:58], capture.fields_for(58))
+        self.assertEqual(capture.fields_for(60)[58:], ['vision_stop_reason', 'vision_release_reason'])
+        self.assertEqual(capture.Framer.decode(struct.pack('<60f', *values)), tuple(values))
+        self.assertIn('STOP=FRONT_LIMIT RELEASE=REGION_TIMEOUT', capture.camera_summary(values))
+        for index, bad in ((58, -1), (58, .5), (58, 17), (59, 13), (59, float('nan'))):
+            invalid = values.copy(); invalid[index] = bad
+            self.assertIsNone(capture.Framer.decode(struct.pack('<60f', *invalid)))
+        data = struct.pack('<60f', *values) + capture.TAIL
+        for start in range(1, len(data)):
+            parser = capture.Framer(); frames = []
+            stream = data[start:] + data + data
+            for offset in range(0, len(stream), 20):
+                frames.extend(parser.feed(stream[offset:offset+20]))
+            self.assertEqual(frames, [tuple(values)] * 2, start)
+
     def test_merged_navigation_diagnostics(self):
         values = packet(58)
         self.assertEqual(capture.fields_for(58)[:43], capture.fields_for(43))
