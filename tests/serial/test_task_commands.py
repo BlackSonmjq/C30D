@@ -225,6 +225,28 @@ camera_bytes(cpu, bytes([0x63, 1, ord("1"), 1, 3, 0x66]))
 check(read(cpu, "pending_laser") == 0 and read(cpu, "job_busy") == 0)
 
 
+# USART1 accepts the same commands between frames, with independent prefixes.
+cpu = fresh()
+camera_bytes(cpu, b"S1")
+check(read(cpu, "servo_debug_pending") == 1)
+check(read(cpu, "pending_laser") == 0)
+cpu = fresh()
+camera_bytes(cpu, b"1")
+check(read(cpu, "pending_laser") == 1)
+cpu = fresh()
+camera_bytes(cpu, b"S")
+receive(cpu, "2")
+check(read(cpu, "pending_laser") == 2 and read(cpu, "servo_debug_pending") == 0)
+camera_bytes(cpu, b"J")
+check(read(cpu, "camera_report_pending") == 1)
+cpu = fresh()
+camera_bytes(cpu, b"S" + bytes([0x63, 1, ord("1"), 1, 3, 0x66]) + b"2")
+check(read(cpu, "pending_laser") == 2 and read(cpu, "servo_debug_pending") == 0)
+cpu = fresh()
+camera_bytes(cpu, b"cS1K4?")
+check(read(cpu, "pending_laser") == 0 and read(cpu, "job_busy") == 0)
+check(read(cpu, "servo_debug_pending") == 0)
+
 # Also execute the real formatter and UART sender, capturing peripheral writes.
 cpu = fresh()
 wire = bytearray()
@@ -245,5 +267,30 @@ for frame in (None, bytes([0x63, 1, 0xEC, 1, 3, 0x66])):
     invoke(cpu, "CameraReport_Process")
 check(wire == b"CMD SJ: NO DATA R=0 E=0 U=0\r\n"
               b"CMD SJ: B=1 DX=-20 G=1 REGION=3 F=1 R=6 E=0 U=0\r\n")
+
+# The actual PA9 TX path acknowledges accepted and busy servo commands.
+for number in range(1, 5):
+    cpu = fresh()
+    wire = bytearray()
+    uart = 0x40011000
+
+    def capture_ack(uc, access, address, size, value, context):
+        if address == uart + 4:
+            wire.append(value & 0xFF)
+
+    cpu.hook_add(UC_HOOK_MEM_WRITE, capture_ack)
+    command = f"S{number}".encode()
+    camera_bytes(cpu, command + command)
+    check(read(cpu, "servo_debug_pending") == number)
+    cpu.mem_write(uart + 0x0C, struct.pack("<I", 0x2008))
+    cpu.mem_write(uart, struct.pack("<I", 0xC0))
+    invoke(cpu, "USART3_CommandLogProcess")
+    check(wire == f"CMD S{number} ACCEPTED\r\nCMD S{number} BUSY\r\n".encode())
+
+    # The task consumes the request and reports the UART4 query on the same port.
+    wire.clear()
+    invoke(cpu, "ServoDebug_Process")
+    check(read(cpu, "servo_debug_pending") == 0)
+    check(f"SERVO {number} mode query baud=".encode() in wire)
 
 print(f"PASS: compiled USART3 K1-K4/SJ commands, vision snapshots, real UART bytes, busy/error recovery ({checks} checks)")
