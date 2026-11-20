@@ -31,6 +31,13 @@ static float target_limit_float(float v,float lo,float hi){return v<lo?lo:v>hi?h
 int main(void) {
     HeadingControl_Reset();
     assert(HeadingControl_HoldYaw(0,0,0,0)==0);
+    /* Residual 0.4 degree yaw must request correction in either direction. */
+    HeadingControl_Reset();
+    assert(HeadingControl_HoldYaw(0,.00698132f,0,0)<-.016f);
+    HeadingControl_Reset();
+    assert(HeadingControl_HoldYaw(0,-.00698132f,0,0)>.016f);
+    HeadingControl_Reset();
+    assert(HeadingControl_HoldYaw(0,.00349066f,0,0)==0); /* Keep a quiet 0.2 degree band. */
     /* A large stored effort from an earlier turn must not drive farther away. */
     heading_state.integral=-.335f;
     assert(HeadingControl_Output(.0376f,0,.01f,0)>0);

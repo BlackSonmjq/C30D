@@ -20,7 +20,7 @@
 #define HEADING_CONTROL_MIN_ASSIST_RATE       0.03f   // 超过此角速度不再强加最低起转输出，保留阻尼结果
 #define HEADING_CONTROL_INTEGRAL_RELEASE_RAD   0.003f  // Release parked effort within about 0.17 degrees
 #define HEADING_CONTROL_INTEGRAL_LIMIT        0.5f    // 积分状态限幅
-#define HEADING_CONTROL_YAW_TOLERANCE          0.01f   // 航向容差，约 0.57度
+#define HEADING_CONTROL_YAW_TOLERANCE          0.00523599f // 航向容差，约 0.3度
 #define HEADING_CONTROL_GYRO_TOLERANCE         0.03f   // 同时满足角度和角速度容差后输出零
 #define HEADING_CONTROL_GYRO_INTEGRATION_DEADZONE 0.0f // 角速度积分死区
 /* Full longitudinal tuning at 120 mm/s; linearly blend below it. */

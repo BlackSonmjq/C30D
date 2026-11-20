@@ -177,11 +177,11 @@ static float WheelOutput_StartupAssist(unsigned wheel, float pwm, float target, 
     if (measured < 0.0f) measured = 0.0f;
     /* Preserve translation breakaway; taper small pure-yaw targets below. */
     amount = wheel == 0U || wheel == 3U ? WHEEL_START_HEAVY_PWM : WHEEL_START_LIGHT_PWM;
-    /* Small pure-yaw commands need a gradual breakaway effort near the target.
-     * Translation and larger turns retain full load compensation. */
+    /* Linear taper retains useful breakaway effort for small yaw targets.
+     * Feedback still fades the assist as each wheel starts moving. */
     if (!wheel_output_translation_active && speed < WHEEL_START_EXIT_MPS) {
         ratio = speed / WHEEL_START_EXIT_MPS;
-        amount *= ratio * ratio;
+        amount *= ratio;
     }
     ratio = (exit_speed - measured) / (exit_speed * (1.0f - WHEEL_START_HOLD_RATIO));
     if (ratio > 1.0f) ratio = 1.0f;
