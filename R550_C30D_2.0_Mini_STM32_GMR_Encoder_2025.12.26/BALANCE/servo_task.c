@@ -69,7 +69,7 @@ static uint8_t position_matches(const char *frame, uint16_t length, uint16_t tar
         else position = position * 10U + (unsigned)(frame[i] - '0');
     }
     if (id != actuator.id || position < 500U || position > 2500U) return 0;
-    any_printf(USART1, "SERVO %u phase=%u pos=%u target=%u\r\n",
+    any_printf(USART3, "SERVO %u phase=%u pos=%u target=%u\r\n",
                (unsigned)actuator.id, (unsigned)phase, (unsigned)position, (unsigned)target);
     error = (int)position - (int)target;
     if (position_seen && (error < -tolerance || error > tolerance) &&
@@ -84,7 +84,7 @@ static uint8_t position_matches(const char *frame, uint16_t length, uint16_t tar
 static void phase_failed(void)
 {
     failed = 1;
-    any_printf(USART1, "SERVO %u phase=%u ERROR\r\n", (unsigned)actuator.id, (unsigned)phase);
+    any_printf(USART3, "SERVO %u phase=%u ERROR\r\n", (unsigned)actuator.id, (unsigned)phase);
     Servo_ClearRx();
     if (phase == 1U) {
         phase = 2;
@@ -114,7 +114,7 @@ void servo_task(void *pvParameters)
             if (stage == 0U) {
                 Servo_ClearRx();
                 moved = 1;
-                any_printf(USART1, "SERVO %u phase=%u target=%u time=%lu\r\n",
+                any_printf(USART3, "SERVO %u phase=%u target=%u time=%lu\r\n",
                            (unsigned)actuator.id, (unsigned)phase, (unsigned)target, (unsigned long)SERVO_MOVE_MS);
                 if (Servo_MovePulse(actuator.id, target, SERVO_MOVE_MS) != SERVO_OK) {
                     phase_failed();
@@ -143,7 +143,7 @@ void servo_task(void *pvParameters)
                         if (phase < 2U) { ++phase; stage = 0; }
                         else {
                             actuator.state = failed ? SERVO_TASK_ERROR : SERVO_TASK_DONE;
-                            any_printf(USART1, "SERVO %u finished error=%u\r\n",
+                            any_printf(USART3, "SERVO %u finished error=%u\r\n",
                                        (unsigned)actuator.id, (unsigned)failed);
                         }
                     }
@@ -161,7 +161,7 @@ void servo_task(void *pvParameters)
                     stalled_samples=0;
                     if (Servo_MovePulse(actuator.id,target,SERVO_MOVE_MS)!=SERVO_OK) phase_failed();
                     else { last_motion_sent=xTaskGetTickCount(); stage=1; }
-                    any_printf(USART1,"SERVO %u motion retry=%u target=%u\r\n",
+                    any_printf(USART3,"SERVO %u motion retry=%u target=%u\r\n",
                                (unsigned)actuator.id,(unsigned)motion_retries,(unsigned)target);
                 }
                 }

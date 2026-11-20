@@ -1,4 +1,4 @@
-"""Exercise the compiled USART1 ISR with emulated UART registers, no hardware.
+"""Exercise the compiled USART3 ISR with emulated UART registers, no hardware.
 
 Build the EIDE firmware first, then run with unicorn and pyelftools installed:
   python tests/serial/test_task_commands.py [path/to/WHEELTEC.axf]
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FIRMWARE = Path(sys.argv[1]) if len(sys.argv) > 1 else (
     ROOT.parent.parent / "C30D_EIDE/build/FreeRTOS/WHEELTEC.axf"
 )
-UART1 = 0x40011000
+UART3 = 0x40004800
 with FIRMWARE.open("rb") as stream:
     elf = ELFFile(stream)
     segments = [(s.header.p_vaddr, s.data()) for s in elf.iter_segments()
@@ -42,10 +42,10 @@ def read(cpu, name, size=1):
 
 def receive(cpu, data, status=0x20):
     for byte in data.encode("ascii"):
-        cpu.mem_write(UART1, struct.pack("<II", status, byte))
+        cpu.mem_write(UART3, struct.pack("<II", status, byte))
         cpu.reg_write(UC_ARM_REG_SP, 0x2001FFF0)
         cpu.reg_write(UC_ARM_REG_LR, 0x1001)
-        cpu.emu_start(symbols["USART1_IRQHandler"] | 1, 0x1000, count=10000)
+        cpu.emu_start(symbols["USART3_IRQHandler"] | 1, 0x1000, count=10000)
 
 
 checks = 0
@@ -66,7 +66,7 @@ for number in range(1, 5):
     check(read(cpu, "job_busy") == 1)
     check(read(cpu, "pending_mango") == number)
     check(read(cpu, "pending_laser") == 0)
-    check("usart3_forward_write" not in symbols)  # USART3 belongs to the camera.
+    check("usart3_forward_write" not in symbols)  # The legacy transparent bridge is absent.
 
 cpu = fresh()
 receive(cpu, "K1K2K3K4")
@@ -170,8 +170,8 @@ def invoke(cpu, name):
 
 def camera_bytes(cpu, data):
     for byte in data:
-        cpu.mem_write(0x40004800, struct.pack("<II", 0x20, byte))
-        invoke(cpu, "USART3_IRQHandler")
+        cpu.mem_write(0x40011000, struct.pack("<II", 0x20, byte))
+        invoke(cpu, "USART1_IRQHandler")
 
 
 cpu = fresh()
@@ -219,14 +219,20 @@ receive(cpu, "SJ")
 invoke(cpu, "CameraReport_Process")
 check("B=1 DX=127 G=1 REGION=3 F=3 R=24 E=1 U=0" in reports[-1])
 
+# Camera payload bytes can match command characters, but use a separate IRQ.
+cpu = fresh()
+camera_bytes(cpu, bytes([0x63, 1, ord("1"), 1, 3, 0x66]))
+check(read(cpu, "pending_laser") == 0 and read(cpu, "job_busy") == 0)
+
+
 # Also execute the real formatter and UART sender, capturing peripheral writes.
 cpu = fresh()
 wire = bytearray()
-cpu.mem_write(UART1 + 0x0C, struct.pack("<I", 0x2008))  # UART enabled, TX enabled.
+cpu.mem_write(UART3 + 0x0C, struct.pack("<I", 0x2008))  # UART enabled, TX enabled.
 
 
 def capture_wire(uc, access, address, size, value, context):
-    if address == UART1 + 4:
+    if address == UART3 + 4:
         wire.append(value & 0xFF)
 
 
@@ -235,9 +241,9 @@ for frame in (None, bytes([0x63, 1, 0xEC, 1, 3, 0x66])):
     if frame:
         camera_bytes(cpu, frame)
     receive(cpu, "SJ")
-    cpu.mem_write(UART1, struct.pack("<I", 0xC0))  # TXE and TC remain ready.
+    cpu.mem_write(UART3, struct.pack("<I", 0xC0))  # TXE and TC remain ready.
     invoke(cpu, "CameraReport_Process")
 check(wire == b"CMD SJ: NO DATA R=0 E=0 U=0\r\n"
               b"CMD SJ: B=1 DX=-20 G=1 REGION=3 F=1 R=6 E=0 U=0\r\n")
 
-print(f"PASS: compiled USART1 K1-K4/SJ commands, vision snapshots, real UART bytes, busy/error recovery ({checks} checks)")
+print(f"PASS: compiled USART3 K1-K4/SJ commands, vision snapshots, real UART bytes, busy/error recovery ({checks} checks)")

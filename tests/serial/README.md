@@ -1,10 +1,10 @@
 V0 reads all servo firmware versions; V1-V4 read one, using documented PVER with no configuration writes or motion. Print raw replies and only accept matching-ID PV or ZL-ZServo_ @ version strings. Current log marker: baud-version-9.
 
-Upper USART1 remains 115200. New firmware starts servo UART4 at 115200. Send B? for read-only 9600/115200 discovery and per-ID rate learning; run it before K jobs after reboot if rates are mixed. B0 attempts migration but now verifies the old rate on failure and retains usable communication. Logs show mask9600 and mask115200.
+The upper-computer port is USART3 at 115200. New firmware starts servo UART4 at 115200. Send B? for read-only 9600/115200 discovery and per-ID rate learning; run it before K jobs after reboot if rates are mixed. B0 attempts migration but now verifies the old rate on failure and retains usable communication. Logs show mask9600 and mask115200.
 
-> Current console: USART1 RX (PA10) accepts local task/servo commands; USART3 PD8/PD9 is reserved for the camera protocol. USART1 TX (PA9) prints servo logs only at 115200 8N1. Laser, APP and boot prints are disabled. The distance/rx3 examples below describe earlier configurations.
+> Car 2 uses USART1 (PA9 TX, PA10 RX) for camera frames and the HIT_DONE reply. USART3 (PD8 TX, PD9 RX) carries upper-computer commands, distance frames and diagnostics. Both ports use 115200 8N1.
 
-# 串口1任务指令
+# 串口3任务指令
 
 串口1接收端 PA10、发送端 PA9，115200、8N1，使用文本发送模式：
 
@@ -15,7 +15,7 @@ Upper USART1 remains 115200. New firmware starts servo UART4 at 115200. Send B? 
 
 击打距离分别为：`K1` 小于 108 mm，`K2` 小于 60 mm，`K3` 小于 45 mm，`K4` 小于 35 mm。
 
-流程为测距、靠近至有效距离小于对应编号阈值、舵机正转 180° 并回零、步进等脉冲返程、关闭激光。等于阈值时继续靠近。指令无需换行，可追加 CR/LF，也可分两次发送 `K` 和编号。只识别大写 `K` 和编号 `1～4`；忙碌时不切换目标、不排队。连续发送 `K1K2` 时，首个任务立即占用，第二个被拒绝。指令在本地消费，不通过 USART3 透明转发。UART 接收错误会清除未完成的指令前缀。
+流程为测距、靠近至有效距离小于对应编号阈值、舵机正转 180° 并回零、步进等脉冲返程、关闭激光。等于阈值时继续靠近。指令无需换行，可追加 CR/LF，也可分两次发送 `K` 和编号。只识别大写 `K` 和编号 `1～4`；忙碌时不切换目标、不排队。连续发送 `K1K2` 时，首个任务立即占用，第二个被拒绝。指令在本地消费，不向视觉口透明转发。UART 接收错误会清除未完成的指令前缀。
 
 裸数字 `1～4` 仍仅选激光，`S0`～`S4`、`M1`～`M4` 保持现有舵机调试功能。
 
@@ -25,7 +25,7 @@ S1-S4 require a confirmed position mode (1-4); after three unanswered mode queri
 
 During S2 outward motion, a valid position of 541 triggers up to three resends of the current absolute target, spaced at least 500 ms apart. Each resend allows 500 ms of motion before querying again; the original phase deadline is retained. Other positions, homing phases, other IDs and K2 do not trigger this retry.
 
-构建 EIDE 固件后，可仿真执行编译后的 USART1 中断入口：
+构建 EIDE 固件后，可仿真执行编译后的 USART3 命令中断入口：
 
 ```powershell
 uv run --with unicorn --with pyelftools python tests/serial/test_task_commands.py
@@ -33,7 +33,7 @@ uv run --with unicorn --with pyelftools python tests/serial/test_task_commands.p
 
 测试覆盖四个编号、分次发送、CR/LF、连续请求的忙碌拒绝、无效编号、重复前缀、UART 错误恢复及原数字/舵机调试指令。
 
-USART1 的 `SJ` 命令每次回传一份最近有效视觉快照，格式为 `CMD SJ: B=1 DX=-20 G=1 REGION=3 F=12 R=72 E=0 U=0`；尚无有效帧时回传 `CMD SJ: NO DATA R=0 E=0 U=0`。测试直接执行新固件的 USART1/USART3 中断入口和数据回传函数，覆盖请求拆包、忙碌时只读查询、无帧、DX 的有符号边界及无效帧不覆盖有效快照。运行测试时应显式传入当前构建的 AXF 路径。
+USART3 的 `SJ` 命令每次回传一份最近有效视觉快照，格式为 `CMD SJ: B=1 DX=-20 G=1 REGION=3 F=12 R=72 E=0 U=0`；尚无有效帧时回传 `CMD SJ: NO DATA R=0 E=0 U=0`。测试直接执行新固件的 USART1/USART3 中断入口和数据回传函数，覆盖请求拆包、忙碌时只读查询、无帧、DX 的有符号边界及无效帧不覆盖有效快照。运行测试时应显式传入当前构建的 AXF 路径。
 
 # 串口3测距接收协议
 
@@ -76,7 +76,7 @@ if (data.received) {
 
 读取接口通过保存、恢复 PRIMASK 取得一致快照，适用于任务上下文。`received` 表示至少接收过一帧，不代表数据仍然新鲜；应用可观察 `frame_count` 是否变化，自行判断超时。读取不会清除数据，也不会消费帧计数。
 
-解析器位于 `HARDWARE/distance_protocol.h`，接收入口为 `HARDWARE/usartx.c` 的 `USART3_IRQHandler()`。串口3不再周期发送测距帧，也不再将收到的11字节解释为原ROS底盘、回充或IP控制帧；这些帧与新协议缺少可靠的区分标识。串口3原有自检文本应答及串口1小写 `s` 舵机诊断保留。
+解析器位于 `HARDWARE/distance_protocol.h`，接收入口为 `HARDWARE/usartx.c` 的 `USART3_IRQHandler()`。串口3不再周期发送测距帧，也不再将收到的11字节解释为原ROS底盘、回充或IP控制帧；这些帧与新协议缺少可靠的区分标识。串口3原有自检文本应答及串口3小写 `s` 舵机诊断保留。
 
 ## 串口任务输出
 

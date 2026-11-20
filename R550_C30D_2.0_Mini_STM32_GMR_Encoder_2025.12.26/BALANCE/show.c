@@ -69,7 +69,7 @@ void show_task(void *pvParameters)
 		else if(10<=Voltage && Voltage<10.5f && LowVoltage_1<2)LowVoltage_1++; //10.5V, first buzzer when low battery //10.5V，低电量时蜂鸣器第一次报警
 		else if(Voltage<10 && LowVoltage_2==0)LowVoltage_2=1; //只在等于0时初始化
 
-		/* USART1 is reserved for servo logs; APP telemetry disabled. */ //APP_Show();	 //Send data to the APP //向APP发送数据
+		/* USART3 is used for servo logs; APP telemetry disabled. */ //APP_Show();	 //Send data to the APP //向APP发送数据
 
 		if(oled_refresh_flag) OLED_Clear(),oled_refresh_flag=0;
 		else oled_show(); //Tasks are displayed on the screen //显示屏显示任务

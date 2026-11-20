@@ -44,7 +44,7 @@
 #define TASK_PRIORITY_STATUS        1U
 #endif
 
-/* NVIC uses the opposite order: smaller values run first. USART3 must
+/* NVIC uses the opposite order: smaller values run first. USART1 must
  * never call RTOS APIs. Telemetry TX uses only registers and a byte buffer.
  */
 #ifndef IRQ_PRIORITY_VISION

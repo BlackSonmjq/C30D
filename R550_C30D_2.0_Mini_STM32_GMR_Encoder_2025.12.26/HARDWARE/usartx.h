@@ -82,7 +82,7 @@ typedef struct _RECEIVE_DATA_
 u8 USART_ServoControlBusy(void);
 void data_task(void *pvParameters);
 void data_transition(void);
-void USART1_SEND(void);
+void USART3_SEND(void);
 /* Task-context snapshot of the last verified four-channel distance frame. */
 void USART3_GetDistanceData(DistanceProtocol_Data *data);
 #define USART3_RAW_CAPTURE_SIZE 16U

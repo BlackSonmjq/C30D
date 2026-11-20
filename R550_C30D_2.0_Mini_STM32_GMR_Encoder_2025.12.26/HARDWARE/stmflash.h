@@ -21,7 +21,7 @@ args... :代表可变参数列表
 */
 
 #define DEBUG_INFO(fmt,...) \
-	any_printf(USART1,"[File:%s][Function:%s][Line:%d]" fmt,__FILE__,__FUNCTION__,__LINE__,##__VA_ARGS__)
+	any_printf(USART3,"[File:%s][Function:%s][Line:%d]" fmt,__FILE__,__FUNCTION__,__LINE__,##__VA_ARGS__)
 #else
 #define DEBUG_INFO(fmt,...) __nop()
 #endif

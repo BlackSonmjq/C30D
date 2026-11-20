@@ -1,7 +1,7 @@
 #ifndef __USART_H
 #define __USART_H
-/* USART1 console prints servo messages only; other UARTs are unchanged. */
-#define USART1_SERVO_LOG_ONLY 1
+/* USART3 console prints servo messages only; other UARTs are unchanged. */
+#define USART3_SERVO_LOG_ONLY 1
 #include "stdio.h"	
 #include "stm32f4xx_conf.h"
 #include "sys.h" 

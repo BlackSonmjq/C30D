@@ -28,10 +28,10 @@ void _sys_exit(int x)
 int fputc(int ch, FILE *f)
 {
     (void)f;
-#if USART1_SERVO_LOG_ONLY
+#if USART3_SERVO_LOG_ONLY
     return ch; /* Suppress legacy printf telemetry. */
 #else
-    return USART_WriteByte(USART1, (uint8_t)ch) ? ch : EOF;
+    return USART_WriteByte(USART3, (uint8_t)ch) ? ch : EOF;
 #endif
 }
 
@@ -73,8 +73,8 @@ void any_printf(USART_TypeDef *USARTx, char *format, ...)
     unsigned int i;
     int length;
     va_list args;
-#if USART1_SERVO_LOG_ONLY
-    if (USARTx == USART1 && strncmp(format, "SERVO ", 6U) != 0 &&
+#if USART3_SERVO_LOG_ONLY
+    if (USARTx == USART3 && strncmp(format, "SERVO ", 6U) != 0 &&
         strncmp(format, "servo ", 6U) != 0 &&
         strncmp(format, "CMD ", 4U) != 0) return;
 #endif

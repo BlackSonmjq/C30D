@@ -51,7 +51,7 @@
 /* VOFA 调试输出开关，无单位；仅在导航开启且处于调试模式时生效。
  * 1：蓝牙接口 USART2 专用于 JustFloat，暂停该口的 APP 解析与文本打印。
  * 使用 9600 波特率，TX=PD5、RX=PD6；关闭时恢复原蓝牙 9600 波特率和协议。
- * USART3 接收视觉协议，USART1 仍用于原疏果通信。
+ * USART1 接收视觉协议，USART3 仍用于原疏果通信。
  */
 #define ROUTE_VOFA_ENABLE              1
 
