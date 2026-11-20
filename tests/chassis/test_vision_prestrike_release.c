@@ -53,6 +53,9 @@ int main(void)
     REQUIRE(vision_detection_timed_out && !vision_target_region && !vision_align.dx_hold_speed);
     REQUIRE(dx==0 && dy==0 && dz==0 && strikes==1);
     poll(); REQUIRE(dy>.29f && vision_align.phase==VISION_ALIGN_WAIT);
+    /* Receive-timeout coverage belongs to a fresh simulated boot. */
+    REQUIRE(vision_boot_alignments==3);
+    vision_boot_alignments=0;
     clear_fruit(); camera_green=1;
     for(i=0;i<6;++i) frame(1,0);
     REQUIRE(vision_pick_phase==PICK_HOLD);

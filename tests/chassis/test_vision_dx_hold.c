@@ -35,6 +35,9 @@ int main(void)
     REQUIRE(dy>.119f && dy<.121f);
     frame(0,0);REQUIRE(dy>.179f && dy<.181f);
     clear_fruit();camera_green=1;
+    /* Start a new simulated boot for the remaining independent safety cases. */
+    REQUIRE(vision_boot_alignments==3);
+    vision_boot_alignments=0;
     frame(1,20);frame(1,20);frame(1,20);
     frame(0,0);EN=0;poll();REQUIRE(dx==0 && dy==0);
     EN=1;clear_fruit();camera_green=1;

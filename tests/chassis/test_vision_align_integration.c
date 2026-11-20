@@ -49,6 +49,7 @@ static VisionPickPhase vision_pick_phase;
 static uint8_t vision_pick_id;
 static uint8_t vision_pick_attempts;
 static uint8_t vision_boot_attempts;
+static uint8_t vision_boot_alignments;
 static uint8_t vision_detection_timed_out;
 static uint8_t vision_rearm_clear_active;
 static uint32_t vision_rearm_clear_since;

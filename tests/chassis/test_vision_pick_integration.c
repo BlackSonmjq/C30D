@@ -17,11 +17,11 @@ static void selected_frame(unsigned id, int dx_value)
 int main(void)
 {
     unsigned id,i,before,job;
-    static const unsigned regions[4]={1,2,4,1};
+    static const unsigned regions[3]={1,2,4};
     VisionAlign_Diagnostics diag;
     GamePadInterface=&gamepad;PS2_ON_Flag=1;gamepad.LY=254;
     MOTOR_A.Encoder=MOTOR_B.Encoder=MOTOR_C.Encoder=MOTOR_D.Encoder=0;
-    for(job=0;job<4;++job) {
+    for(job=0;job<3;++job) {
         id=regions[job];
         /* New target absence while idle rearms the one-fruit latch. */
         camera_green=0;for(i=0;i<25;++i) frame(0,0);camera_green=1;vision_hit_report=0;
@@ -105,18 +105,18 @@ int main(void)
         clear_fruit();
         REQUIRE(vision_pick_phase==PICK_IDLE && VisionAlign_GetPhase()==VISION_ALIGN_WAIT);
         REQUIRE(dx>.29f && dy==0 && strikes==before && vision_hit_report==id);
-        REQUIRE(vision_pick_attempts==(job==3?1U:0U));
+        REQUIRE(vision_pick_attempts==(job==2?1U:0U));
         vision_hit_report=0;poll();
         REQUIRE(dx>.29f && !tool_busy);
         VisionAlign_GetDiagnostics(&diag);REQUIRE(!diag.locked);
-        frame(0,0);frame(0,0);if(job<3) REQUIRE(!vision_pick.latched);
+        frame(0,0);frame(0,0);if(job<2) REQUIRE(!vision_pick.latched);
     }
 
-    /* The boot-wide quota also rejects a fresh episode after four jobs. */
+    /* The boot-wide tree quota rejects a fresh fourth alignment. */
     camera_green=0;for(i=0;i<25;++i) frame(0,0);camera_green=1;
     before=strikes;
     for(i=0;i<65;++i) frame(1,0);
-    REQUIRE(strikes==before && vision_boot_attempts==4 && vision_hit_count==4);
+    REQUIRE(strikes==before && vision_boot_attempts==3 && vision_hit_count==3 && vision_boot_alignments==3);
     REQUIRE(vision_pick_phase==PICK_IDLE && !VisionAlign_ControlOwned());
     /* No G/REGION: never align or start a mechanism; retain manual control. */
     for(i=0;i<25;++i) frame(0,0);

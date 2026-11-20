@@ -44,6 +44,7 @@ static VisionStrike_State vision_pick;
 static uint8_t vision_pick_id;
 static uint8_t vision_pick_attempts;
 static uint8_t vision_boot_attempts;
+static uint8_t vision_boot_alignments;
 static uint8_t vision_detection_timed_out;
 static uint8_t vision_rearm_clear_active;
 static uint32_t vision_rearm_clear_since;
@@ -1126,7 +1127,9 @@ static void VisionAlign_Drive(float forward, float left)
     if (!ready && VisionAlign_ControlOwned() && vision_pick_phase != PICK_WORK)
         vision_release_reason = VISION_RELEASE_BASE;
 #if VISION_PICK_ENABLE
-    if (vision_boot_attempts >= VISION_PICK_BOOT_MAX_ATTEMPTS && vision_pick_phase <= PICK_HOLD) {
+    /* The last tree keeps ownership through alignment, work and safe return. */
+    if ((vision_boot_alignments >= VISION_ALIGN_BOOT_MAX_TREES && !VisionAlign_ControlOwned()) ||
+        (vision_boot_attempts >= VISION_PICK_BOOT_MAX_ATTEMPTS && vision_pick_phase <= PICK_HOLD)) {
         vision_target_region = 0U;
         vision_detection_timed_out = 1U;
         vision_pick_phase = PICK_IDLE;
@@ -1468,6 +1471,8 @@ static void VisionAlign_Drive(float forward, float left)
     command = VisionAlign_Update(&vision_align, &camera, now, manual_active, ready,
         rear_filtered, align_lidar.fresh && rear_filtered != 0U);
 #if VISION_PICK_ENABLE
+    if ((previous_phase == VISION_ALIGN_IDLE || previous_phase == VISION_ALIGN_WAIT) && command.owned)
+        ++vision_boot_alignments;
     if (command.owned && command.x_mps == 0.0f && command.y_mps == 0.0f) {
         if (!align_lidar.fresh || !rear_filtered) vision_stop_reason = VISION_STOP_LIDAR;
         else if (camera.pole != 1U || camera.green != 1U || vision_align.phase == VISION_ALIGN_LOST)
