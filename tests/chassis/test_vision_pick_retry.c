@@ -32,7 +32,7 @@ int main(void)
     frame(1,20);frame(1,20);frame(1,20);
     frame(1,0);frame(1,0);frame(1,0);
     MOTOR_A.Encoder=.006f;
-    for(i=0;i<150;++i) frame(1,0);
+    for(i=0;i<80;++i) frame(1,0); /* Recover before the new 5-second deadline. */
     REQUIRE(vision_pick_phase==PICK_WAIT && !vision_detection_timed_out && strikes==0);
     MOTOR_A.Encoder=0;
     for(i=0;i<15;++i) frame(1,0);

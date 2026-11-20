@@ -58,6 +58,7 @@ static uint32_t vision_lock_count;
 static uint32_t vision_pick_phase_started;
 volatile uint8_t vision_hit_report;
 static uint32_t vision_pick_wait_started;
+static uint8_t vision_pick_wait_active;
 static int chassis_stopped=1;
 static uint8_t vision_align_ready;
 static uint16_t vision_align_blocked;
