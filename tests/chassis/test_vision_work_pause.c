@@ -27,8 +27,10 @@ int main(void)
     camera_green=1;frame(1,0);
     REQUIRE(vision_pick_phase==PICK_COOLDOWN);
     now+=1800;frame(1,0);
-    REQUIRE(vision_pick_phase==PICK_IDLE && vision_align.phase==VISION_ALIGN_ACQUIRE);
-    REQUIRE(vision_target_region==2 && vision_lock_count==1);
+    REQUIRE(vision_pick_phase==PICK_IDLE && vision_align.phase==VISION_ALIGN_WAIT);
+    poll();
+    REQUIRE(vision_detection_timed_out && !vision_target_region && strikes==1);
+    clear_fruit(); camera_green=1;
     for(i=0;i<15;++i) frame(1,0);
     REQUIRE(vision_pick_phase==PICK_WORK && strikes==2);
     camera_green=0;frame(0,0);
@@ -45,7 +47,7 @@ int main(void)
         REQUIRE(dx==0 && dy==0 && vision_align.dx_hold_speed==0);
         REQUIRE(vision_pick_phase==PICK_IDLE && vision_align.phase==VISION_ALIGN_WAIT);
     }
-    REQUIRE(strikes==2 && vision_lock_count==1);
+    REQUIRE(strikes==2 && vision_lock_count==2);
     printf("PASS: full WORK ignores visual changes and G=0, fault stays parked, success/failure resume only on new post-return frames, released control never uses old DX (%u checks)\n",checks);
     return 0;
 }

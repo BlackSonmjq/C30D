@@ -43,6 +43,7 @@ static uint32_t vision_lock_count;
 static VisionStrike_State vision_pick;
 static uint8_t vision_pick_id;
 static uint8_t vision_pick_attempts;
+static uint8_t vision_boot_attempts;
 static uint8_t vision_detection_timed_out;
 static uint8_t vision_rearm_clear_active;
 static uint32_t vision_rearm_clear_since;
@@ -507,6 +508,7 @@ void Balance_task(void *pvParameters)
 			imu_ready_beeped = 1;
 		}
 
+        wheel_output_probe_assist_pwm = 0.0f;
         vision_park_braking = 0U;
         if (RouteIO_ControlOwned() && PS2_ON_Flag && GamePadInterface &&
             (fabsf((float)GamePadInterface->LY - 127.0f) >= 20.0f ||
@@ -527,7 +529,7 @@ void Balance_task(void *pvParameters)
         else if (RouteIO_ControlOwned())
         {
             Allow_Recharge = 0;
-            RouteIO_ApplyDrive();
+            wheel_output_probe_assist_pwm = RouteIO_ApplyDrive();
         }
         else
         {
@@ -1124,6 +1126,19 @@ static void VisionAlign_Drive(float forward, float left)
     if (!ready && VisionAlign_ControlOwned() && vision_pick_phase != PICK_WORK)
         vision_release_reason = VISION_RELEASE_BASE;
 #if VISION_PICK_ENABLE
+    if (vision_boot_attempts >= VISION_PICK_BOOT_MAX_ATTEMPTS && vision_pick_phase <= PICK_HOLD) {
+        vision_target_region = 0U;
+        vision_detection_timed_out = 1U;
+        vision_pick_phase = PICK_IDLE;
+        vision_release_reason = VISION_RELEASE_QUOTA;
+        vision_manual_frames = vision_align.last_frames = camera.frames;
+        vision_manual_seen = now;
+        VisionAlign_Cancel(&vision_align);
+        vision_align.phase = VISION_ALIGN_WAIT;
+        if (ready) ManualMecanum_Drive(forward, left, 0U);
+        else VisionAlign_HardStop();
+        return;
+    }
     if (vision_pick_phase == PICK_WORK) {
         vision_stop_reason = VISION_STOP_WORK;
         /* Ignore all vision decisions until safe return; consume frames without acting. */
@@ -1233,8 +1248,10 @@ static void VisionAlign_Drive(float forward, float left)
          (uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS)))
         vision_target_region = 0U;
     if (ready && !vision_detection_timed_out && vision_pick_phase != PICK_WORK &&
+        vision_pick_attempts <= VISION_PICK_MAX_REPEATS &&
+        vision_boot_attempts < VISION_PICK_BOOT_MAX_ATTEMPTS &&
         !vision_target_region && camera.frames && camera.frames != vision_manual_frames &&
-        camera.green == 1U && camera.region >= 1U && camera.region <= 4U)
+        camera.green == 1U && VisionStrike_RegionEnabled(camera.region))
     {
         vision_target_region = camera.region;
         vision_release_reason = VISION_RELEASE_NONE;
@@ -1247,6 +1264,8 @@ static void VisionAlign_Drive(float forward, float left)
         if (camera.frames != vision_manual_frames && camera.region == vision_target_region)
             vision_fruit_seen = now;
         camera.region = vision_target_region;
+    } else if (!VisionStrike_RegionEnabled(camera.region)) {
+        camera.region = 0U; /* Local decision only; raw REGION telemetry stays unchanged. */
     }
     /* A receive gap cannot qualify continuous absence for rearming. */
     if ((uint32_t)(now - vision_manual_seen) >= VISION_ALIGN_FRESH_MS)
@@ -1299,7 +1318,7 @@ static void VisionAlign_Drive(float forward, float left)
         goto detection_timeout;
     }
     /* A transient absence during the parked decision belongs to the same episode. */
-    if (!parked && vision_pick_phase != PICK_WORK && camera.frames &&
+    if (!parked && vision_pick_phase == PICK_IDLE && camera.frames &&
         camera.frames != vision_align.last_frames && camera.green == 0U)
         vision_pick_attempts = 0U;
     if (vision_pick_phase == PICK_REPORT) {
@@ -1330,7 +1349,7 @@ static void VisionAlign_Drive(float forward, float left)
                 VisionAlign_Cancel(&vision_align);
                 vision_align.phase = VISION_ALIGN_WAIT;
             } else if (camera.pole == 1U && camera.green == 1U &&
-                camera.region >= 1U && camera.region <= 4U &&
+                VisionStrike_RegionEnabled(camera.region) &&
                 vision_pick_attempts <= VISION_PICK_MAX_REPEATS) {
                 /* More fruit: retain automatic ownership, but discard old
                  * confirmations before another alignment and stationary hold. */
@@ -1354,7 +1373,7 @@ static void VisionAlign_Drive(float forward, float left)
             /* Rearm only a safely returned failure, within the existing quota. */
             vision_pick_phase = PICK_IDLE;
             if (vision_pick_attempts <= VISION_PICK_MAX_REPEATS && camera.pole == 1U &&
-                camera.green == 1U && camera.region >= 1U && camera.region <= 4U) {
+                camera.green == 1U && VisionStrike_RegionEnabled(camera.region)) {
                 vision_pick.latched = 0U;
                 VisionStrike_ResetEvidence(&vision_pick);
                 vision_pick.last_seen_ms = now;
@@ -1504,27 +1523,22 @@ static void VisionAlign_Drive(float forward, float left)
                 else vision_stop_reason = qualified ? VISION_STOP_HOLD : VISION_STOP_WHEELS;
             }
             if (!qualified) vision_pick_phase = PICK_WAIT;
-            switch (vision_pick_phase) {
-            case PICK_WAIT:
-                if (qualified) {
-                    vision_pick_phase = PICK_HOLD;
-                    vision_pick_phase_started = now;
-                }
-                break;
-            case PICK_HOLD:
-                if ((uint32_t)(now - vision_pick_phase_started) >= VISION_PICK_STOP_HOLD_MS &&
-                    vision_target_region >= 1U && vision_target_region <= 4U &&
-                    vision_pick_attempts <= VISION_PICK_MAX_REPEATS &&
-                    StepperTask_RequestMango(vision_target_region)) {
-                    ++vision_pick_attempts;
-                    vision_pick_id = vision_target_region;
-                    VisionStrike_Accept(&vision_pick);
-                    VisionAlign_Cancel(&vision_align);
-                    vision_pick_phase = PICK_WORK;
-                    vision_stop_reason = VISION_STOP_WORK;
-                }
-                break;
-            default: break;
+            if (vision_pick_phase == PICK_WAIT && qualified) {
+                vision_pick_phase = PICK_HOLD;
+                vision_pick_phase_started = now;
+            } else if (vision_pick_phase == PICK_HOLD &&
+                (uint32_t)(now - vision_pick_phase_started) >= VISION_PICK_STOP_HOLD_MS &&
+                VisionStrike_RegionEnabled(vision_target_region) &&
+                vision_pick_attempts <= VISION_PICK_MAX_REPEATS &&
+                vision_boot_attempts < VISION_PICK_BOOT_MAX_ATTEMPTS &&
+                StepperTask_RequestMango(vision_target_region)) {
+                ++vision_pick_attempts;
+                ++vision_boot_attempts;
+                vision_pick_id = vision_target_region;
+                VisionStrike_Accept(&vision_pick);
+                VisionAlign_Cancel(&vision_align);
+                vision_pick_phase = PICK_WORK;
+                vision_stop_reason = VISION_STOP_WORK;
             }
             if (vision_pick_phase != PICK_IDLE && !vision_detection_timed_out) {
                 VisionAlign_HoldYaw();

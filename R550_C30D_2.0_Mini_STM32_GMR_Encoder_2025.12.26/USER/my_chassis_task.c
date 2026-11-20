@@ -4,6 +4,8 @@
 #include "chassis_odometry.h"
 #include "route_debug.h"
 #include "stepper_task.h"
+#include "servo_task.h"
+#include "usart.h"
 #include "vision_align.h"
 #include "nav_core.h"
 #include "nav_button.h"
@@ -73,6 +75,7 @@ void my_chassis_task(void *parameters)
     StepperTask_Data tool;
     uint32_t previous_ms = RouteIO_Millis();
     uint8_t work_id = 0U, work_started = 0U;
+    uint8_t p10_done = 0U, p10_servo = 0U;
     NavButton button;
     (void)parameters;
     Nav_Init(&navigator, &nav_calibration, NAV_CALIBRATED);
@@ -124,10 +127,22 @@ void my_chassis_task(void *parameters)
         }
         StepperTask_GetData(&tool);
         if (!work_id) work_id = RouteIO_TakeWorkRequest();
-        if (work_started && !StepperTask_IsBusy() &&
+        if (work_started == 1U && !StepperTask_IsBusy() &&
             tool.state == STEPPER_RETURNED && tool.mango_id == work_id) {
             RouteIO_CompleteWork();
             work_id = work_started = 0U;
+        }
+        if (p10_servo && work_started == 2U && !ServoTask_IsBusy()) {
+            ServoTask_Data servo;
+            ServoTask_GetData(&servo);
+            if (servo.id == 4U && servo.state == SERVO_TASK_DONE) {
+                RouteIO_CompleteWork();
+                work_id = work_started = p10_servo = 0U;
+                any_printf(USART1, "P10 servo 4 dry cycle done\r\n");
+            } else {
+                work_started = 3U; /* Retain the reservation until an explicit route stop. */
+                any_printf(USART1, "P10 servo 4 dry cycle ERROR\r\n");
+            }
         }
         in.stop = stop;
         in.start = request && !active && !vision_owned && !StepperTask_IsBusy();
@@ -138,18 +153,35 @@ void my_chassis_task(void *parameters)
             navigator.exit_started_ms += (uint32_t)(in.now_ms - previous_ms);
         previous_ms = in.now_ms;
         Nav_Tick(&navigator, &in, &lidar);
+        if (!active && Nav_IsActive(&navigator)) p10_done = 0U;
         active = (uint8_t)Nav_IsActive(&navigator);
+        if (active && navigator.confirmed == 10U && !p10_done && !work_id && !vision_owned) {
+            /* Reuse the route work reservation; this request never moves a stepper. */
+            if (RouteIO_QueueWorkFromISR(4U)) p10_done = p10_servo = 1U;
+            navigator.output.vx = navigator.output.vy = navigator.output.wz = 0.0f;
+            navigator.output.quick_stop = 1U;
+        }
+        if (!active && p10_servo) {
+            if (work_started == 2U) ServoTask_Cancel();
+            RouteIO_CompleteWork();
+            work_id = work_started = p10_servo = 0U;
+        }
         if (!active && work_id && !work_started) {
             work_id = 0U;
             RouteIO_CompleteWork();
         }
         if (work_id && !work_started && navigator.output.work_stopped && !vision_owned &&
             !StepperTask_IsBusy()) {
-            if (StepperTask_RequestMango(work_id)) work_started = 1U;
+            if (p10_servo) {
+                if (ServoTask_Start(4U)) {
+                    work_started = 2U;
+                    any_printf(USART1, "P10 servo 4 dry cycle start\r\n");
+                }
+            } else if (StepperTask_RequestMango(work_id)) work_started = 1U;
             else { work_id = 0U; RouteIO_CompleteWork(); }
         }
         RouteIO_SetHeading(navigator.heading_origin_rad);
-        RouteIO_SetVelocity(navigator.output.vx, navigator.output.vy, navigator.output.quick_stop);
+        RouteIO_SetVelocity(navigator.output.vx, navigator.output.vy, navigator.output.quick_stop, navigator.output.probe_assist_pwm);
         RouteIO_SetRunning(active);
         RouteIO_AllowWork(active && !vision_owned && !work_id);
         publish_status();

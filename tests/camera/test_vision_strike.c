@@ -93,18 +93,18 @@ int main(void)
     REQUIRE(observe(&s, &d, 4, 5900, 0) == 0);
     REQUIRE(observe(&s, &d, 4, 5950, 0) == 4);
     memset(&s, 0, sizeof(s));
-    REQUIRE(observe(&s, &d, 3, 0xffffffceU, 0) == 0);
-    REQUIRE(observe(&s, &d, 3, 0, 0) == 0);
-    REQUIRE(observe(&s, &d, 3, 50, 0) == 3); /* clock wrap */
+    REQUIRE(observe(&s, &d, 4, 0xffffffceU, 0) == 0);
+    REQUIRE(observe(&s, &d, 4, 0, 0) == 0);
+    REQUIRE(observe(&s, &d, 4, 50, 0) == 4); /* clock wrap */
 
     /* Majority tolerates one wrong number, but never fires the current wrong number. */
     { VisionStrike_State vote={0};Camera_Data observation={0};
       REQUIRE(observe(&vote,&observation,2,100,0)==0);
       REQUIRE(observe(&vote,&observation,2,150,0)==0);
-      REQUIRE(observe(&vote,&observation,3,200,0)==0);
+      REQUIRE(observe(&vote,&observation,4,200,0)==0);
       REQUIRE(observe(&vote,&observation,2,250,0)==2);
-      REQUIRE(observe(&vote,&observation,3,300,0)==0 && vote.candidate==2);
-      REQUIRE(observe(&vote,&observation,3,350,0)==3 && vote.candidate==3);
+      REQUIRE(observe(&vote,&observation,4,300,0)==0 && vote.candidate==2);
+      REQUIRE(observe(&vote,&observation,4,350,0)==4 && vote.candidate==4);
       VisionStrike_Accept(&vote);
       REQUIRE(vote.count==0 && vote.confirmed==0);
       REQUIRE(observe(&vote,&observation,2,400,0)==0 && vote.latched);
@@ -113,7 +113,7 @@ int main(void)
     { VisionStrike_State vote={0};Camera_Data observation={0};
       REQUIRE(observe(&vote,&observation,2,0,0)==0);
       REQUIRE(observe(&vote,&observation,2,100,0)==0);
-      REQUIRE(observe(&vote,&observation,3,200,0)==0);
+      REQUIRE(observe(&vote,&observation,4,200,0)==0);
       REQUIRE(observe(&vote,&observation,2,300,0)==0 && vote.confirmed==2);
       REQUIRE(observe(&vote,&observation,2,400,0)==0);
       REQUIRE(observe(&vote,&observation,2,450,0)==2);
@@ -123,6 +123,7 @@ int main(void)
 
     /* Actual dispatcher + actual six-byte parser, one complete job per fruit. */
     for (i = 1; i <= 4; ++i) {
+        if(i==3) continue;
         stepper_busy = 0;
         clear_target();
         before = direct_calls;
@@ -141,11 +142,11 @@ int main(void)
     }
     clear_target(); owned = 1;
     before = direct_calls;
-    frame(3); frame(3); frame(3);
-    REQUIRE(queue_calls == 1 && reserved && submitted == 3 && direct_calls == before);
+    frame(4); frame(4); frame(4);
+    REQUIRE(queue_calls == 1 && reserved && submitted == 4 && direct_calls == before);
     clear_target(); /* reserved navigation job must keep latch even if target disappears */
     reserved = 0;
-    frame(3); frame(3); frame(3);
+    frame(4); frame(4); frame(4);
     REQUIRE(queue_calls == 1);
     clear_target(); owned = 0;
 

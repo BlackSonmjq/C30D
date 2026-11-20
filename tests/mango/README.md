@@ -10,12 +10,15 @@ uv run --with unicorn --with pyelftools python tests/mango/run_tests.py
 
 测试直接编译生产代码中的协调任务、舵机动作任务 `servo_task.c` 和测距任务，通过 Unicorn 执行 ARM 指令。FreeRTOS 调度、舵机总线回包、步进定时器、GPIO 和传感器底层由桩函数模拟，不连接或驱动实物。
 
-当前原始三段舍机流程的 30 组场景覆盖：
+当前 56 组场景覆盖：
 
 - 四个芒果编号与 left/right、同编号舵机的对应关系，以及忙碌请求拒绝。
+- 上电先等待 500 ms，依次只读探测 2、3 号的 115200/9600 波特率，再通过位置反馈确认 90°；覆盖延迟供电、混合波特率、首次动作丢失、单只／两只失联及动作无反馈。初始化期间始终拒绝机构动作，失败编号在初始化结束后仍拒绝击打。
 - 停止前进时最后一个 STEP 边沿的计数，以及反向等脉冲返程。
 - 1～4 号阈值分别为 108、60、45、35 mm；等于对应阈值时继续靠近，降至阈值减 1 mm 时停止并启动舵机。重复执行同一编号，初始距离低于阈值时直接动作且不复用上轮计数。
 - K1-K4 all use feedback-confirmed home -> 180 degrees -> home. Tests cover +/-100 arrival boundaries, lost outward/return commands, feedback failure and tick wraparound.
+- K1／K2 在步进靠近前确认 2 号舵机回到 0°，K3／K4 确认 3 号；击打、步进返程和激光关闭后，确认这只舵机恢复 90°才结束。实际击打仍由 K 同编号舵机执行；配对舵机启动失败时，该侧两个 K 任务均拒绝启动。
+- 准备角度命令失败或无反馈时不启动步进；恢复 90°失败或超时则故障锁定，需人工检查并复位。
 - 首次测距超时、前进中测距失效、脉冲上限、舵机失败和运动超时。
 - 四个编号前进达到 26000 个 STEP 脉冲时，立即跳过舵机并反向返回相同脉冲数；即使该轮距离恰好降至对应阈值以下，也优先执行上限返程。
 - 舵机无回包、ACK/错误 ID/命令回显/非法数据/未到位回包均不计为完成；转动失败后尝试回零；回零失败、发送失败、总线手动占用与待执行请求取消。
@@ -26,3 +29,5 @@ uv run --with unicorn --with pyelftools python tests/mango/run_tests.py
 
 方向脚底层回归测试：`uv run --with unicorn --with pyelftools python tests/mango/run_stepper_dir_tests.py`。
 此测试执行生产 `a4988.c` 的函数体，模拟 GPIO，检查左右 DIR 低/高切换、输出模式恢复、STEP 引脚不受影响，以及 DIR 卡高或卡低时返回失败。
+
+加减速测试：`python tests/mango/run_stepper_ramp_tests.py`。执行生产周期计算函数，检查200 Hz起步、约11250脉冲/秒（ARR=88，理论11236）巡航、200脉冲加减速、周期变化限制、低速请求以及26000脉冲理想行程约3.30 s。该测试不证明机械机构在提速后不失步。

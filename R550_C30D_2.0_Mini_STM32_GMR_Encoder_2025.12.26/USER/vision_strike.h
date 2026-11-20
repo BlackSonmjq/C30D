@@ -17,8 +17,9 @@ extern volatile uint8_t vision_hit_report;
 #define VISION_PICK_GREEN_GAP_MS 2000UL
 #define VISION_PICK_GREEN_WINDOW_MS 2000UL
 #define VISION_PICK_REARM_CLEAR_MS 300UL
-#define VISION_PICK_STOP_HOLD_MS 300UL
-#define VISION_PICK_MAX_REPEATS 1U
+#define VISION_PICK_STOP_HOLD_MS 200UL
+#define VISION_PICK_MAX_REPEATS 0U
+#define VISION_PICK_BOOT_MAX_ATTEMPTS 4U
 #define VISION_PICK_STOP_MPS 0.005f
 #define VISION_PICK_REAR_MIN_MM 40U
 #define VISION_PICK_REAR_MAX_MM 80U
@@ -38,6 +39,11 @@ extern volatile uint8_t vision_hit_report;
 #endif
 
 #define VISION_STRIKE_WINDOW_FRAMES 5U
+static inline uint8_t VisionStrike_RegionEnabled(uint8_t region)
+{
+    return region>=1U && region<=4U && region!=3U;
+}
+
 typedef struct {
     uint32_t last_frames, last_seen_ms;
     uint32_t observed_ms[VISION_STRIKE_WINDOW_FRAMES];
@@ -95,9 +101,9 @@ static inline uint8_t VisionStrike_Update(VisionStrike_State *s, const Camera_Da
     s->last_frames = data->frames;
     s->last_seen_ms = now_ms;
     if (blocked) return 0U;
-    target = data->pole == 1U && data->green == 1U && data->region >= 1U && data->region <= 4U;
+    target = data->pole == 1U && data->green == 1U && VisionStrike_RegionEnabled(data->region);
     if (s->latched) {
-        if (target) s->clear_frames = 0U;
+        if (target || (data->green==1U && data->region==3U)) s->clear_frames = 0U;
         else if (++s->clear_frames >= VISION_STRIKE_CLEAR_FRAMES) {
             s->latched = s->clear_frames = 0U;
         }

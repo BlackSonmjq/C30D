@@ -22,7 +22,8 @@ class BridgeTest(unittest.TestCase):
         values[31:35] = [127, 127, 89, 480]
         values[38:43] = [0, 2, 1, 2, 12]
         values[43:] = [100, 2700, 20, 2, 0, 5, 4, -50, 12, .125, -.25, 15, 0, 12000, 15]
-        packet = struct.pack('<58f', *values) + TAIL
+        values += [0, 0, 9, 620, 2]
+        packet = struct.pack('<63f', *values) + TAIL
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
             receiver.bind(('127.0.0.1', 0)); receiver.settimeout(.2)
             records = []; forwarder = Forwarder(sender, receiver.getsockname(), records.append)

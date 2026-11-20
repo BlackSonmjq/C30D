@@ -17,6 +17,7 @@
  */
 #define SERVO_COUNT             4U
 #define SERVO_HOME_PULSE        500U
+#define SERVO_REST_PULSE       1167U /* 90 degrees in the existing 270-degree mode. */
 #define SERVO_HALF_TURN_PULSE   1833U
 #define SERVO_MOVE_MS           500U
 #define SERVO_BAUDRATE          115200UL /* Recovery default; per-ID rates are learned by B?. */

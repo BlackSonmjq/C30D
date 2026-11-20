@@ -59,6 +59,7 @@ static void RobotControl_SetDebugLevel(int value){(void)value;}
 #include "legacy_usart2.c"
 TickType_t xTaskGetTickCount(void){return clock_ms;}
 uint8_t StepperTask_IsBusy(void){return tool_busy;}
+uint16_t ServoTask_GetRetryCount(void){return 0U;}
 void Drive_Motor(float x,float y,float z){(void)z;driven_x=x;driven_y=y;}
 uint8_t StepperTask_RequestMango(uint8_t id){
     assert(id==1&&!tool_busy);
@@ -1269,7 +1270,7 @@ static void test_odometry_and_io(void)
     EN=1;RouteIO_RequestStart();assert(start_requested&&RouteIO_ControlOwned());
     ChassisOdom_UpdateDelta(0,0,0,1010,1);
     ChassisOdom_UpdateDelta(0,0,0,1020,1);
-    clock_ms=1020;RouteIO_SetVelocity(-0.12f,0,0);RouteIO_ApplyDrive();
+    clock_ms=1020;RouteIO_SetVelocity(-0.12f,0,0,0);RouteIO_ApplyDrive();
     assert(driven_x<0&&driven_y==0);
     tool_busy=1;RouteIO_ApplyDrive();assert(driven_x==0);
     tool_busy=0;clock_ms+=ROUTE_COMMAND_TTL_MS;RouteIO_ApplyDrive();assert(driven_x==0);

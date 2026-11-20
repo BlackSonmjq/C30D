@@ -22,6 +22,7 @@ All rights reserved
 #include "distance_task.h"
 #include "pushrod.h"
 #include "servo.h"
+#include "servo_task.h"
 #include "route_debug.h"
 #include "route_config.h"
 
@@ -248,7 +249,8 @@ void systemInit(void)
     //Initialize the hardware interface connected to the user's key
     //��ʼ�����û��������ӵ�Ӳ���ӿ�
     KEY_Init();
-    Servo_Init(); /* UART4 stays idle until an explicit servo command. */
+    Servo_Init();
+    ServoTask_InitRest();
 		if(KEY==0)			Check=1;
 		else if(KEY==1)	Check=0;
 

@@ -1,4 +1,4 @@
-"""Receive FFE1 BLE notifications and forward 60-channel navigation/vision/chassis or legacy JustFloat frames.
+"""Receive FFE1 BLE notifications and forward 63-channel navigation/vision/chassis or legacy JustFloat frames.
 
 No GATT writes or chassis commands are sent. start_notify enables the CCCD.
 API reference: https://bleak.readthedocs.io/en/stable/api/client.html
@@ -84,7 +84,7 @@ async def run(args):
                         if idle > 5:
                             print('No BLE data: check module UART 9600 and flashed firmware.', flush=True)
                         elif forwarder.bytes and not forwarder.frames:
-                            print('Bytes received but no valid 8/13/20/21/31/32/33/34/35/37/38/40/41/43/48/58/60/64/72-channel frame; check UART/data loss.', flush=True)
+                            print('Bytes received but no valid 8/13/20/21/31/32/33/34/35/37/38/40/41/43/48/58/60/63/64/72-channel frame; check UART/data loss.', flush=True)
                 # Partial data from a previous connection must never join a new one.
                 print('Disconnected; reconnecting...', flush=True)
             except (OSError, RuntimeError) as exc:
@@ -122,7 +122,8 @@ def main():
             values += [3, 12]
             values += [100, 2700, 20, 6, 10, 5, 4, -50, 12, 0, 0, 15, 1, 12000, 15]
             values += [12, 0]
-            packet = struct.pack('<60f', *values) + TAIL
+            values += [9, 620, 2]
+            packet = struct.pack('<63f', *values) + TAIL
             stream = packet + packet
             for i in range(0, len(stream), 20):
                 forwarder.receive(None, stream[i:i+20])
@@ -151,11 +152,11 @@ def main():
                     raise SystemExit('Telemetry layout changed; restart the bridge to create a new CSV.')
                 writer.writerow([stamp()] + list(values))
                 log.flush()
-                if len(values) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 58, 60):
+                if len(values) in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 58, 60, 63):
                     status = values[:4] + (values[8:14] + values[19:20] if len(values) in (20, 32, 37, 40) else ()) + (values[37:40] if len(values) == 40 else ())
                     if len(values) in (13, 21, 33, 34):
                         status = values[:4] + values[5:9] + values[11:13] + (values[13:] if len(values) in (21, 33, 34) else ())
-                    if len(values) in (38, 41, 43, 58, 60):
+                    if len(values) in (38, 41, 43, 58, 60, 63):
                         status += values[35:]
                     if status != last_status:
                         print(camera_summary(values), flush=True)

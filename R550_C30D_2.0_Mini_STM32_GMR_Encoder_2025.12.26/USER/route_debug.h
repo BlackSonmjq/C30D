@@ -16,7 +16,7 @@ typedef struct {
 } RouteDebugFrame;
 
 /* Keep vision/wheel channels 0..42; append merged navigation diagnostics. */
-#define ROUTE_VOFA_CHANNEL_COUNT 60U
+#define ROUTE_VOFA_CHANNEL_COUNT 63U
 #define ROUTE_VOFA_FRAME_BYTES (ROUTE_VOFA_CHANNEL_COUNT * 4U + 4U)
 #define ROUTE_VOFA_TASK_PRIO TASK_PRIORITY_VISION
 #define ROUTE_VOFA_TASK_STACK 256U

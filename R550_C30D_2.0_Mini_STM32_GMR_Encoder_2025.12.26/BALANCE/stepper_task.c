@@ -18,6 +18,12 @@ static volatile u8 rejected_laser = 0;
 static volatile u8 rejected_command = 0;
 static StepperTask_Data motion = {0, STEPPER_WAITING_COMMAND, 0, 0, 0, MANGO_OK};
 
+/* The two IDs on each stepper share its retractable servo. */
+static u8 rest_servo(u8 mango_id)
+{
+    return mango_id <= 2U ? 2U : 3U;
+}
+
 /* Manual selection is applied by the same task that owns picking selection. */
 u8 StepperTask_RequestLaserFromISR(u8 laser_id)
 {
@@ -32,7 +38,7 @@ u8 StepperTask_RequestLaserFromISR(u8 laser_id)
 
 u8 StepperTask_RequestMangoFromISR(u8 mango_id)
 {
-    if (mango_id < 1U || mango_id > 4U) return 0;
+    if (!ServoTask_CanStrike(mango_id) || !ServoTask_CanStrike(rest_servo(mango_id))) return 0;
     if (job_busy) {
         rejected_command = 1;
         return 0;
@@ -57,9 +63,15 @@ void StepperTask_GetData(StepperTask_Data *data)
     taskEXIT_CRITICAL();
 }
 
-static void publish(const StepperTask_Data *data)
+static void publish(StepperTask_Data *data)
 {
     taskENTER_CRITICAL();
+    if (motion.state != data->state) {
+        static TickType_t state_started;
+        TickType_t now = xTaskGetTickCount();
+        data->previous_phase_ms = (u32)(now - state_started) * portTICK_PERIOD_MS;
+        state_started = now;
+    }
     motion = *data;
     taskEXIT_CRITICAL();
 }
@@ -233,12 +245,18 @@ void stepper_Task(void *pvParameters)
             job.outward_pulses = 0;
             job.result = MANGO_OK;
             forward_base = 0;
+            ServoTask_ResetRetryCount();
             /* 每轮都清零旧计数，避免本轮无需前进时仍按上轮步数返程。 */
             StepperMotor_ResetCompletedPulses(job.motor);
             ServoTask_Cancel();
-            DistanceTask_SelectLaser(selected);
             phase_started = xTaskGetTickCount();
-            job.state = STEPPER_WAITING_DISTANCE;
+            DistanceTask_SelectLaser(0);
+            if (ServoTask_MoveTo(rest_servo(selected), SERVO_HOME_PULSE)) {
+                job.state = STEPPER_PREPARING_SERVO;
+            } else {
+                job.result = MANGO_PUSHROD_FAILED;
+                begin_return(&job, &phase_started, forward_base);
+            }
             any_printf(USART1, "mango %u start motor=%s\r\n", (unsigned int)selected,
                        job.motor == A4988_MOTOR_Left ? "left" : "right");
         }
@@ -247,6 +265,19 @@ void stepper_Task(void *pvParameters)
         now = xTaskGetTickCount();
         report_manual_laser(&laser_report, &distance, now);
         switch (job.state) {
+        case STEPPER_PREPARING_SERVO:
+            ServoTask_GetData(&servo);
+            if (servo.id == rest_servo(job.mango_id) && servo.state == SERVO_TASK_DONE) {
+                DistanceTask_SelectLaser(job.mango_id);
+                phase_started = now;
+                job.state = STEPPER_WAITING_DISTANCE;
+            } else if (servo.id != rest_servo(job.mango_id) || servo.state == SERVO_TASK_ERROR ||
+                       (TickType_t)(now - phase_started) >= pdMS_TO_TICKS(MANGO_SERVO_PHASE_TIMEOUT_MS + 1000UL)) {
+                job.result = MANGO_PUSHROD_FAILED;
+                begin_return(&job, &phase_started, forward_base);
+            }
+            break;
+
         case STEPPER_WAITING_DISTANCE:
             /* 只使用当前选中激光的有效数据；未接入模块最多等待 5 秒。 */
             if (distance.valid && distance.laser_id == job.mango_id) {
@@ -360,7 +391,29 @@ void stepper_Task(void *pvParameters)
         case STEPPER_FINISHING:
             /* 确认激光实际关闭后才接受新任务，防止重复选择同一编号时
              * 复用上一轮的有效距离，跳过新一轮初始化和测距。 */
-            if (distance.laser_id == 0U) finish_job(&job);
+            if (distance.laser_id == 0U) {
+                if (ServoTask_MoveTo(rest_servo(job.mango_id), SERVO_REST_PULSE)) {
+                    phase_started = now;
+                    job.state = STEPPER_RESTORING_SERVO;
+                } else {
+                    job.result = MANGO_PUSHROD_FAILED;
+                    job.state = STEPPER_FAULT;
+                    any_printf(USART1, "mango %u fault requesting 90 degrees\r\n", (unsigned)job.mango_id);
+                }
+            }
+            break;
+
+        case STEPPER_RESTORING_SERVO:
+            ServoTask_GetData(&servo);
+            if (servo.id == rest_servo(job.mango_id) && servo.state == SERVO_TASK_DONE) {
+                finish_job(&job);
+            } else if (servo.id != rest_servo(job.mango_id) || servo.state == SERVO_TASK_ERROR ||
+                       (TickType_t)(now - phase_started) >= pdMS_TO_TICKS(MANGO_SERVO_PHASE_TIMEOUT_MS + 1000UL)) {
+                ServoTask_Cancel();
+                job.result = MANGO_PUSHROD_FAILED;
+                job.state = STEPPER_FAULT;
+                any_printf(USART1, "mango %u fault restoring 90 degrees\r\n", (unsigned)job.mango_id);
+            }
             break;
 
         default:

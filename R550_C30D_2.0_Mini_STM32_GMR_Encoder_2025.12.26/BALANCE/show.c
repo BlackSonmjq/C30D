@@ -118,6 +118,8 @@ void OLED_ShowTaskStatus(void)
     switch (job.state) {
         case STEPPER_WAITING_COMMAND: state = busy ? "QUEUED" : "WAIT K1-K4"; break;
         case STEPPER_WAITING_DISTANCE: state = "WAIT RANGE"; break;
+        case STEPPER_PREPARING_SERVO: state = "SERVO TO 0"; break;
+        case STEPPER_RESTORING_SERVO: state = "SERVO TO 90"; break;
         case STEPPER_MOVING: state = "APPROACH"; break;
         case STEPPER_RECHECKING_DISTANCE: state = "RANGE RECHECK"; break;
         case STEPPER_STRIKING: state = "SERVO 180->0"; break;

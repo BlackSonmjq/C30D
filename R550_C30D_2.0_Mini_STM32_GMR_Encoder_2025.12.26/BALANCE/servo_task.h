@@ -24,7 +24,14 @@ typedef struct {
     ServoTask_State state;
 } ServoTask_Data;
 
+void ServoTask_InitRest(void);
+uint16_t ServoTask_GetRetryCount(void);
+void ServoTask_ResetRetryCount(void);
+/* ISR-safe: reject all jobs during startup and failed IDs after startup. */
+uint8_t ServoTask_CanStrike(uint8_t id);
 uint8_t ServoTask_Start(uint8_t id);
+/* Single absolute move, using the same feedback and timeout as a strike. */
+uint8_t ServoTask_MoveTo(uint8_t id, uint16_t pulse);
 uint8_t ServoTask_IsBusy(void);
 void ServoTask_Cancel(void);
 void ServoTask_GetData(ServoTask_Data *data);

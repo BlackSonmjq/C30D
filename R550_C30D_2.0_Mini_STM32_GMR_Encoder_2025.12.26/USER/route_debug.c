@@ -4,6 +4,8 @@
 #include "my_chassis_task.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "stepper_task.h"
+#include "servo_task.h"
 #include <string.h>
 
 static RouteDebugFrame latest_frame, fault_frame;
@@ -72,6 +74,7 @@ uint8_t RouteDebug_ReadFault(RouteDebugFrame *frame)
 uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
 {
     Camera_Data camera;
+    StepperTask_Data tool;
     RouteLidarFrame lidar;
     NavLidar received;
     RouteNavigationStatus navigation;
@@ -84,6 +87,7 @@ uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
     if (bytes == 0 || capacity < ROUTE_VOFA_FRAME_BYTES) return 0U;
     /* Visual telemetry remains live before route start and after a route fault. */
     Camera_GetData(&camera);
+    StepperTask_GetData(&tool);
     VisionAlign_GetDiagnostics(&align);
     RouteIO_ReadLidar(&lidar);
     RouteIO_ReadNavigationLidar(&received);
@@ -149,6 +153,9 @@ uint16_t RouteDebug_BuildPacket(uint8_t *bytes, uint16_t capacity)
     channels[57] = (float)valid_mask;
     channels[58] = (float)align.stop_reason;
     channels[59] = (float)align.release_reason;
+    channels[60] = (float)tool.state;
+    channels[61] = (float)tool.previous_phase_ms;
+    channels[62] = (float)ServoTask_GetRetryCount();
 
     /* Emit little-endian float32 without depending on structure padding. */
     for (channel = 0U; channel < ROUTE_VOFA_CHANNEL_COUNT; ++channel) {

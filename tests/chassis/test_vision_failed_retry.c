@@ -17,18 +17,12 @@ int main(void)
     tool.state=STEPPER_RETURNED;tool.result=1;poll();
     REQUIRE(vision_pick_phase==PICK_COOLDOWN && vision_pick.latched);
     for(i=0;i<40;++i) frame(1,0);
-    REQUIRE(vision_pick_phase==PICK_IDLE && vision_align.phase==VISION_ALIGN_ACQUIRE);
-    REQUIRE(!vision_pick.latched && !vision_detection_timed_out && strikes==1 && dx==0);
-    for(i=0;i<15;++i) frame(1,0);
-    REQUIRE(vision_pick_phase==PICK_WORK && strikes==2 && vision_pick_attempts==2 && vision_lock_count==1);
-    tool_busy=0;tool.state=STEPPER_RETURNED;tool.result=1;poll();
-    for(i=0;i<40;++i) frame(1,0);
     REQUIRE(vision_detection_timed_out && vision_pick_phase==PICK_IDLE && dx==0);
     REQUIRE(vision_align.phase==VISION_ALIGN_WAIT && vision_hit_count==0);
     for(i=0;i<30;++i) frame(1,0);
-    REQUIRE(strikes==2 && dx>.32f && !vision_hit_report);
+    REQUIRE(strikes==1 && dx>.32f && !vision_hit_report);
     clear_fruit();
     REQUIRE(!vision_detection_timed_out && vision_pick_attempts==0);
-    printf("PASS: safely returned failure rearms once, reconfirms alignment, then quota exhaustion releases; fault lock preserved (%u checks)\n",checks);
+    printf("PASS: safely returned failure releases without retry; fault lock preserved (%u checks)\n",checks);
     return 0;
 }

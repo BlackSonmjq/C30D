@@ -10,10 +10,10 @@
 /* 左右步进方向一致：DIR 低电平靠近芒果，高电平返程。 */
 #define MANGO_LEFT_FORWARD_HIGH  0U
 #define MANGO_RIGHT_FORWARD_HIGH 0U
-/* 定时器计数频率 1 MHz：ARR=99 对应目标巡航频率约 10000 脉冲/秒。
+/* 定时器计数频率 1 MHz：ARR=88 对应目标巡航频率约 11236 脉冲/秒。
  * 前进、返程共用对应电机的速度配置，底层保留加减速。 */
-#define MANGO_LEFT_SPEED_ARR     99U
-#define MANGO_RIGHT_SPEED_ARR    99U
+#define MANGO_LEFT_SPEED_ARR     88U
+#define MANGO_RIGHT_SPEED_ARR    88U
 /* 各编号的击打阈值，单位 mm；有效距离严格小于对应值时才允许击打。 */
 #define MANGO_TARGET_1_MM        108U
 #define MANGO_TARGET_2_MM        60U
@@ -32,8 +32,10 @@ typedef enum {
     STEPPER_RETURNING,           /* 按实际前进脉冲数反向返回，不依赖测距。 */
     STEPPER_FINISHING,           /* 等待激光实际关闭后释放任务占用。 */
     STEPPER_RETURNED,            /* 本轮已结束，可以接受下一个编号。 */
-    STEPPER_FAULT,               /* 返程失败，原点不确定，锁定至人工检查并复位。 */
-    STEPPER_RECHECKING_DISTANCE /* STEP stopped while recovering the selected laser. */
+    STEPPER_FAULT,               /* 返程或收拢失败，锁定至人工检查并复位。 */
+    STEPPER_RECHECKING_DISTANCE, /* STEP stopped while recovering the selected laser. */
+    STEPPER_PREPARING_SERVO,    /* Shared servo 2/3: confirm 0 degrees before approaching. */
+    STEPPER_RESTORING_SERVO     /* Shared servo 2/3: confirm 90 degrees after returning. */
 } StepperTask_State;
 
 typedef enum {
@@ -54,6 +56,7 @@ typedef struct {
     u8 mango_id;        /* 1/2 对应 left，3/4 对应 right；推杆与激光同编号。 */
     u8 motor;           /* 当前使用的 A4988 电机编号。 */
     Mango_Result result; /* 本轮执行结果，串口 done 时需同时检查此字段。 */
+    u32 previous_phase_ms; /* Latched elapsed time of the last completed phase. */
 } StepperTask_Data;
 
 /* 任务上下文读取一致的状态快照，供显示等任务使用。 */

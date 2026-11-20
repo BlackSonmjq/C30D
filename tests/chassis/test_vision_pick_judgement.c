@@ -40,10 +40,10 @@ int main(void)
     REQUIRE(vision_pick_phase==PICK_WAIT && dx==0 && dy==0 && strikes==0);
     MOTOR_A.Encoder=0;frame(1,0);
     REQUIRE(vision_pick_phase==PICK_HOLD);
-    for(i=0;i<5;++i) frame(1,0);
+    for(i=0;i<3;++i) frame(1,0);
     REQUIRE(strikes==0);
     frame(1,0);
     REQUIRE(strikes==1 && vision_pick_phase==PICK_WORK && submitted_id==2);
-    printf("PASS: median rejects isolated range noise, raw44 blocks strike, persistent DX3 resumes correction then waits300ms (%u checks)\n",checks);
+    printf("PASS: median rejects isolated range noise, raw44 blocks strike, persistent DX3 resumes correction then waits200ms (%u checks)\n",checks);
     return 0;
 }

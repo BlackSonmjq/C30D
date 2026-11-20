@@ -13,29 +13,41 @@
 typedef uint32_t TickType_t;
 #define pdMS_TO_TICKS(ms) (ms)
 #define ROUTE_COMMAND_TTL_MS 120U
-typedef struct { float vx_mps,vy_mps; TickType_t tick; uint8_t quick_stop; } RouteCommand;
+typedef struct { float vx_mps,vy_mps,probe_assist_pwm; TickType_t tick; uint8_t quick_stop; } RouteCommand;
 static RouteCommand command;
 static volatile NavLidar lidar;
-static uint8_t start_pending,command_seen;
+static uint8_t start_pending,command_seen,pending_work,work_allowed;
 static float heading_target;
 #define start_requested route_owned
 #define stop_pending route_stop_requested
 #define clock_ms now
+#define work_reserved reserved
 #include "navigation_io.inc"
+#undef work_reserved
 #undef start_requested
 #undef stop_pending
 #undef clock_ms
 
 uint8_t RouteIO_BaseReady(void) { return EN && !Flag_Stop && Voltage>=10 && SysVal.Time_count>=CONTROL_DELAY; }
-uint8_t RouteIO_TakeWorkRequest(void) { return 0; }
-void RouteIO_CompleteWork(void) { reserved=0; }
-void RouteIO_AllowWork(uint8_t allowed) { (void)allowed; }
+enum { SERVO_TASK_RUNNING=1, SERVO_TASK_DONE=2, SERVO_TASK_ERROR=3 };
+typedef struct { uint8_t id,state; } ServoTask_Data;
+static ServoTask_Data route_servo;
+static unsigned dry_starts,dry_cancels;
+static uint8_t ServoTask_Start(uint8_t id) {
+    if(servo_busy || debug_busy) return 0;
+    REQUIRE(id==4);++dry_starts;servo_busy=1;
+    route_servo.id=id;route_servo.state=SERVO_TASK_RUNNING;return 1;
+}
+static void ServoTask_GetData(ServoTask_Data *d) { *d=route_servo; }
+static void ServoTask_Cancel(void) { ++dry_cancels;servo_busy=0;route_servo.state=0; }
 static void publish_status(void) {}
 static NavCore navigator;
 static ChassisOdomFrame previous_pose;
 static uint32_t previous_ms;
 static uint16_t navigation_rear_mm=45;
-static uint8_t work_id,work_started;
+static uint8_t work_id,work_started,p10_done,p10_servo;
+#define USART1 ((void *)0)
+static void any_printf(void *port,char *format,...) { (void)port;(void)format; }
 static NavButton button;
 #define KEY 1
 static void navigation_step(void)
@@ -84,10 +96,15 @@ int main(void)
     target=navigator.target;
     start_pending=1; now+=20; next_navigation_frame(); poll();
     REQUIRE(route_owned && navigator.target==target && navigator.state==NAV_RUN);
+    /* Route probe boost reaches wheels only for a fresh forward command. */
+    RouteIO_SetVelocity(.18f,0,0,3000); poll();
+    REQUIRE(wheel_output_probe_assist_pwm==3000 && dx>0 && dy==0);
+    RouteIO_SetVelocity(0,0,1,3000); poll();
+    REQUIRE(wheel_output_probe_assist_pwm==0 && dx==0 && dy==0);
     /* A recently published command cannot extend the CAN 300 ms deadline. */
     now+=300; pose.tick_ms=now;
-    RouteIO_SetVelocity(.28f,0,0); poll();
-    REQUIRE(dx==0 && dy==0);
+    RouteIO_SetVelocity(.28f,0,0,0); poll();
+    REQUIRE(dx==0 && dy==0 && wheel_output_probe_assist_pwm==0);
     next_navigation_frame(); poll();
     /* REBUILD can locate P03 from the back laser while the optional front beam is lost. */
     {
@@ -142,6 +159,7 @@ int main(void)
     for(i=0;i<5;++i) {
         observed_frame(1,20);
         REQUIRE(command.quick_stop && VisionAlign_ControlOwned());
+        REQUIRE(wheel_output_probe_assist_pwm==0);
         REQUIRE(smooth_control.VY>.119f && dy>.19f);
     }
     camera_green=0; observed_frame(0,0);
@@ -187,6 +205,37 @@ int main(void)
     navigation_rear_mm=0;
     now+=20; next_navigation_frame();
     REQUIRE(navigator.state==NAV_RUN && navigator.output.vx==-NAV_EXIT_SPEED_MPS);
+    /* P10 arrival is already verified by Nav_Tick: pause before P11 translation. */
+    navigation_rear_mm=1000;servo_busy=tool_busy=0;work_id=work_started=0;
+    vision_boot_attempts=4; /* Route dry cycle remains independent of the visual quota. */
+    vision_detection_timed_out=1;vision_align.phase=VISION_ALIGN_WAIT;
+    navigator.state=NAV_RUN;navigator.target=11;navigator.confirmed=10;
+    navigator.pause_latched=0;route_owned=1;work_allowed=1;
+    { unsigned old_strikes=strikes;
+      now+=20;next_navigation_frame();
+      REQUIRE(reserved && p10_done && p10_servo && command.quick_stop);
+      REQUIRE(!dry_starts && strikes==old_strikes);
+      for(i=0;i<8 && !dry_starts;++i) {now+=20;next_navigation_frame();}
+      REQUIRE(dry_starts==1 && servo_busy && navigator.pause_latched);
+      REQUIRE(work_id==4 && work_started==2 && strikes==old_strikes);
+      for(i=0;i<10;++i) {now+=20;next_navigation_frame();REQUIRE(command.quick_stop);}
+      servo_busy=0;route_servo.state=SERVO_TASK_DONE;
+      now+=20;next_navigation_frame();
+      REQUIRE(!reserved && !work_id && !p10_servo && p10_done);
+      for(i=0;i<10;++i) {now+=20;next_navigation_frame();}
+      REQUIRE(dry_starts==1 && navigator.target==11 && strikes==old_strikes);
+      REQUIRE(vision_boot_attempts==4);
+      /* Feedback error holds the route; manual cancellation clears reservation. */
+      p10_done=0;navigator.confirmed=10;route_owned=1;work_allowed=1;
+      for(i=0;i<10 && dry_starts<2;++i) {now+=20;next_navigation_frame();}
+      REQUIRE(dry_starts==2);
+      servo_busy=0;route_servo.state=SERVO_TASK_ERROR;
+      now+=20;next_navigation_frame();
+      REQUIRE(reserved && work_id==4 && command.quick_stop && navigator.pause_latched);
+      route_stop_requested=1;now+=20;next_navigation_frame();
+      REQUIRE(!reserved && !work_id && !p10_servo && !route_owned);
+      REQUIRE(strikes==old_strikes);
+    }
     puts("PASS: actual CAN age, route-to-vision handover, same-target resume, tool pause and stick cancellation");
     return 0;
 }

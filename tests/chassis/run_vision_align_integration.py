@@ -32,7 +32,7 @@ logic += extract(source, 'void Chassis_NavigationDrive(')
 logic += extract(source, 'void VisionAlign_GetDiagnostics(')
 logic += 'static void PS2_control(void) {' + extract(source[source.index('void PS2_control(void)'):], 'if (Car_Mode == Mec_Car') + '}\n'
 # Execute the actual no-controller dispatch and the actual control-release guards.
-reset_start = source.index('vision_park_braking = 0U;', source.index('void Balance_task('))
+reset_start = source.index('wheel_output_probe_assist_pwm = 0.0f;', source.index('void Balance_task('))
 reset_end = source.index('if (vision_pick_phase == PICK_WORK || vision_pick_phase == PICK_REPORT)', reset_start)
 start = source.index('if      (APP_ON_Flag)', reset_end)
 end = source.index('}', source.index('chassis_vz = Move_Z;', start)) + 1
@@ -58,7 +58,9 @@ if test_file.name == 'test_vision_navigation_merge.c':
         'void RouteIO_ReadNavigationLidar(', 'void RouteIO_ReadLidar(',
         'static uint8_t take_request(', 'uint8_t RouteIO_TakeStartRequest(',
         'uint8_t RouteIO_TakeStopRequest(', 'void RouteIO_SetRunning(',
-        'void RouteIO_SetHeading(', 'void RouteIO_SetVelocity(', 'void RouteIO_ApplyDrive(')
+        'void RouteIO_SetHeading(', 'void RouteIO_SetVelocity(', 'float RouteIO_ApplyDrive(',
+        'uint8_t RouteIO_QueueWorkFromISR(', 'uint8_t RouteIO_TakeWorkRequest(',
+        'void RouteIO_AllowWork(', 'void RouteIO_CompleteWork(')
     (BUILD / 'navigation_io.inc').write_text(
         ''.join(extract(route_io, signature) for signature in signatures), encoding='utf-8')
     navigation = (FW / 'USER/my_chassis_task.c').read_text(encoding='utf-8')

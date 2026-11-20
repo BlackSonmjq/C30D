@@ -20,6 +20,13 @@ static uint8_t reply_pending, servo_id, manual_busy, bad_reply, no_reply;
 static uint8_t fail_home, fail_query, home_after_twist;
 static uint16_t servo_target;
 static uint16_t physical_position;
+static uint8_t pose_only, prepared_id, restored_id;
+static unsigned pose_moves, pose_queries;
+static uint16_t fail_pose, silent_pose;
+static uint32_t bus_baud, device_rate[5], physical_rate[5];
+static TickType_t power_ready_at;
+static uint8_t probe_mode, lost_boot_motion, lost_motion;
+static unsigned probe_count;
 static uint8_t lossy_test, drop_outward, drop_return;
 static uint8_t sparse_lossy, stalled_replies;
 static unsigned int move_count, query_count, stops;
@@ -35,6 +42,7 @@ static s32 last_move;
 static Mango_Result expected_result;
 /* Independent expected values: do not derive boundary inputs from production macros. */
 static const u16 expected_targets[4] = {108, 60, 45, 35};
+static const u8 expected_rest_servo[4] = {2, 2, 3, 3};
 /* Hardware direction: both motors approach low and return high. */
 static int outward(s32 pulses) { return pulses < 0; }
 
@@ -53,7 +61,7 @@ void any_printf(void *port, char *format, ...) {
     va_end(args);
     ++command_reports;
 }
-u8 StepperMotor_SetSpeed(u8 motor, u16 arr) { CHECK(arr == 99); return motor <= 2; }
+u8 StepperMotor_SetSpeed(u8 motor, u16 arr) { CHECK(arr == 88); return motor <= 2; }
 u32 StepperMotor_GetCompletedPulses(u8 motor) { return count[motor]; }
 u8 StepperMotor_IsRunning(u8 motor) { return running[motor]; }
 void StepperMotor_Disable(u8 motor) {
@@ -69,6 +77,7 @@ u8 StepperMotor_StartMove(u8 motor, s32 pulses) {
     CHECK(output_id == 0); /* No motion while a pushrod output is high. */
     if (fail_return && !outward(pulses)) return 0;
     if (outward(pulses)) {
+        CHECK(prepared_id == expected_rest_servo[sensor-1U]);
         CHECK((u32)(-pulses) + emitted_outward == 26000UL);
         if (emitted_outward && fail_resume) return 0;
         if (emitted_outward && limit_on_resume) inject_pulse_limit=2;
@@ -95,8 +104,37 @@ void DistanceTask_GetData(DistanceTask_Data *data) {
 }
 u8 USART_ServoControlBusy(void) { return manual_busy; }
 void Servo_ClearRx(void) { reply_pending = 0; }
+Servo_Result Servo_SetBusBaud(uint32_t baud) { bus_baud=baud; return SERVO_OK; }
+Servo_Result Servo_SetDeviceBaud(uint8_t id,uint32_t baud) { device_rate[id]=baud; return SERVO_OK; }
+Servo_Result Servo_SendCommand(const char *command) {
+    unsigned id;
+    char expected[20];
+    CHECK(sscanf(command,"#%3u",&id)==1 && (id==2U || id==3U));
+    sprintf(expected,"#%03uPRAD!",id);
+    CHECK(!strcmp(command,expected));
+    CHECK(tick>=500U && !running[1] && !running[2]);
+    servo_id=(uint8_t)id; probe_mode=1; ++probe_count;
+    reply_pending=tick>=power_ready_at && bus_baud==physical_rate[id];
+    return SERVO_OK;
+}
 Servo_Result Servo_MovePulse(uint8_t id, uint16_t pulse, uint16_t duration_ms) {
     unsigned int index = move_count % 3U;
+    probe_mode=0;
+    pose_only = sensor == 0U && (id == 2U || id == 3U);
+    if (pose_only) {
+        CHECK(!running[1] && !running[2] && duration_ms == 500U);
+        CHECK(pulse == 500U || pulse == 1167U);
+        ++pose_moves;
+        bus_baud=device_rate[id];
+        CHECK(boot_state==BOOT_IDLE || bus_baud==physical_rate[id]);
+        lost_motion=lost_boot_motion;
+        lost_boot_motion=0;
+        servo_id = id;
+        if (pulse == fail_pose) return SERVO_TX_TIMEOUT;
+        servo_id = id; servo_target = physical_position = pulse;
+        high_at = tick; output_id = id;
+        return SERVO_OK;
+    }
     CHECK(id == motion.mango_id && !running[active_motor] && sensor == id);
     CHECK(duration_ms == SERVO_MOVE_MS);
     if (fail_strike && pulse == SERVO_HALF_TURN_PULSE) return SERVO_TX_TIMEOUT;
@@ -117,14 +155,23 @@ Servo_Result Servo_MovePulse(uint8_t id, uint16_t pulse, uint16_t duration_ms) {
 Servo_Result Servo_ReadPosition(uint8_t id) {
     CHECK(id == servo_id && (TickType_t)(tick-high_at) >= SERVO_MOVE_MS);
     /* All IDs now require feedback confirmation. */
-    ++query_count;
+    if (pose_only) ++pose_queries;
+    else ++query_count;
     if (fail_query && servo_target == SERVO_HALF_TURN_PULSE) return SERVO_TX_TIMEOUT;
-    reply_pending = 1;
+    reply_pending = !lost_motion;
     return SERVO_OK;
 }
 Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length) {
     CHECK(capacity >= 11);
+    if (probe_mode) {
+        if (!reply_pending) return SERVO_NO_FRAME;
+        reply_pending=0;
+        sprintf(buffer,"#%03uP1167!",(unsigned)servo_id);
+        *length=10U;
+        return SERVO_OK;
+    }
     if (!reply_pending || (no_reply && servo_target == SERVO_HALF_TURN_PULSE)) return SERVO_NO_FRAME;
+    if (pose_only && servo_target == silent_pose) return SERVO_NO_FRAME;
     reply_pending = 0;
     if (sparse_lossy && abs((int)physical_position-(int)servo_target)>100 && stalled_replies++>0U)
         return SERVO_NO_FRAME;
@@ -139,6 +186,11 @@ Servo_Result Servo_GetFrame(char *buffer, uint16_t capacity, uint16_t *length) {
         }
     } else {
         sprintf(buffer,"#%03uP%04u!",(unsigned)servo_id,(unsigned)physical_position);
+        if (pose_only && stable == 1U) {
+            output_id = 0;
+            if (servo_target == 500U) prepared_id = servo_id;
+            else restored_id = servo_id;
+        }
         if (phase == 2U && stable == 1U && servo_target == SERVO_HOME_PULSE) output_id = 0;
     }
     *length = (uint16_t)strlen(buffer);
@@ -201,7 +253,8 @@ void vTaskDelay(TickType_t ticks) {
     in_actuator = 0;
     if (servo_id == 2U && (TickType_t)(tick-high_at) >= SERVO_MOVE_MS) output_id = 0;
     if (motion.state == STEPPER_FAULT) {
-        CHECK(expected_result == MANGO_RETURN_FAILED);
+        CHECK(expected_result == MANGO_RETURN_FAILED || expected_result == MANGO_PUSHROD_FAILED);
+        CHECK(motion.result == expected_result);
         CHECK(StepperTask_IsBusy());
         CHECK(!StepperTask_RequestMangoFromISR(1));
         CHECK(!output_id && !running[active_motor] && !sensor);
@@ -212,6 +265,8 @@ void vTaskDelay(TickType_t ticks) {
         CHECK(motion.pulses == motion.outward_pulses);
         CHECK(!output_id && !running[active_motor] && !sensor);
         CHECK(!job_busy && !StepperTask_IsBusy());
+        CHECK(restored_id == expected_rest_servo[motion.mango_id-1U]);
+        CHECK(motion.previous_phase_ms >= 500U && motion.previous_phase_ms <= 4000U);
         ++completed_jobs;
         longjmp(job_exit, 1);
     }
@@ -241,6 +296,12 @@ static void reset(void) {
     move_count = query_count = stops = 0; servo_target = 0;
     lossy_test=drop_outward=drop_return=0; physical_position=545;
     sparse_lossy=stalled_replies=0;
+    pose_only=prepared_id=restored_id=0; pose_moves=pose_queries=0;
+    fail_pose=silent_pose=0;
+    boot_state=BOOT_IDLE; boot_ready=boot_failed=boot_probes=0;
+    power_ready_at=0; probe_mode=lost_boot_motion=lost_motion=0; probe_count=0;
+    bus_baud=115200UL;
+    device_rate[2]=device_rate[3]=physical_rate[2]=physical_rate[3]=115200UL;
     emitted_outward=transient_losses=transient_left_ms=transient_pause_ms=0;
     transient_wrong_channel=transient_close=fail_resume=limit_on_resume=0;
     ++case_id;
@@ -298,8 +359,42 @@ static void test_manual_reports(void) {
     CHECK(command_reports == 2 && strstr(command_report, "distance=") && report.id == 3);
 }
 
+static void run_boot(uint8_t failed_mask) {
+    ServoTask_InitRest();
+    CHECK(ServoTask_IsBusy());
+    CHECK(!ServoTask_Start(2U) && !ServoTask_MoveTo(1U,500U));
+    CHECK(!StepperTask_RequestMangoFromISR(2U));
+    while (ServoTask_IsBusy()) {
+        in_actuator=1;
+        if (!setjmp(actuator_yield)) servo_task(NULL);
+        in_actuator=0;
+        if (boot_state!=BOOT_IDLE) CHECK(ServoTask_IsBusy());
+        tick+=10U;
+        CHECK(tick<15000U);
+    }
+    CHECK(boot_failed==failed_mask && !hits && !starts);
+    CHECK(ServoTask_CanStrike(2U)==!(failed_mask&2U));
+    CHECK(ServoTask_CanStrike(3U)==!(failed_mask&4U));
+    CHECK(ServoTask_CanStrike(1U) && ServoTask_CanStrike(4U));
+    if (failed_mask&2U) CHECK(!StepperTask_RequestMangoFromISR(1U) && !StepperTask_RequestMangoFromISR(2U));
+    if (failed_mask&4U) CHECK(!StepperTask_RequestMangoFromISR(3U) && !StepperTask_RequestMangoFromISR(4U));
+}
+
 int main(void) {
     u8 id;
+    reset(); run_boot(0U);
+    CHECK(pose_moves==2U && restored_id==3U && boot_ready==6U);
+    reset(); physical_rate[2]=9600UL; power_ready_at=900U; run_boot(0U);
+    CHECK(device_rate[2]==9600UL && device_rate[3]==115200UL && probe_count>2U);
+    reset(); lost_boot_motion=1; run_boot(0U);
+    CHECK(pose_moves==3U);
+    reset(); physical_rate[2]=0U; run_boot(2U);
+    CHECK(boot_ready==4U && pose_moves==1U);
+    reset(); physical_rate[2]=physical_rate[3]=0U; run_boot(6U);
+    CHECK(!boot_ready && !pose_moves);
+    reset(); silent_pose=1167U; run_boot(6U);
+    CHECK(pose_moves==6U);
+    reset();
     CHECK(MANGO_MAX_PULSES == 26000UL);
     actuator.id = 2;
     CHECK(position_matches("#002P0600!", 10, 500));
@@ -322,6 +417,7 @@ int main(void) {
         run_job(id, MANGO_OK);
         CHECK(hits == 1 && starts == 2 && motion.outward_pulses == 43);
         CHECK(move_count == 3U && query_count == 6U && home_after_twist);
+        CHECK(pose_moves == 2U);
         /* Same ID again, initially 1 mm below threshold: no stale pulses. */
         initial_close = 1;
         run_job(id, MANGO_OK);
@@ -369,14 +465,22 @@ int main(void) {
     reset(); fail_query = 1; run_job(1, MANGO_PUSHROD_FAILED); CHECK(home_after_twist && starts == 2);
     reset(); fail_home = 1; run_job(4, MANGO_PUSHROD_FAILED); CHECK(stops && starts == 2);
     reset(); manual_busy = 1; run_job(2, MANGO_PUSHROD_FAILED); CHECK(!hits && !move_count);
+    reset(); fail_pose=500U; run_job(2,MANGO_PUSHROD_FAILED);
+    CHECK(!hits && !starts && restored_id==2U);
+    reset(); silent_pose=500U; run_job(3,MANGO_PUSHROD_FAILED);
+    CHECK(!hits && !starts && restored_id==3U && tick>=3000U);
+    reset(); fail_pose=1167U; run_job(2,MANGO_PUSHROD_FAILED);
+    CHECK(hits==1 && starts==2 && motion.state==STEPPER_FAULT && StepperTask_IsBusy());
+    reset(); silent_pose=1167U; run_job(3,MANGO_PUSHROD_FAILED);
+    CHECK(hits==1 && starts==2 && motion.state==STEPPER_FAULT && StepperTask_IsBusy());
     reset(); lossy_test=drop_outward=1; run_job(2,MANGO_OK);
-    CHECK(move_count==4 && home_after_twist);
+    CHECK(move_count==4 && home_after_twist && ServoTask_GetRetryCount()==1U);
     reset(); lossy_test=drop_return=1; run_job(2,MANGO_OK);
-    CHECK(move_count==4 && home_after_twist);
+    CHECK(move_count==4 && home_after_twist && ServoTask_GetRetryCount()==1U);
     reset(); sparse_lossy=lossy_test=drop_outward=1; run_job(2,MANGO_OK);
-    CHECK(move_count==4 && home_after_twist);
+    CHECK(move_count==4 && home_after_twist && ServoTask_GetRetryCount()==1U);
     reset(); sparse_lossy=lossy_test=drop_return=1; run_job(2,MANGO_OK);
-    CHECK(move_count==4 && home_after_twist);
+    CHECK(move_count==4 && home_after_twist && ServoTask_GetRetryCount()==1U);
     reset(); CHECK(!ServoTask_Start(0) && !ServoTask_Start(5));
     CHECK(ServoTask_Start(1) && !ServoTask_Start(2));
     ServoTask_Cancel(); CHECK(!ServoTask_IsBusy() && !move_count && !stops);

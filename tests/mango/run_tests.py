@@ -96,5 +96,5 @@ cpu.emu_start(entry | 1, 0xffffffff, timeout=30_000_000,
               count=int(os.environ.get("ARM_TEST_MAX_INSTRUCTIONS", "20000000")))
 message = b"".join(output).decode("utf-8", errors="replace")
 print(message, end="")
-if not exited or "PASS:" not in message or "FAIL" in message:
+if not exited or "PASS:" not in message or "FAIL" in message or "assertion failed" in message or "SIGABRT" in message:
     raise SystemExit("State machine tests failed or did not finish")

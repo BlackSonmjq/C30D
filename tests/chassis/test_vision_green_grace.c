@@ -45,13 +45,14 @@ int main(void)
 
     /* A recovered parked target gets a fresh stationary qualification. */
     clear_fruit(); camera_green=1; MOTOR_A.Encoder=0;
-    for(i=0;i<5;++i) frame(1,0);
+    for(i=0;i<6;++i) frame(1,0);
     REQUIRE(vision_pick_phase==PICK_HOLD && !strikes);
     camera_green=0; frame(0,0);
     for(i=0;i<20;++i) frame(0,0);
     REQUIRE(VisionAlign_ControlOwned() && !strikes);
     camera_green=1; frame(1,0);
     REQUIRE(vision_pick_phase==PICK_HOLD && !strikes);
+    frame(1,0);REQUIRE(!strikes);
     for(i=0;i<6;++i) frame(1,0);
     REQUIRE(vision_pick_phase==PICK_WORK && strikes==1);
     tool_busy=0; tool.state=STEPPER_RETURNED; tool.result=MANGO_OK; tool.mango_id=2;

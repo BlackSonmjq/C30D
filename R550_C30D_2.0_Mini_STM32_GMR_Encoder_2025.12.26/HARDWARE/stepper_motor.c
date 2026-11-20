@@ -6,7 +6,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#define STEPPER_START_PERIOD_US 20000u
+#define STEPPER_START_PERIOD_US 5000u
 #define STEPPER_RUN_PERIOD_US   5000u
 #define STEPPER_RAMP_PULSES     200u
 #define STEPPER_MAX_PERIOD_CHANGE_US 150u

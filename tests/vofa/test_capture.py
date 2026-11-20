@@ -19,6 +19,8 @@ spec.loader.exec_module(capture)
 
 
 def packet(count):
+    if count == 63:
+        return packet(60) + [9, 620, 2]
     if count == 60:
         return packet(58) + [2, 4]
     if count == 58:
@@ -63,6 +65,20 @@ def packet(count):
 
 
 class FramingTests(unittest.TestCase):
+    def test_strike_timing_63_channels(self):
+        values=packet(63)
+        self.assertEqual(capture.fields_for(63)[60:],
+                         ['mechanism_phase','mechanism_previous_phase_ms','servo_retry_count'])
+        self.assertEqual(capture.Framer.decode(struct.pack('<63f',*values)),tuple(values))
+        for index,bad in ((60,11),(60,-1),(60,.5),(61,-1),(62,-1),(62,float('nan'))):
+            invalid=values.copy(); invalid[index]=bad
+            self.assertIsNone(capture.Framer.decode(struct.pack('<63f',*invalid)))
+        parser=capture.Framer(); data=struct.pack('<63f',*values)+capture.TAIL
+        result=[]
+        for offset in range(0,len(data)*2,20):
+            result.extend(parser.feed((data*2)[offset:offset+20]))
+        self.assertEqual(result,[tuple(values)]*2)
+
     def test_stop_release_diagnostics(self):
         values = packet(60)
         self.assertEqual(capture.fields_for(60)[:58], capture.fields_for(58))
@@ -330,7 +346,7 @@ class FramingTests(unittest.TestCase):
             self.assertEqual(frames, [tuple(values)] * 2, start)
 
     def test_visual_capture_csv_metadata_and_summary(self):
-        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 58):
+        for count in (8, 13, 20, 21, 31, 32, 33, 34, 35, 37, 38, 40, 41, 43, 58, 60, 63):
             values = packet(count)
             data = struct.pack(f'<{count}f', *values) + capture.TAIL
 

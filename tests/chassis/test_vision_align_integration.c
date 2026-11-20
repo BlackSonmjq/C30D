@@ -40,6 +40,7 @@ static struct { float Target,Encoder; int Motor_Pwm; }
 static u8 manual_heading_locked;
 static u8 manual_heading_pole;
 static u8 vision_park_braking;
+static float wheel_output_probe_assist_pwm;
 static float manual_heading_target;
 static VisionAlign_State vision_align;
 static uint32_t vision_manual_frames, vision_manual_seen;
@@ -47,6 +48,7 @@ static VisionStrike_State vision_pick;
 static VisionPickPhase vision_pick_phase;
 static uint8_t vision_pick_id;
 static uint8_t vision_pick_attempts;
+static uint8_t vision_boot_attempts;
 static uint8_t vision_detection_timed_out;
 static uint8_t vision_rearm_clear_active;
 static uint32_t vision_rearm_clear_since;
@@ -80,7 +82,7 @@ uint8_t RouteIO_ChassisStopped(void) { return chassis_stopped; }
 uint8_t RouteIO_ControlOwned(void) { return route_owned; }
 /* Route-specific fixtures provide the real command application below. */
 #ifndef NAVIGATION_MERGE_TEST
-void RouteIO_ApplyDrive(void) { dx=dy=dz=0; }
+float RouteIO_ApplyDrive(void) { dx=dy=dz=0; return 0; }
 #endif
 static uint8_t route_stop_requested;
 void RouteIO_RequestManual(void) { route_owned=0; route_stop_requested=1; }
@@ -91,7 +93,9 @@ static int ServoTask_IsBusy(void) { return servo_busy; }
 static int USART_ServoControlBusy(void) { return debug_busy; }
 uint8_t RouteIO_WorkReserved(void) { return reserved; }
 static int StepperTask_RequestMango(uint8_t id) { submitted_id=id; ++strikes;tool_busy=1; return 1; }
+#ifndef NAVIGATION_MERGE_TEST
 uint8_t RouteIO_QueueWorkFromISR(uint8_t id) { return StepperTask_RequestMango(id); }
+#endif
 uint8_t RouteIO_Ready(void) { return EN && !Flag_Stop && Voltage>=10 && !tool_busy; }
 static void Drive_Motor(float x,float y,float z) { dx=x;dy=y;dz=z; }
 #include "production_logic.inc"

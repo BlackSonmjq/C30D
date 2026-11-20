@@ -34,12 +34,14 @@ static signed char wheel_start_direction[4];
 static unsigned char wheel_start_complete[4];
 static unsigned char wheel_start_stall_ticks[4];
 static int wheel_output_translation_active;
+static float wheel_output_probe_assist_pwm;
 static int wheel_output_reset_pi;
 
 static void WheelOutput_ResetStartup(void)
 {
     unsigned wheel;
     wheel_output_translation_active = wheel_output_reset_pi = 0;
+    wheel_output_probe_assist_pwm = 0.0f;
     for (wheel = 0U; wheel < 4U; ++wheel) {
         wheel_start_direction[wheel] = 0;
         wheel_start_complete[wheel] = 0U;
@@ -177,6 +179,7 @@ static float WheelOutput_StartupAssist(unsigned wheel, float pwm, float target, 
     if (measured < 0.0f) measured = 0.0f;
     /* Preserve translation breakaway; taper small pure-yaw targets below. */
     amount = wheel == 0U || wheel == 3U ? WHEEL_START_HEAVY_PWM : WHEEL_START_LIGHT_PWM;
+    if (wheel_output_translation_active && target > 0.0f) amount += wheel_output_probe_assist_pwm;
     /* Linear taper retains useful breakaway effort for small yaw targets.
      * Feedback still fades the assist as each wheel starts moving. */
     if (!wheel_output_translation_active && speed < WHEEL_START_EXIT_MPS) {
